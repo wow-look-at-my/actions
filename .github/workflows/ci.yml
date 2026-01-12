@@ -9,7 +9,7 @@ defaults:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: selfhosted-linux
     strategy:
       matrix:
         action: [tag-runner]
