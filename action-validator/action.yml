@@ -1,0 +1,18 @@
+name: 'Action Validator'
+description: 'Validate GitHub Action action.yml files'
+inputs:
+  files:
+    description: 'Glob pattern for action.yml files to validate'
+    required: false
+    default: '*/action.yml'
+
+runs:
+  using: composite
+  steps:
+    - name: Install action-validator
+      shell: bash
+      run: npm install -g @action-validator/core @action-validator/cli
+
+    - name: Validate
+      shell: bash
+      run: action-validator ${{ inputs.files }}
