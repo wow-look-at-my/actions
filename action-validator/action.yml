@@ -19,8 +19,18 @@ runs:
 
     - name: Validate actions
       shell: bash
-      run: action-validator ${{ inputs.actions }}
+      run: |
+        shopt -s nullglob
+        for f in ${{ inputs.actions }}; do
+          echo "Validating $f"
+          action-validator "$f"
+        done
 
     - name: Validate workflows
       shell: bash
-      run: action-validator ${{ inputs.workflows }}
+      run: |
+        shopt -s nullglob
+        for f in ${{ inputs.workflows }}; do
+          echo "Validating $f"
+          action-validator "$f"
+        done
