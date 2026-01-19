@@ -1,10 +1,14 @@
 name: 'Action Validator'
 description: 'Validate GitHub Action action.yml files'
 inputs:
-  files:
+  actions:
     description: 'Glob pattern for action.yml files to validate'
     required: false
     default: '*/action.yml'
+  workflows:
+    description: 'Glob pattern for workflow files to validate'
+    required: false
+    default: '.github/workflows/*.yml'
 
 runs:
   using: composite
@@ -13,6 +17,10 @@ runs:
       shell: bash
       run: npm install -g @action-validator/core @action-validator/cli
 
-    - name: Validate
+    - name: Validate actions
       shell: bash
-      run: action-validator ${{ inputs.files }}
+      run: action-validator ${{ inputs.actions }}
+
+    - name: Validate workflows
+      shell: bash
+      run: action-validator ${{ inputs.workflows }}

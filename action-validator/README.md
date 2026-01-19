@@ -1,6 +1,6 @@
 # Action Validator
 
-Validate GitHub Action `action.yml` files using [action-validator](https://github.com/mpalmer/action-validator).
+Validate GitHub Action `action.yml` and workflow files using [action-validator](https://github.com/mpalmer/action-validator).
 
 ## Usage
 
@@ -12,20 +12,30 @@ Validate GitHub Action `action.yml` files using [action-validator](https://githu
 
 | Input | Description | Default |
 |-------|-------------|---------|
-| `files` | Glob pattern for action.yml files to validate | `*/action.yml` |
+| `actions` | Glob pattern for action.yml files to validate | `*/action.yml` |
+| `workflows` | Glob pattern for workflow files to validate | `.github/workflows/*.yml` |
 
 ## Examples
 
-### Validate all actions in subdirectories
+### Validate all actions and workflows (default)
 
 ```yaml
 - uses: wow-look-at-my-code/actions/action-validator@v1
 ```
 
-### Validate specific files
+### Validate only actions
 
 ```yaml
 - uses: wow-look-at-my-code/actions/action-validator@v1
   with:
-    files: 'my-action/action.yml'
+    workflows: ''
+```
+
+### Custom patterns
+
+```yaml
+- uses: wow-look-at-my-code/actions/action-validator@v1
+  with:
+    actions: 'actions/*/action.yml'
+    workflows: '.github/workflows/ci.yml'
 ```
