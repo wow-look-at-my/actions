@@ -1,50 +1,34 @@
-# GitHub Repository Settings Template
+# GitHub Actions
 
-A template for managing GitHub repository settings as code using the [Probot Settings app](https://probot.github.io/apps/settings/).
+Reusable GitHub Actions.
 
-## Overview
+## Actions
 
-This template provides a `.github/settings.yml` configuration file that automatically syncs repository settings when changes are pushed. It enables infrastructure-as-code for your GitHub repositories.
+### [multicmd](multicmd/)
 
-## Features
+Run OS-specific commands without boilerplate if-checks.
 
-- Repository metadata (description, topics, visibility)
-- Issue and PR labels with colors and descriptions
-- Branch protection rules
-- Team and collaborator permissions
-- Merge strategies configuration
-- Security settings (vulnerability alerts, automated fixes)
+```yaml
+- uses: wow-look-at-my-code/actions/multicmd@v1
+  with:
+    unix: ./install.sh
+    windows: .\install.ps1
+```
 
-## Usage
+### [action-validator](action-validator/)
 
-1. Install the [Settings app](https://github.com/apps/settings) on your repository
-2. Copy `.github/settings.yml` to your repository
-3. Customize the settings for your project
-4. Push changes - settings sync automatically
+Validate `action.yml` and workflow files.
 
-## Configuration
+```yaml
+- uses: wow-look-at-my-code/actions/action-validator@v1
+```
 
-Edit `.github/settings.yml` to customize:
+### [tag-runner](tag-runner/)
 
-| Section | Description |
-|---------|-------------|
-| `repository` | Name, description, visibility, features |
-| `labels` | Issue/PR labels with colors |
-| `milestones` | Project milestones |
-| `collaborators` | Individual user permissions |
-| `teams` | Team-based access control |
-| `branches` | Branch protection rules |
+Tag runner images with branch/latest tags.
 
-## Branch Protection
-
-The template includes sensible defaults for the `master` branch:
-
-- Requires 1 approving review
-- Dismisses stale reviews on new commits
-- Requires code owner review
-- Enforces linear history
-- Applies to administrators
-
-## License
-
-MIT
+```yaml
+- uses: wow-look-at-my-code/actions/tag-runner@v1
+  with:
+    token: ${{ secrets.GITHUB_TOKEN }}
+```
