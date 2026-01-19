@@ -8,8 +8,16 @@ defaults:
     shell: bash -euo pipefail {0}
 
 jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate action.yml files
+        uses: mpalmer/action-validator@v0.6.0
+
   build:
-    runs-on: selfhosted-linux
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         action: [tag-runner]

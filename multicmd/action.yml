@@ -17,6 +17,10 @@ inputs:
     description: 'Command to run on macOS (uses bash)'
     required: false
     default: ''
+  unix:
+    description: 'Command to run on Linux and macOS (uses bash)'
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -36,8 +40,13 @@ runs:
       shell: bash
       run: ${{ inputs.linux }}
 
+    # Linux fallback to unix
+    - if: runner.os == 'Linux' && inputs.linux == '' && inputs.unix != ''
+      shell: bash
+      run: ${{ inputs.unix }}
+
     # Linux fallback to default
-    - if: runner.os == 'Linux' && inputs.linux == '' && inputs.default != ''
+    - if: runner.os == 'Linux' && inputs.linux == '' && inputs.unix == '' && inputs.default != ''
       shell: bash
       run: ${{ inputs.default }}
 
@@ -46,7 +55,12 @@ runs:
       shell: bash
       run: ${{ inputs.macos }}
 
+    # macOS fallback to unix
+    - if: runner.os == 'macOS' && inputs.macos == '' && inputs.unix != ''
+      shell: bash
+      run: ${{ inputs.unix }}
+
     # macOS fallback to default
-    - if: runner.os == 'macOS' && inputs.macos == '' && inputs.default != ''
+    - if: runner.os == 'macOS' && inputs.macos == '' && inputs.unix == '' && inputs.default != ''
       shell: bash
       run: ${{ inputs.default }}
