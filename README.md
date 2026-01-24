@@ -39,36 +39,20 @@ Cache with change detection - only saves when files actually changed.
 Create orphan tag(s) from a directory with optional file transformations.
 
 ```yaml
+# Explicit tags
 - uses: wow-look-at-my-code/actions@orphan-tag#1
   with:
     source: my-action
     tags: v1 v1.0.0
     exclude: src node_modules
     move: dist/index.js:index.js
-```
 
-### [orphan-tag-name](orphan-tag-name/)
-
-Generate tag strings: `name#version name#latest` or `name/branch#version name/branch#latest`.
-
-```yaml
-- uses: wow-look-at-my-code/actions@orphan-tag-name#1
-  id: tag
+# Auto-generate tags from version (creates name#version + name#latest)
+- uses: wow-look-at-my-code/actions@orphan-tag#1
   with:
-    path: my-action
-- run: echo ${{ steps.tag.outputs.tag }}
-```
-
-### [orphan-release](orphan-release/)
-
-Release an action as orphan tags (versioned + latest). Combines orphan-tag-name and orphan-tag.
-
-```yaml
-- uses: wow-look-at-my-code/actions@orphan-release#1
-  with:
-    path: my-action
+    source: my-action
+    version: 1
     exclude: src node_modules
-    move: dist/index.js:index.js
 ```
 
 ### [tag-runner](tag-runner/)

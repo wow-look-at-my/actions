@@ -7,8 +7,13 @@ inputs:
     description: 'Source directory to package'
     required: true
   tags:
-    description: 'Space-separated tag names to create'
-    required: true
+    description: 'Space-separated tag names (mutually exclusive with version)'
+    required: false
+    default: ''
+  version:
+    description: 'Version number to auto-generate tags (mutually exclusive with tags)'
+    required: false
+    default: ''
   exclude:
     description: 'Space-separated patterns to exclude'
     required: false
@@ -29,10 +34,11 @@ runs:
       shell: bash
       env:
         GITHUB_TOKEN: ${{ github.token }}
-      run: >
-        ${{ github.action_path }}/orphan-tag.sh
-        --source "${{ inputs.source }}"
-        --tags "${{ inputs.tags }}"
-        --exclude "${{ inputs.exclude }}"
-        --move "${{ inputs.move }}"
-        --message "${{ inputs.message }}"
+      run: |
+        args=(--source "${{ inputs.source }}")
+        [ -n "${{ inputs.tags }}" ] && args+=(--tags "${{ inputs.tags }}")
+        [ -n "${{ inputs.version }}" ] && args+=(--version "${{ inputs.version }}")
+        [ -n "${{ inputs.exclude }}" ] && args+=(--exclude "${{ inputs.exclude }}")
+        [ -n "${{ inputs.move }}" ] && args+=(--move "${{ inputs.move }}")
+        [ -n "${{ inputs.message }}" ] && args+=(--message "${{ inputs.message }}")
+        "${{ github.action_path }}/orphan-tag.sh" "${args[@]}"

@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: orphan-tag.sh --source <dir> --tags <tags> [--exclude <patterns>] [--move <pairs>] [--message <msg>]
+# Usage: orphan-tag.sh --source <dir> [--tags <tags> | --version <version>] [--exclude <patterns>] [--move <pairs>] [--message <msg>]
+# Either --tags or --version is required. If --version is given, tags are auto-generated.
 
 source=""
 tags=()
+version=""
 exclude=""
 move=""
 message=""
@@ -13,6 +15,7 @@ while [[ $# -gt 0 ]]; do
 	case $1 in
 		--source) source="$2"; shift 2 ;;
 		--tags) for t in $2; do tags+=("$t"); done; shift 2 ;;
+		--version) version="$2"; shift 2 ;;
 		--exclude) exclude="$2"; shift 2 ;;
 		--move) move="$2"; shift 2 ;;
 		--message) message="$2"; shift 2 ;;
@@ -20,9 +23,24 @@ while [[ $# -gt 0 ]]; do
 	esac
 done
 
-if [ -z "$source" ] || [ ${#tags[@]} -eq 0 ]; then
-	echo "Error: --source and --tags are required" >&2
+if [ -z "$source" ]; then
+	echo "Error: --source is required" >&2
 	exit 1
+fi
+
+# Generate tags from version if not explicitly provided
+if [ ${#tags[@]} -eq 0 ]; then
+	if [ -z "$version" ]; then
+		echo "Error: --tags or --version is required" >&2
+		exit 1
+	fi
+
+	branch="${GITHUB_REF_NAME:-$(git rev-parse --abbrev-ref HEAD)}"
+	if [ "$branch" = "master" ] || [ "$branch" = "main" ]; then
+		tags=("$source#$version" "$source#latest")
+	else
+		tags=("$source/$branch#$version" "$source/$branch#latest")
+	fi
 fi
 
 first_tag="${tags[0]}"
