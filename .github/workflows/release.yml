@@ -26,25 +26,33 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
-      actions: ${{ steps.find.outputs.actions }}
+      node: ${{ steps.find.outputs.node }}
+      composite: ${{ steps.find.outputs.composite }}
     steps:
       - uses: actions/checkout@v4
       - id: find
+        shell: pwsh
         run: |
-          actions=$(find . -maxdepth 2 -name action.yml -exec dirname {} \; | while read dir; do
-            if [ -f "$dir/package.json" ]; then
-              basename "$dir"
-            fi
-          done | jq -Rsc 'split("\n") | map(select(length > 0))')
-          echo "actions=$actions" >> $GITHUB_OUTPUT
+          $node = @()
+          $composite = @()
+          Get-ChildItem -Filter action.yml -Depth 1 | ForEach-Object {
+            $name = $_.Directory.Name
+            if (Test-Path "$name/package.json") {
+              $node += $name
+            } else {
+              $composite += $name
+            }
+          }
+          "node=$(ConvertTo-Json -Compress @($node))" >> $env:GITHUB_OUTPUT
+          "composite=$(ConvertTo-Json -Compress @($composite))" >> $env:GITHUB_OUTPUT
 
-  release:
+  release-node:
     needs: detect
-    if: needs.detect.outputs.actions != '[]'
+    if: needs.detect.outputs.node != '[]'
     strategy:
       fail-fast: false
       matrix:
-        action: ${{ fromJson(needs.detect.outputs.actions) }}
+        action: ${{ fromJson(needs.detect.outputs.node) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -67,16 +75,17 @@ jobs:
 
       - name: Get version and tag
         id: version
+        shell: pwsh
         run: |
-          version=$(jq -r '.version | split(".")[0]' ${{ matrix.action }}/package.json)
-          branch="${{ github.ref_name }}"
-          if [ "$branch" = "master" ]; then
-            tag="${{ matrix.action }}@v$version"
-          else
-            tag="${{ matrix.action }}/$branch@v$version"
-          fi
-          echo "version=$version" >> $GITHUB_OUTPUT
-          echo "tag=$tag" >> $GITHUB_OUTPUT
+          $pkg = Get-Content "${{ matrix.action }}/package.json" | ConvertFrom-Json
+          $version = $pkg.version.Split('.')[0]
+          $branch = "${{ github.ref_name }}"
+          if ($branch -eq "master") {
+            $tag = "${{ matrix.action }}@v$version"
+          } else {
+            $tag = "${{ matrix.action }}/$branch@v$version"
+          }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
 
       - uses: ./orphan-tag
         with:
@@ -84,3 +93,33 @@ jobs:
           tag: ${{ steps.version.outputs.tag }}
           exclude: src node_modules tsconfig.json justfile dist
           move: dist/index.js:index.js
+
+  release-composite:
+    needs: detect
+    if: needs.detect.outputs.composite != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        action: ${{ fromJson(needs.detect.outputs.composite) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get tag
+        id: version
+        shell: pwsh
+        run: |
+          $branch = "${{ github.ref_name }}"
+          if ($branch -eq "master") {
+            $tag = "${{ matrix.action }}@v1"
+          } else {
+            $tag = "${{ matrix.action }}/$branch@v1"
+          }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+
+      - uses: ./orphan-tag
+        with:
+          source: ${{ matrix.action }}
+          tag: ${{ steps.version.outputs.tag }}
