@@ -1,4 +1,5 @@
 name: 'Multi-Command'
+version: 1
 description: 'Run OS-specific commands in a single step without boilerplate if-checks'
 inputs:
   default:

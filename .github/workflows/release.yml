@@ -107,10 +107,11 @@ jobs:
       - name: Get tag
         id: version
         run: |
+          version=$(yq '.version' ${{ matrix.action }}/action.yml)
           if [ "${{ github.ref_name }}" = "master" ]; then
-            echo "tag=${{ matrix.action }}@v1" >> $GITHUB_OUTPUT
+            echo "tag=${{ matrix.action }}@v$version" >> $GITHUB_OUTPUT
           else
-            echo "tag=${{ matrix.action }}/${{ github.ref_name }}@v1" >> $GITHUB_OUTPUT
+            echo "tag=${{ matrix.action }}/${{ github.ref_name }}@v$version" >> $GITHUB_OUTPUT
           fi
 
       - uses: ./orphan-tag

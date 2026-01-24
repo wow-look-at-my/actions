@@ -1,4 +1,5 @@
 name: 'Action Validator'
+version: 1
 description: 'Validate GitHub Action action.yml files'
 inputs:
   actions:

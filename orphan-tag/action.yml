@@ -1,4 +1,5 @@
 name: Orphan Tag
+version: 2
 description: Create orphan tag(s) from a directory with optional file transformations
 
 inputs:
