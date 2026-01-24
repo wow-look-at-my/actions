@@ -1,17 +1,17 @@
 name: Orphan Release
 version: 1
-description: Create orphan tag(s) from a directory
+description: Create orphan tags from a directory
 
 inputs:
   source:
     description: 'Source directory to package'
     required: true
-  tags:
-    description: 'Space-separated tag names (mutually exclusive with version)'
+  name:
+    description: 'Tag name prefix (defaults to source directory)'
     required: false
     default: ''
   version:
-    description: 'Version number to auto-generate tags (mutually exclusive with tags)'
+    description: 'Force specific version (otherwise auto-increments)'
     required: false
     default: ''
   exclude:
@@ -22,6 +22,10 @@ inputs:
     description: 'Commit message (defaults to "Release {first_tag}")'
     required: false
     default: ''
+  include-branch:
+    description: 'Include branch name in tags for non-main branches'
+    required: false
+    default: 'false'
 
 runs:
   using: composite
@@ -32,8 +36,9 @@ runs:
         GITHUB_TOKEN: ${{ github.token }}
       run: |
         args=(--source "${{ inputs.source }}")
-        [ -n "${{ inputs.tags }}" ] && args+=(--tags "${{ inputs.tags }}")
+        [ -n "${{ inputs.name }}" ] && args+=(--name "${{ inputs.name }}")
         [ -n "${{ inputs.version }}" ] && args+=(--version "${{ inputs.version }}")
         [ -n "${{ inputs.exclude }}" ] && args+=(--exclude "${{ inputs.exclude }}")
         [ -n "${{ inputs.message }}" ] && args+=(--message "${{ inputs.message }}")
+        [ "${{ inputs.include-branch }}" = "true" ] && args+=(--include-branch)
         "${{ github.action_path }}/orphan-release.sh" "${args[@]}"

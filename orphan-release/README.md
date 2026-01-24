@@ -17,9 +17,20 @@ Just specify the source - version auto-increments from existing tags:
 First release creates `my-action#1` and `my-action#latest`.
 Next release creates `my-action#2` and updates `my-action#latest`.
 
-### Pin to specific version
+### Custom tag name
 
-Pass `--version` to force a specific version:
+Override the tag name (defaults to source directory):
+
+```yaml
+- uses: wow-look-at-my-code/actions@orphan-release#1
+  with:
+    source: plugins/my-plugin
+    name: my-plugin
+```
+
+Creates `my-plugin#1` instead of `plugins/my-plugin#1`.
+
+### Pin to specific version
 
 ```yaml
 - uses: wow-look-at-my-code/actions@orphan-release#1
@@ -28,32 +39,26 @@ Pass `--version` to force a specific version:
     version: 1
 ```
 
-### Explicit tags
-
-Pass `--tags` to specify exact tag names:
-
-```yaml
-- uses: wow-look-at-my-code/actions@orphan-release#1
-  with:
-    source: my-action
-    tags: v1 v1.0.0
-```
-
 ## Branch handling
 
-On non-main branches, tags include the branch name:
+By default, tags don't include the branch name (for marketplace plugins).
+
+With `--include-branch`, non-main branches get branch-prefixed tags:
 - `my-action/feature-branch#1`
 - `my-action/feature-branch#latest`
+
+This is useful for GitHub Actions where you want separate tags per branch.
 
 ## Inputs
 
 | Input | Required | Description |
 |-------|----------|-------------|
 | `source` | Yes | Source directory to package |
+| `name` | No | Tag name prefix (defaults to source directory) |
 | `version` | No | Force specific version (otherwise auto-increments) |
-| `tags` | No | Space-separated explicit tag names |
 | `exclude` | No | Space-separated patterns to exclude |
 | `message` | No | Commit message (defaults to "Release {tag}") |
+| `include-branch` | No | Include branch name in tags for non-main branches |
 
 ## Examples
 
@@ -65,13 +70,23 @@ On non-main branches, tags include the branch name:
     source: my-action
 ```
 
-### Exclude build artifacts
+### Release a GitHub Action (with branch tags)
 
 ```yaml
 - uses: wow-look-at-my-code/actions@orphan-release#1
   with:
     source: my-action
     exclude: src node_modules tsconfig.json
+    include-branch: true
+```
+
+### Release a marketplace plugin (no branch tags)
+
+```yaml
+- uses: wow-look-at-my-code/actions@orphan-release#1
+  with:
+    source: plugins/my-plugin
+    name: my-plugin
 ```
 
 ### Full workflow

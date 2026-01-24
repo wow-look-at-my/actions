@@ -1,22 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: orphan-release.sh --source <dir> [--tags <tags>] [--version <version>] [--exclude <patterns>] [--message <msg>]
-# If no --tags or --version, auto-increments based on existing tags.
+# Usage: orphan-release.sh --source <dir> [--name <name>] [--version <version>] [--exclude <patterns>] [--message <msg>] [--include-branch]
+# Name defaults to source directory. Version auto-increments if not specified.
 
 source=""
-tags=()
+name=""
 version=""
 exclude=""
 message=""
+include_branch=false
 
 while [[ $# -gt 0 ]]; do
 	case $1 in
 		--source) source="$2"; shift 2 ;;
-		--tags) for t in $2; do tags+=("$t"); done; shift 2 ;;
+		--name) name="$2"; shift 2 ;;
 		--version) version="$2"; shift 2 ;;
 		--exclude) exclude="$2"; shift 2 ;;
 		--message) message="$2"; shift 2 ;;
+		--include-branch) include_branch=true; shift ;;
 		*) echo "Unknown option: $1" >&2; exit 1 ;;
 	esac
 done
@@ -26,32 +28,33 @@ if [ -z "$source" ]; then
 	exit 1
 fi
 
+# Default name to source directory
+[ -z "$name" ] && name="$source"
+
 branch="${GITHUB_REF_NAME:-$(git rev-parse --abbrev-ref HEAD)}"
 
-# Generate tags if not explicitly provided
-if [ ${#tags[@]} -eq 0 ]; then
-	# Auto-increment version if not specified
-	if [ -z "$version" ]; then
-		if [ "$branch" = "master" ] || [ "$branch" = "main" ]; then
-			prefix="$source"
-		else
-			prefix="$source/$branch"
-		fi
-
-		# Fetch tags and find highest version
-		git fetch --tags --quiet 2>/dev/null || true
-		max_version=$(git tag -l "$prefix#*" | grep -E "^${prefix}#[0-9]+$" | sed "s|^${prefix}#||" | sort -n | tail -1)
-		version=$((${max_version:-0} + 1))
-		echo "Auto-incrementing to version $version"
-	fi
-
-	if [ "$branch" = "master" ] || [ "$branch" = "main" ]; then
-		tags=("$source#$version" "$source#latest")
-	else
-		tags=("$source/$branch#$version" "$source/$branch#latest")
-	fi
+# Determine if we should use branch in tag names
+use_branch=false
+if [ "$include_branch" = true ] && [ "$branch" != "master" ] && [ "$branch" != "main" ]; then
+	use_branch=true
 fi
 
+# Build prefix for tag lookup
+if [ "$use_branch" = true ]; then
+	prefix="$name/$branch"
+else
+	prefix="$name"
+fi
+
+# Auto-increment version if not specified
+if [ -z "$version" ]; then
+	git fetch --tags --quiet 2>/dev/null || true
+	max_version=$(git tag -l "$prefix#*" | grep -E "^${prefix}#[0-9]+$" | sed "s|^${prefix}#||" | sort -n | tail -1)
+	version=$((${max_version:-0} + 1))
+	echo "Auto-incrementing to version $version"
+fi
+
+tags=("$prefix#$version" "$prefix#latest")
 first_tag="${tags[0]}"
 [ -z "$message" ] && message="Release $first_tag"
 
