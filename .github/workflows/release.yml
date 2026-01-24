@@ -7,21 +7,15 @@ on:
 
 jobs:
   cleanup:
-    if: github.event_name == 'delete' && github.event.ref_type == 'branch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - run: git fetch --tags
-      - name: Delete branch tags
-        run: |
-          branch="${{ github.event.ref }}"
-          # Delete both versioned (name/branch#N) and latest (name/branch) tags
-          git tag -l "*/$branch#*" "*/$branch" | while read tag; do
-            echo "Deleting tag: $tag"
-            git push origin --delete "$tag" || true
-          done
+      - name: Cleanup orphaned branch tags
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./orphan-release/orphan-cleanup.sh
 
   detect:
     if: github.event_name == 'push'
@@ -49,7 +43,7 @@ jobs:
           echo "composite=$(composite | jq -R | jq -sc)" >> $GITHUB_OUTPUT
 
   release-node:
-    needs: detect
+    needs: [cleanup, detect]
     if: needs.detect.outputs.node != '[]'
     strategy:
       fail-fast: false
@@ -75,22 +69,17 @@ jobs:
         working-directory: ${{ matrix.action }}
         run: just build
 
-      - name: Get tag
-        id: version
-        run: echo "tag=$(./orphan-tag-name/orphan-tag-name.sh --path ${{ matrix.action }})" >> $GITHUB_OUTPUT
-
       - name: Create orphan tag
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: >
-          ./orphan-tag/orphan-tag.sh
+          ./orphan-release/orphan-release.sh
           --source "${{ matrix.action }}"
-          --tags "${{ steps.version.outputs.tag }}"
-          --exclude "src node_modules tsconfig.json justfile dist"
-          --move "dist/index.js:index.js"
+          --exclude "src node_modules tsconfig.json justfile"
+          --include-branch
 
   release-composite:
-    needs: detect
+    needs: [cleanup, detect]
     if: needs.detect.outputs.composite != '[]'
     runs-on: ubuntu-latest
     permissions:
@@ -103,8 +92,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           for action in $(echo '${{ needs.detect.outputs.composite }}' | jq -r '.[]'); do
-            tag=$(./orphan-tag-name/orphan-tag-name.sh --path "$action")
-            ./orphan-tag/orphan-tag.sh --source "$action" --tags "$tag"
+            ./orphan-release/orphan-release.sh --source "$action" --include-branch
           done
 
   all-checks-completed:
