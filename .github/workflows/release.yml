@@ -17,7 +17,7 @@ jobs:
       - name: Delete branch tags
         run: |
           branch="${{ github.event.ref }}"
-          git tag -l "*/$branch" | while read tag; do
+          git tag -l "*/$branch@*" | while read tag; do
             echo "Deleting tag: $tag"
             git push origin --delete "$tag" || true
           done
@@ -71,9 +71,9 @@ jobs:
           version=$(jq -r '.version | split(".")[0]' ${{ matrix.action }}/package.json)
           branch="${{ github.ref_name }}"
           if [ "$branch" = "master" ]; then
-            tag="${{ matrix.action }}/v$version"
+            tag="${{ matrix.action }}@v$version"
           else
-            tag="${{ matrix.action }}/v$version/$branch"
+            tag="${{ matrix.action }}/$branch@v$version"
           fi
           echo "version=$version" >> $GITHUB_OUTPUT
           echo "tag=$tag" >> $GITHUB_OUTPUT
