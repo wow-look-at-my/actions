@@ -1,0 +1,29 @@
+name: Orphan Release
+version: 1
+description: Release an action as orphan tags (versioned + latest)
+
+inputs:
+  path:
+    description: 'Action directory to release'
+    required: true
+  exclude:
+    description: 'Space-separated patterns to exclude'
+    required: false
+    default: ''
+  move:
+    description: 'Space-separated src:dst pairs to move files'
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Release action as orphan tags
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: >
+        ${{ github.action_path }}/orphan-release.sh
+        --path "${{ inputs.path }}"
+        --exclude "${{ inputs.exclude }}"
+        --move "${{ inputs.move }}"
