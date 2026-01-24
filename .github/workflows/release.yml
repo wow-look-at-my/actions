@@ -83,7 +83,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: >
-          ./orphan-tag/orphan-tag.sh
+          ./orphan-release/orphan-release.sh
           --source "${{ matrix.action }}"
           --version "${{ steps.version.outputs.version }}"
           --exclude "src node_modules tsconfig.json justfile dist"
@@ -104,7 +104,7 @@ jobs:
         run: |
           for action in $(echo '${{ needs.detect.outputs.composite }}' | jq -r '.[]'); do
             version=$(yq '.version' "$action/action.yml")
-            ./orphan-tag/orphan-tag.sh --source "$action" --version "$version"
+            ./orphan-release/orphan-release.sh --source "$action" --version "$version"
           done
 
   all-checks-completed:

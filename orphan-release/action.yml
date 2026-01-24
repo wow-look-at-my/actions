@@ -1,4 +1,4 @@
-name: Orphan Tag
+name: Orphan Release
 version: 1
 description: Create orphan tag(s) from a directory with optional file transformations
 
@@ -41,4 +41,4 @@ runs:
         [ -n "${{ inputs.exclude }}" ] && args+=(--exclude "${{ inputs.exclude }}")
         [ -n "${{ inputs.move }}" ] && args+=(--move "${{ inputs.move }}")
         [ -n "${{ inputs.message }}" ] && args+=(--message "${{ inputs.message }}")
-        "${{ github.action_path }}/orphan-tag.sh" "${args[@]}"
+        "${{ github.action_path }}/orphan-release.sh" "${args[@]}"

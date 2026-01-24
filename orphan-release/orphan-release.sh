@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: orphan-tag.sh --source <dir> [--tags <tags> | --version <version>] [--exclude <patterns>] [--move <pairs>] [--message <msg>]
+# Usage: orphan-release.sh --source <dir> [--tags <tags> | --version <version>] [--exclude <patterns>] [--move <pairs>] [--message <msg>]
 # Either --tags or --version is required. If --version is given, tags are auto-generated.
 
 source=""
