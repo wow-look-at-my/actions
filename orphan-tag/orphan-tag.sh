@@ -30,7 +30,7 @@ first_tag="${tags[0]}"
 
 echo "::group::[$first_tag] Prepare content"
 tmpdir=$(mktemp -d)
-cp -r "$source"/* "$tmpdir/"
+cp -r "$source"/. "$tmpdir/"
 
 for pattern in $exclude; do
 	rm -rf "$tmpdir"/$pattern 2>/dev/null || true
