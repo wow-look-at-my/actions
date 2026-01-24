@@ -31,20 +31,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: find
-        shell: pwsh
         run: |
-          $node = @()
-          $composite = @()
-          Get-ChildItem -Filter action.yml -Depth 1 | ForEach-Object {
-            $name = $_.Directory.Name
-            if (Test-Path "$name/package.json") {
-              $node += $name
-            } else {
-              $composite += $name
-            }
-          }
-          "node=$(ConvertTo-Json -Compress @($node))" >> $env:GITHUB_OUTPUT
-          "composite=$(ConvertTo-Json -Compress @($composite))" >> $env:GITHUB_OUTPUT
+          node=""
+          composite=""
+          for dir in */action.yml; do
+            name=$(dirname "$dir")
+            if [ -f "$name/package.json" ]; then
+              node="$node\"$name\","
+            else
+              composite="$composite\"$name\","
+            fi
+          done
+          echo "node=[${node%,}]" >> $GITHUB_OUTPUT
+          echo "composite=[${composite%,}]" >> $GITHUB_OUTPUT
 
   release-node:
     needs: detect
