@@ -28,7 +28,7 @@ fi
 first_tag="${tags[0]}"
 [ -z "$message" ] && message="Release $first_tag"
 
-echo "::group::Prepare content"
+echo "::group::[$first_tag] Prepare content"
 tmpdir=$(mktemp -d)
 cp -r "$source"/* "$tmpdir/"
 
@@ -43,7 +43,7 @@ for pair in $move; do
 done
 echo "::endgroup::"
 
-echo "::group::Create orphan commit"
+echo "::group::[$first_tag] Create orphan commit"
 cd "$tmpdir"
 git init -b master
 git config user.name "github-actions[bot]"
@@ -52,7 +52,7 @@ git add -A
 git commit -m "$message"
 echo "::endgroup::"
 
-echo "::group::Push tags"
+echo "::group::[$first_tag] Push tags"
 if [ -n "${GITHUB_REPOSITORY:-}" ]; then
 	git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/$GITHUB_REPOSITORY"
 fi
