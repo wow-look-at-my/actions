@@ -17,7 +17,8 @@ jobs:
       - name: Delete branch tags
         run: |
           branch="${{ github.event.ref }}"
-          git tag -l "*/$branch@*" | while read tag; do
+          # Delete both versioned (name/branch#N) and latest (name/branch) tags
+          git tag -l "*/$branch#*" "*/$branch" | while read tag; do
             echo "Deleting tag: $tag"
             git push origin --delete "$tag" || true
           done
@@ -74,9 +75,9 @@ jobs:
         working-directory: ${{ matrix.action }}
         run: just build
 
-      - name: Get tag
+      - name: Get tags
         id: version
-        run: echo "tag=$(./orphan-tag-name/orphan-tag-name.sh --path ${{ matrix.action }})" >> $GITHUB_OUTPUT
+        run: echo "tags=$(./orphan-tag-name/orphan-tag-name.sh --path ${{ matrix.action }})" >> $GITHUB_OUTPUT
 
       - name: Create orphan tag
         env:
@@ -84,7 +85,7 @@ jobs:
         run: >
           ./orphan-tag/orphan-tag.sh
           --source "${{ matrix.action }}"
-          --tags "${{ steps.version.outputs.tag }}"
+          --tags "${{ steps.version.outputs.tags }}"
           --exclude "src node_modules tsconfig.json justfile dist"
           --move "dist/index.js:index.js"
 
@@ -102,8 +103,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           for action in $(echo '${{ needs.detect.outputs.composite }}' | jq -r '.[]'); do
-            tag=$(./orphan-tag-name/orphan-tag-name.sh --path "$action")
-            ./orphan-tag/orphan-tag.sh --source "$action" --tags "$tag"
+            tags=$(./orphan-tag-name/orphan-tag-name.sh --path "$action")
+            ./orphan-tag/orphan-tag.sh --source "$action" --tags "$tags"
           done
 
   all-checks-completed:

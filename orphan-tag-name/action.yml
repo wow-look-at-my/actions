@@ -1,6 +1,6 @@
 name: Orphan Tag Name
 version: 1
-description: Generate tag string in format name#version or name/branch#version
+description: Generate versioned and latest tag strings (e.g. "name#1 name")
 
 inputs:
   path:
@@ -12,9 +12,9 @@ inputs:
     default: ''
 
 outputs:
-  tag:
-    description: 'Generated tag string'
-    value: ${{ steps.generate.outputs.tag }}
+  tags:
+    description: 'Space-separated versioned and latest tags'
+    value: ${{ steps.generate.outputs.tags }}
 
 runs:
   using: composite
@@ -22,5 +22,5 @@ runs:
     - id: generate
       shell: bash
       run: |
-        tag=$(${{ github.action_path }}/orphan-tag-name.sh --path "${{ inputs.path }}" --branch "${{ inputs.branch }}")
-        echo "tag=$tag" >> $GITHUB_OUTPUT
+        tags=$(${{ github.action_path }}/orphan-tag-name.sh --path "${{ inputs.path }}" --branch "${{ inputs.branch }}")
+        echo "tags=$tags" >> $GITHUB_OUTPUT
