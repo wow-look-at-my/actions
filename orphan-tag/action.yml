@@ -46,7 +46,7 @@ runs:
         msg="${{ inputs.message }}"
         [ -z "$msg" ] && msg="Release $(echo "$TAGS" | head -n1)"
 
-        git init
+        git init -b master
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         git add -A
