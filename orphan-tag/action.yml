@@ -1,12 +1,12 @@
 name: Orphan Tag
-version: 2
+version: 1
 description: Create orphan tag(s) from a directory with optional file transformations
 
 inputs:
   source:
     description: 'Source directory to package'
     required: true
-  tag:
+  tags:
     description: 'Space-separated tag names to create'
     required: true
   exclude:
@@ -32,7 +32,7 @@ runs:
       run: >
         ${{ github.action_path }}/orphan-tag.sh
         --source "${{ inputs.source }}"
-        --tag "${{ inputs.tag }}"
+        --tags "${{ inputs.tags }}"
         --exclude "${{ inputs.exclude }}"
         --move "${{ inputs.move }}"
         --message "${{ inputs.message }}"

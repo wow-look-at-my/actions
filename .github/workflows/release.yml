@@ -74,47 +74,34 @@ jobs:
         working-directory: ${{ matrix.action }}
         run: just build
 
-      - name: Get version and tag
+      - name: Get tag
         id: version
-        run: |
-          version=$(jq -r '.version | split(".")[0]' ${{ matrix.action }}/package.json)
-          if [ "${{ github.ref_name }}" = "master" ]; then
-            echo "tag=${{ matrix.action }}@v$version" >> $GITHUB_OUTPUT
-          else
-            echo "tag=${{ matrix.action }}/${{ github.ref_name }}@v$version" >> $GITHUB_OUTPUT
-          fi
+        run: echo "tag=$(./action-tag/action-tag.sh --path ${{ matrix.action }})" >> $GITHUB_OUTPUT
 
-      - uses: ./orphan-tag
-        with:
-          source: ${{ matrix.action }}
-          tag: ${{ steps.version.outputs.tag }}
-          exclude: src node_modules tsconfig.json justfile dist
-          move: dist/index.js:index.js
+      - name: Create orphan tag
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >
+          ./orphan-tag/orphan-tag.sh
+          --source "${{ matrix.action }}"
+          --tags "${{ steps.version.outputs.tag }}"
+          --exclude "src node_modules tsconfig.json justfile dist"
+          --move "dist/index.js:index.js"
 
   release-composite:
     needs: detect
     if: needs.detect.outputs.composite != '[]'
-    strategy:
-      fail-fast: false
-      matrix:
-        action: ${{ fromJson(needs.detect.outputs.composite) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
 
-      - name: Get tag
-        id: version
+      - name: Create orphan tags
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          version=$(yq '.version' ${{ matrix.action }}/action.yml)
-          if [ "${{ github.ref_name }}" = "master" ]; then
-            echo "tag=${{ matrix.action }}@v$version" >> $GITHUB_OUTPUT
-          else
-            echo "tag=${{ matrix.action }}/${{ github.ref_name }}@v$version" >> $GITHUB_OUTPUT
-          fi
-
-      - uses: ./orphan-tag
-        with:
-          source: ${{ matrix.action }}
-          tag: ${{ steps.version.outputs.tag }}
+          for action in $(echo '${{ needs.detect.outputs.composite }}' | jq -r '.[]'); do
+            tag=$(./action-tag/action-tag.sh --path "$action")
+            ./orphan-tag/orphan-tag.sh --source "$action" --tags "$tag"
+          done

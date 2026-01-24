@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: orphan-tag.sh --source <dir> --tag <tag> [--tag <tag>...] [--exclude <patterns>] [--move <pairs>] [--message <msg>]
+# Usage: orphan-tag.sh --source <dir> --tags <tags> [--exclude <patterns>] [--move <pairs>] [--message <msg>]
 
 source=""
 tags=()
@@ -12,7 +12,7 @@ message=""
 while [[ $# -gt 0 ]]; do
 	case $1 in
 		--source) source="$2"; shift 2 ;;
-		--tag) for t in $2; do tags+=("$t"); done; shift 2 ;;
+		--tags) for t in $2; do tags+=("$t"); done; shift 2 ;;
 		--exclude) exclude="$2"; shift 2 ;;
 		--move) move="$2"; shift 2 ;;
 		--message) message="$2"; shift 2 ;;
@@ -21,7 +21,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [ -z "$source" ] || [ ${#tags[@]} -eq 0 ]; then
-	echo "Error: --source and at least one --tag are required" >&2
+	echo "Error: --source and --tags are required" >&2
 	exit 1
 fi
 
