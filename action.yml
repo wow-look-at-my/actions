@@ -1,0 +1,14 @@
+name: Tag Runner Image
+description: Tags runner images with branch/latest tags and triggers flush
+
+inputs:
+  sha:
+    description: Image SHA to tag (defaults to github.sha or registry_package version)
+    required: false
+  token:
+    description: GitHub token with packages:write and actions:write permissions
+    required: true
+
+runs:
+  using: node20
+  main: index.js
