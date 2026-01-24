@@ -75,17 +75,13 @@ jobs:
 
       - name: Get version and tag
         id: version
-        shell: pwsh
         run: |
-          $pkg = Get-Content "${{ matrix.action }}/package.json" | ConvertFrom-Json
-          $version = $pkg.version.Split('.')[0]
-          $branch = "${{ github.ref_name }}"
-          if ($branch -eq "master") {
-            $tag = "${{ matrix.action }}@v$version"
-          } else {
-            $tag = "${{ matrix.action }}/$branch@v$version"
-          }
-          "tag=$tag" >> $env:GITHUB_OUTPUT
+          version=$(jq -r '.version | split(".")[0]' ${{ matrix.action }}/package.json)
+          if [ "${{ github.ref_name }}" = "master" ]; then
+            echo "tag=${{ matrix.action }}@v$version" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ matrix.action }}/${{ github.ref_name }}@v$version" >> $GITHUB_OUTPUT
+          fi
 
       - uses: ./orphan-tag
         with:
@@ -109,15 +105,12 @@ jobs:
 
       - name: Get tag
         id: version
-        shell: pwsh
         run: |
-          $branch = "${{ github.ref_name }}"
-          if ($branch -eq "master") {
-            $tag = "${{ matrix.action }}@v1"
-          } else {
-            $tag = "${{ matrix.action }}/$branch@v1"
-          }
-          "tag=$tag" >> $env:GITHUB_OUTPUT
+          if [ "${{ github.ref_name }}" = "master" ]; then
+            echo "tag=${{ matrix.action }}@v1" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ matrix.action }}/${{ github.ref_name }}@v1" >> $GITHUB_OUTPUT
+          fi
 
       - uses: ./orphan-tag
         with:
