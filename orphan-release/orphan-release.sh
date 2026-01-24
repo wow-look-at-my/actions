@@ -49,7 +49,8 @@ fi
 # Auto-increment version if not specified
 if [ -z "$version" ]; then
 	git fetch --tags --quiet 2>/dev/null || true
-	max_version=$(git tag -l "$prefix#*" | grep -E "^${prefix}#[0-9]+$" | sed "s|^${prefix}#||" | sort -n | tail -1)
+	all_tags=$(git tag -l "$prefix#*" || true)
+	max_version=$(echo "$all_tags" | grep -E "^${prefix}#[0-9]+$" | sed "s|^${prefix}#||" | sort -n | tail -1 || true)
 	version=$((${max_version:-0} + 1))
 	echo "Auto-incrementing to version $version"
 fi
