@@ -1,6 +1,6 @@
 name: Orphan Release
 version: 1
-description: Create orphan tag(s) from a directory with optional file transformations
+description: Create orphan tag(s) from a directory
 
 inputs:
   source:
@@ -16,10 +16,6 @@ inputs:
     default: ''
   exclude:
     description: 'Space-separated patterns to exclude'
-    required: false
-    default: ''
-  move:
-    description: 'Space-separated src:dst pairs to move files'
     required: false
     default: ''
   message:
@@ -39,6 +35,5 @@ runs:
         [ -n "${{ inputs.tags }}" ] && args+=(--tags "${{ inputs.tags }}")
         [ -n "${{ inputs.version }}" ] && args+=(--version "${{ inputs.version }}")
         [ -n "${{ inputs.exclude }}" ] && args+=(--exclude "${{ inputs.exclude }}")
-        [ -n "${{ inputs.move }}" ] && args+=(--move "${{ inputs.move }}")
         [ -n "${{ inputs.message }}" ] && args+=(--message "${{ inputs.message }}")
         "${{ github.action_path }}/orphan-release.sh" "${args[@]}"

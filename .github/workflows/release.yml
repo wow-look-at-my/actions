@@ -86,8 +86,7 @@ jobs:
           ./orphan-release/orphan-release.sh
           --source "${{ matrix.action }}"
           --version "${{ steps.version.outputs.version }}"
-          --exclude "src node_modules tsconfig.json justfile dist"
-          --move "dist/index.js:index.js"
+          --exclude "src node_modules tsconfig.json justfile"
 
   release-composite:
     needs: detect

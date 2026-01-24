@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: orphan-release.sh --source <dir> [--tags <tags> | --version <version>] [--exclude <patterns>] [--move <pairs>] [--message <msg>]
+# Usage: orphan-release.sh --source <dir> [--tags <tags> | --version <version>] [--exclude <patterns>] [--message <msg>]
 # Either --tags or --version is required. If --version is given, tags are auto-generated.
 
 source=""
 tags=()
 version=""
 exclude=""
-move=""
 message=""
 
 while [[ $# -gt 0 ]]; do
@@ -17,7 +16,6 @@ while [[ $# -gt 0 ]]; do
 		--tags) for t in $2; do tags+=("$t"); done; shift 2 ;;
 		--version) version="$2"; shift 2 ;;
 		--exclude) exclude="$2"; shift 2 ;;
-		--move) move="$2"; shift 2 ;;
 		--message) message="$2"; shift 2 ;;
 		*) echo "Unknown option: $1" >&2; exit 1 ;;
 	esac
@@ -52,12 +50,6 @@ cp -r "$source"/. "$tmpdir/"
 
 for pattern in $exclude; do
 	rm -rf "$tmpdir"/$pattern 2>/dev/null || true
-done
-
-for pair in $move; do
-	src="${pair%%:*}"
-	dst="${pair#*:}"
-	[ -f "$source/$src" ] && mkdir -p "$(dirname "$tmpdir/$dst")" && cp "$source/$src" "$tmpdir/$dst"
 done
 echo "::endgroup::"
 
