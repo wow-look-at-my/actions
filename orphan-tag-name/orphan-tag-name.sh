@@ -32,9 +32,10 @@ else
 	version=$(yq '.version' "$path/action.yml")
 fi
 
-# Build tag string: name#version or name/branch#version
+# Build tag strings: versioned + latest
+# Output: "name#version name" or "name/branch#version name/branch"
 if [ "$branch" = "master" ] || [ "$branch" = "main" ]; then
-	echo "$path#$version"
+	echo "$path#$version $path"
 else
-	echo "$path/$branch#$version"
+	echo "$path/$branch#$version $path/$branch"
 fi
