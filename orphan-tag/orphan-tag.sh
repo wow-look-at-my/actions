@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: orphan-tag.sh --source <dir> --tag <tags> [--exclude <patterns>] [--move <pairs>] [--message <msg>]
+# Usage: orphan-tag.sh --source <dir> --tag <tag> [--tag <tag>...] [--exclude <patterns>] [--move <pairs>] [--message <msg>]
 
 source=""
-tags=""
+tags=()
 exclude=""
 move=""
 message=""
@@ -12,7 +12,7 @@ message=""
 while [[ $# -gt 0 ]]; do
 	case $1 in
 		--source) source="$2"; shift 2 ;;
-		--tag) tags="$2"; shift 2 ;;
+		--tag) for t in $2; do tags+=("$t"); done; shift 2 ;;
 		--exclude) exclude="$2"; shift 2 ;;
 		--move) move="$2"; shift 2 ;;
 		--message) message="$2"; shift 2 ;;
@@ -20,12 +20,12 @@ while [[ $# -gt 0 ]]; do
 	esac
 done
 
-if [ -z "$source" ] || [ -z "$tags" ]; then
-	echo "Error: --source and --tag are required" >&2
+if [ -z "$source" ] || [ ${#tags[@]} -eq 0 ]; then
+	echo "Error: --source and at least one --tag are required" >&2
 	exit 1
 fi
 
-first_tag="${tags%% *}"
+first_tag="${tags[0]}"
 [ -z "$message" ] && message="Release $first_tag"
 
 echo "::group::Prepare content"
@@ -58,8 +58,7 @@ if [ -n "${GITHUB_REPOSITORY:-}" ]; then
 fi
 
 refs=""
-for tag in $tags; do
-	[ -z "$tag" ] && continue
+for tag in "${tags[@]}"; do
 	git tag "$tag"
 	refs="$refs refs/tags/$tag"
 	echo "Created tag: $tag"
