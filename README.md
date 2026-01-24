@@ -49,7 +49,7 @@ Create orphan tag(s) from a directory with optional file transformations.
 
 ### [orphan-tag-name](orphan-tag-name/)
 
-Generate tag string in format `name@vN` or `name/branch@vN`.
+Generate tag string in format `name#version` or `name/branch#version`.
 
 ```yaml
 - uses: wow-look-at-my-code/actions/orphan-tag-name@v1

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: action-tag.sh --path <dir> [--branch <branch>]
-# Outputs: tag string in format name@vN or name/branch@vN
+# Usage: orphan-tag-name.sh --path <dir> [--branch <branch>]
+# Outputs: tag string in format name#version or name/branch#version
 
 path=""
 branch=""
@@ -32,9 +32,9 @@ else
 	version=$(yq '.version' "$path/action.yml")
 fi
 
-# Build tag string
+# Build tag string: name#version or name/branch#version
 if [ "$branch" = "master" ] || [ "$branch" = "main" ]; then
-	echo "$path@v$version"
+	echo "$path#$version"
 else
-	echo "$path/$branch@v$version"
+	echo "$path/$branch#$version"
 fi

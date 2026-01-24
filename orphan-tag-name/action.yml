@@ -1,6 +1,6 @@
 name: Orphan Tag Name
 version: 1
-description: Generate tag string in format name@vN or name/branch@vN
+description: Generate tag string in format name#version or name/branch#version
 
 inputs:
   path:
