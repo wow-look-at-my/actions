@@ -13,15 +13,10 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - run: git fetch --tags
       - name: Delete branch tags
-        run: |
-          branch="${{ github.event.ref }}"
-          # Delete both versioned (name/branch#N) and latest (name/branch) tags
-          git tag -l "*/$branch#*" "*/$branch" | while read tag; do
-            echo "Deleting tag: $tag"
-            git push origin --delete "$tag" || true
-          done
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./orphan-release/orphan-cleanup.sh --branch "${{ github.event.ref }}"
 
   detect:
     if: github.event_name == 'push'

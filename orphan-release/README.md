@@ -49,16 +49,29 @@ With `--include-branch`, non-main branches get branch-prefixed tags:
 
 This is useful for GitHub Actions where you want separate tags per branch.
 
+## Cleanup
+
+Delete all tags for a deleted branch:
+
+```yaml
+- uses: wow-look-at-my-code/actions@orphan-release#1
+  with:
+    cleanup-branch: ${{ github.event.ref }}
+```
+
 ## Inputs
 
 | Input | Required | Description |
 |-------|----------|-------------|
-| `source` | Yes | Source directory to package |
+| `source` | Yes* | Source directory to package |
 | `name` | No | Tag name prefix (defaults to source directory) |
 | `version` | No | Force specific version (otherwise auto-increments) |
 | `exclude` | No | Space-separated patterns to exclude |
 | `message` | No | Commit message (defaults to "Release {tag}") |
 | `include-branch` | No | Include branch name in tags for non-main branches |
+| `cleanup-branch` | No | Delete all tags for this branch (cleanup mode) |
+
+*Not required when using `cleanup-branch`.
 
 ## Examples
 

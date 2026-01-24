@@ -4,8 +4,9 @@ description: Create orphan tags from a directory
 
 inputs:
   source:
-    description: 'Source directory to package'
-    required: true
+    description: 'Source directory to package (not needed for cleanup)'
+    required: false
+    default: ''
   name:
     description: 'Tag name prefix (defaults to source directory)'
     required: false
@@ -26,15 +27,31 @@ inputs:
     description: 'Include branch name in tags for non-main branches'
     required: false
     default: 'false'
+  cleanup-branch:
+    description: 'Delete all tags for this branch (cleanup mode)'
+    required: false
+    default: ''
 
 runs:
   using: composite
   steps:
+    - name: Cleanup branch tags
+      if: inputs.cleanup-branch != ''
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: "${{ github.action_path }}/orphan-cleanup.sh" --branch "${{ inputs.cleanup-branch }}"
+
     - name: Create and push orphan tags
+      if: inputs.cleanup-branch == ''
       shell: bash
       env:
         GITHUB_TOKEN: ${{ github.token }}
       run: |
+        if [ -z "${{ inputs.source }}" ]; then
+          echo "Error: source is required for release" >&2
+          exit 1
+        fi
         args=(--source "${{ inputs.source }}")
         [ -n "${{ inputs.name }}" ] && args+=(--name "${{ inputs.name }}")
         [ -n "${{ inputs.version }}" ] && args+=(--version "${{ inputs.version }}")
