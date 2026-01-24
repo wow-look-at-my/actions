@@ -1,37 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: orphan-cleanup.sh --branch <branch>
-# Deletes all tags for a deleted branch (name/branch#* pattern)
+# Usage: orphan-cleanup.sh
+# Deletes all tags for branches that no longer exist
 
-branch=""
-
-while [[ $# -gt 0 ]]; do
-	case $1 in
-		--branch) branch="$2"; shift 2 ;;
-		*) echo "Unknown option: $1" >&2; exit 1 ;;
-	esac
-done
-
-if [ -z "$branch" ]; then
-	echo "Error: --branch is required" >&2
-	exit 1
-fi
-
-echo "::group::Cleaning up tags for branch: $branch"
+echo "::group::Cleanup orphaned branch tags"
 
 git fetch --tags --quiet 2>/dev/null || true
+git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*' --quiet 2>/dev/null || true
 
-# Find tags matching */branch#* pattern
-tags=$(git tag -l "*/$branch#*" "*/$branch")
+# Find all branch tags and check if branch still exists
+for tag in $(git tag -l "*/*#*"); do
+	# Extract branch from tag (everything between first / and last #)
+	# e.g., "action/feature-branch#1" -> "feature-branch"
+	tag_branch=$(echo "$tag" | sed -E 's|^[^/]+/([^#]+)#.*|\1|')
 
-if [ -z "$tags" ]; then
-	echo "No tags found for branch: $branch"
-else
-	for tag in $tags; do
-		echo "Deleting tag: $tag"
+	# Check if branch exists
+	if ! git ls-remote --heads origin "$tag_branch" | grep -q .; then
+		echo "Deleting orphaned tag: $tag (branch '$tag_branch' no longer exists)"
 		git push origin --delete "$tag" || true
-	done
-fi
+	fi
+done
 
 echo "::endgroup::"

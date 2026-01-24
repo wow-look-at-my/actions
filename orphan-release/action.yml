@@ -27,23 +27,23 @@ inputs:
     description: 'Include branch name in tags for non-main branches'
     required: false
     default: 'false'
-  cleanup-branch:
-    description: 'Delete all tags for this branch (cleanup mode)'
+  cleanup:
+    description: 'Run cleanup mode (delete orphaned branch tags)'
     required: false
-    default: ''
+    default: 'false'
 
 runs:
   using: composite
   steps:
-    - name: Cleanup branch tags
-      if: inputs.cleanup-branch != ''
+    - name: Cleanup orphaned branch tags
+      if: inputs.cleanup == 'true'
       shell: bash
       env:
         GITHUB_TOKEN: ${{ github.token }}
-      run: "${{ github.action_path }}/orphan-cleanup.sh" --branch "${{ inputs.cleanup-branch }}"
+      run: "${{ github.action_path }}/orphan-cleanup.sh"
 
     - name: Create and push orphan tags
-      if: inputs.cleanup-branch == ''
+      if: inputs.cleanup != 'true'
       shell: bash
       env:
         GITHUB_TOKEN: ${{ github.token }}
