@@ -1,77 +1,64 @@
 name: Orphan Tag
-description: Create an orphan tag from a directory with optional file transformations
+description: Create orphan tag(s) from a directory with optional file transformations
 
 inputs:
   source:
     description: 'Source directory to package'
     required: true
   tag:
-    description: 'Tag name to create'
+    description: 'Tag name(s) to create, newline-separated'
     required: true
   exclude:
-    description: 'Space-separated patterns to exclude (e.g., "src node_modules *.ts")'
+    description: 'Space-separated patterns to exclude'
     required: false
     default: ''
   move:
-    description: 'Space-separated src:dst pairs to move files (e.g., "dist/index.js:index.js")'
+    description: 'Space-separated src:dst pairs to move files'
     required: false
     default: ''
   message:
-    description: 'Commit message (defaults to "Release {tag}")'
+    description: 'Commit message (defaults to "Release {first_tag}")'
     required: false
     default: ''
 
 runs:
   using: composite
   steps:
-    - name: Create orphan tag
+    - name: Prepare content
+      id: prepare
       shell: bash
       run: |
-        set -euo pipefail
-
-        source="${{ inputs.source }}"
-        tag="${{ inputs.tag }}"
-        exclude="${{ inputs.exclude }}"
-        move="${{ inputs.move }}"
-        message="${{ inputs.message }}"
-
-        if [ -z "$message" ]; then
-          message="Release $tag"
-        fi
-
         tmpdir=$(mktemp -d)
-
-        # Copy source to temp dir
-        cp -r "$source"/* "$tmpdir/"
-
-        # Remove excluded patterns
-        for pattern in $exclude; do
-          rm -rf "$tmpdir"/$pattern 2>/dev/null || true
+        cp -r "${{ inputs.source }}"/* "$tmpdir/"
+        for pattern in ${{ inputs.exclude }}; do rm -rf "$tmpdir"/$pattern 2>/dev/null || true; done
+        for pair in ${{ inputs.move }}; do
+          src="${pair%%:*}"; dst="${pair#*:}"
+          [ -f "${{ inputs.source }}/$src" ] && mkdir -p "$(dirname "$tmpdir/$dst")" && cp "${{ inputs.source }}/$src" "$tmpdir/$dst"
         done
+        echo "tmpdir=$tmpdir" >> $GITHUB_OUTPUT
 
-        # Move files (src:dst pairs)
-        for pair in $move; do
-          src="${pair%%:*}"
-          dst="${pair#*:}"
-          if [ -f "$source/$src" ]; then
-            mkdir -p "$(dirname "$tmpdir/$dst")"
-            cp "$source/$src" "$tmpdir/$dst"
-          fi
+    - name: Create orphan commit
+      id: commit
+      shell: bash
+      run: |
+        tmpdir="${{ steps.prepare.outputs.tmpdir }}"
+        tags="${{ inputs.tag }}"
+        msg="${{ inputs.message }}"
+        [ -z "$msg" ] && msg="Release $(echo "$tags" | head -n1)"
+        git -C "$tmpdir" init
+        git -C "$tmpdir" config user.name "github-actions[bot]"
+        git -C "$tmpdir" config user.email "github-actions[bot]@users.noreply.github.com"
+        git -C "$tmpdir" add -A
+        git -C "$tmpdir" commit -m "$msg"
+        echo "sha=$(git -C "$tmpdir" rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+    - name: Push tags
+      shell: bash
+      run: |
+        git fetch "${{ steps.prepare.outputs.tmpdir }}" "${{ steps.commit.outputs.sha }}"
+        echo "${{ inputs.tag }}" | while read -r tag; do
+          [ -z "$tag" ] && continue
+          git tag -f "$tag" "${{ steps.commit.outputs.sha }}"
+          git push --force origin "$tag"
+          echo "Created tag: $tag"
         done
-
-        # Create orphan commit
-        cd "$tmpdir"
-        git init
-        git config user.name "github-actions[bot]"
-        git config user.email "github-actions[bot]@users.noreply.github.com"
-        git add -A
-        git commit -m "$message"
-        sha=$(git rev-parse HEAD)
-
-        # Fetch into main repo and push tag
-        cd "$GITHUB_WORKSPACE"
-        git fetch "$tmpdir" "$sha"
-        git tag -f "$tag" "$sha"
-        git push --force origin "$tag"
-
-        echo "Created tag: $tag"
