@@ -1,4 +1,4 @@
-name: Action Tag
+name: Orphan Tag Name
 version: 1
 description: Generate tag string in format name@vN or name/branch@vN
 
@@ -22,5 +22,5 @@ runs:
     - id: generate
       shell: bash
       run: |
-        tag=$(${{ github.action_path }}/action-tag.sh --path "${{ inputs.path }}" --branch "${{ inputs.branch }}")
+        tag=$(${{ github.action_path }}/orphan-tag-name.sh --path "${{ inputs.path }}" --branch "${{ inputs.branch }}")
         echo "tag=$tag" >> $GITHUB_OUTPUT

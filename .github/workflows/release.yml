@@ -76,7 +76,7 @@ jobs:
 
       - name: Get tag
         id: version
-        run: echo "tag=$(./action-tag/action-tag.sh --path ${{ matrix.action }})" >> $GITHUB_OUTPUT
+        run: echo "tag=$(./orphan-tag-name/orphan-tag-name.sh --path ${{ matrix.action }})" >> $GITHUB_OUTPUT
 
       - name: Create orphan tag
         env:
@@ -102,6 +102,6 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           for action in $(echo '${{ needs.detect.outputs.composite }}' | jq -r '.[]'); do
-            tag=$(./action-tag/action-tag.sh --path "$action")
+            tag=$(./orphan-tag-name/orphan-tag-name.sh --path "$action")
             ./orphan-tag/orphan-tag.sh --source "$action" --tags "$tag"
           done
