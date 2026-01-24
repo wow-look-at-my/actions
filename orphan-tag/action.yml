@@ -7,7 +7,7 @@ inputs:
     description: 'Source directory to package'
     required: true
   tag:
-    description: 'Tag name(s) to create, newline-separated'
+    description: 'Space-separated tag names to create'
     required: true
   exclude:
     description: 'Space-separated patterns to exclude'
@@ -25,40 +25,14 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Prepare content
-      id: prepare
-      shell: bash
-      run: |
-        tmpdir=$(mktemp -d)
-        cp -r "${{ inputs.source }}"/* "$tmpdir/"
-        for pattern in ${{ inputs.exclude }}; do rm -rf "$tmpdir"/$pattern 2>/dev/null || true; done
-        for pair in ${{ inputs.move }}; do
-          src="${pair%%:*}"; dst="${pair#*:}"
-          [ -f "${{ inputs.source }}/$src" ] && mkdir -p "$(dirname "$tmpdir/$dst")" && cp "${{ inputs.source }}/$src" "$tmpdir/$dst"
-        done
-        echo "tmpdir=$tmpdir" >> $GITHUB_OUTPUT
-
     - name: Create and push orphan tags
       shell: bash
-      working-directory: ${{ steps.prepare.outputs.tmpdir }}
       env:
-        TAGS: ${{ inputs.tag }}
+        GITHUB_TOKEN: ${{ github.token }}
       run: |
-        msg="${{ inputs.message }}"
-        [ -z "$msg" ] && msg="Release $(echo "$TAGS" | head -n1)"
-
-        git init -b master
-        git config user.name "github-actions[bot]"
-        git config user.email "github-actions[bot]@users.noreply.github.com"
-        git add -A
-        git commit -m "$msg"
-        git remote add origin "https://x-access-token:${{ github.token }}@github.com/$GITHUB_REPOSITORY"
-
-        refs=""
-        for tag in $TAGS; do
-          [ -z "$tag" ] && continue
-          git tag "$tag"
-          refs="$refs refs/tags/$tag"
-          echo "Created tag: $tag"
-        done
-        git push --force origin $refs
+        ${{ github.action_path }}/orphan-tag.sh \
+          "${{ inputs.source }}" \
+          "${{ inputs.tag }}" \
+          "${{ inputs.exclude }}" \
+          "${{ inputs.move }}" \
+          "${{ inputs.message }}"
