@@ -53,9 +53,11 @@ runs:
         git commit -m "$msg"
         git remote add origin "https://x-access-token:${{ github.token }}@github.com/$GITHUB_REPOSITORY"
 
+        refs=""
         for tag in $TAGS; do
           [ -z "$tag" ] && continue
           git tag "$tag"
+          refs="$refs refs/tags/$tag"
           echo "Created tag: $tag"
         done
-        git push --force origin $TAGS
+        git push --force origin $refs
