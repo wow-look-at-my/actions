@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: orphan-release.sh --source <dir> [--tags <tags> | --version <version>] [--exclude <patterns>] [--message <msg>]
-# Either --tags or --version is required. If --version is given, tags are auto-generated.
+# Usage: orphan-release.sh --source <dir> [--tags <tags>] [--version <version>] [--exclude <patterns>] [--message <msg>]
+# If no --tags or --version, auto-increments based on existing tags.
 
 source=""
 tags=()
@@ -26,14 +26,25 @@ if [ -z "$source" ]; then
 	exit 1
 fi
 
-# Generate tags from version if not explicitly provided
+branch="${GITHUB_REF_NAME:-$(git rev-parse --abbrev-ref HEAD)}"
+
+# Generate tags if not explicitly provided
 if [ ${#tags[@]} -eq 0 ]; then
+	# Auto-increment version if not specified
 	if [ -z "$version" ]; then
-		echo "Error: --tags or --version is required" >&2
-		exit 1
+		if [ "$branch" = "master" ] || [ "$branch" = "main" ]; then
+			prefix="$source"
+		else
+			prefix="$source/$branch"
+		fi
+
+		# Fetch tags and find highest version
+		git fetch --tags --quiet 2>/dev/null || true
+		max_version=$(git tag -l "$prefix#*" | grep -E "^${prefix}#[0-9]+$" | sed "s|^${prefix}#||" | sort -n | tail -1)
+		version=$((${max_version:-0} + 1))
+		echo "Auto-incrementing to version $version"
 	fi
 
-	branch="${GITHUB_REF_NAME:-$(git rev-parse --abbrev-ref HEAD)}"
 	if [ "$branch" = "master" ] || [ "$branch" = "main" ]; then
 		tags=("$source#$version" "$source#latest")
 	else

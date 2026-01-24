@@ -75,17 +75,12 @@ jobs:
         working-directory: ${{ matrix.action }}
         run: just build
 
-      - name: Get version
-        id: version
-        run: echo "version=$(jq -r '.version | split(".")[0]' ${{ matrix.action }}/package.json)" >> $GITHUB_OUTPUT
-
       - name: Create orphan tag
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: >
           ./orphan-release/orphan-release.sh
           --source "${{ matrix.action }}"
-          --version "${{ steps.version.outputs.version }}"
           --exclude "src node_modules tsconfig.json justfile"
 
   release-composite:
@@ -102,8 +97,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           for action in $(echo '${{ needs.detect.outputs.composite }}' | jq -r '.[]'); do
-            version=$(yq '.version' "$action/action.yml")
-            ./orphan-release/orphan-release.sh --source "$action" --version "$version"
+            ./orphan-release/orphan-release.sh --source "$action"
           done
 
   all-checks-completed:

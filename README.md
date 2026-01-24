@@ -36,23 +36,16 @@ Cache with change detection - only saves when files actually changed.
 
 ### [orphan-release](orphan-release/)
 
-Create orphan tag(s) from a directory.
+Create orphan tags from a directory with auto-incrementing versions.
 
 ```yaml
-# Explicit tags
 - uses: wow-look-at-my-code/actions@orphan-release#1
   with:
     source: my-action
-    tags: v1 v1.0.0
-    exclude: src node_modules
-
-# Auto-generate tags from version (creates name#version + name#latest)
-- uses: wow-look-at-my-code/actions@orphan-release#1
-  with:
-    source: my-action
-    version: 1
     exclude: src node_modules
 ```
+
+Creates `my-action#1` + `my-action#latest`. Next release auto-increments to `my-action#2`.
 
 ### [tag-runner](tag-runner/)
 
