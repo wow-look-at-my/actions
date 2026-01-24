@@ -1,0 +1,37 @@
+name: 'Action Validator'
+version: 1
+description: 'Validate GitHub Action action.yml files'
+inputs:
+  actions:
+    description: 'Glob pattern for action.yml files to validate'
+    required: false
+    default: '*/action.yml'
+  workflows:
+    description: 'Glob pattern for workflow files to validate'
+    required: false
+    default: '.github/workflows/*.yml'
+
+runs:
+  using: composite
+  steps:
+    - name: Install action-validator
+      shell: bash
+      run: npm install -g @action-validator/core @action-validator/cli
+
+    - name: Validate actions
+      shell: bash
+      run: |
+        shopt -s nullglob
+        for f in ${{ inputs.actions }}; do
+          echo "Validating $f"
+          action-validator "$f"
+        done
+
+    - name: Validate workflows
+      shell: bash
+      run: |
+        shopt -s nullglob
+        for f in ${{ inputs.workflows }}; do
+          echo "Validating $f"
+          action-validator "$f"
+        done
