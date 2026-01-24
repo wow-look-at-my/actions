@@ -78,28 +78,9 @@ jobs:
           echo "version=$version" >> $GITHUB_OUTPUT
           echo "tag=$tag" >> $GITHUB_OUTPUT
 
-      - name: Create orphan tag
-        run: |
-          tmpdir=$(mktemp -d)
-          cp -r ${{ matrix.action }}/* "$tmpdir/"
-          rm -rf "$tmpdir/src" "$tmpdir/node_modules" "$tmpdir/tsconfig.json" "$tmpdir/justfile" "$tmpdir/dist"
-
-          # Move dist/index.js to index.js if it exists
-          if [ -f "${{ matrix.action }}/dist/index.js" ]; then
-            cp "${{ matrix.action }}/dist/index.js" "$tmpdir/index.js"
-          fi
-
-          # Create orphan commit in temp dir
-          cd "$tmpdir"
-          git init
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "Release ${{ steps.version.outputs.tag }}"
-          sha=$(git rev-parse HEAD)
-
-          # Fetch commit into main repo and create tag there
-          cd ${{ github.workspace }}
-          git fetch "$tmpdir" "$sha"
-          git tag -f ${{ steps.version.outputs.tag }} "$sha"
-          git push --force origin ${{ steps.version.outputs.tag }}
+      - uses: ./orphan-tag
+        with:
+          source: ${{ matrix.action }}
+          tag: ${{ steps.version.outputs.tag }}
+          exclude: src node_modules tsconfig.json justfile dist
+          move: dist/index.js:index.js
