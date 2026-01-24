@@ -29,10 +29,10 @@ runs:
       shell: bash
       env:
         GITHUB_TOKEN: ${{ github.token }}
-      run: |
-        ${{ github.action_path }}/orphan-tag.sh \
-          "${{ inputs.source }}" \
-          "${{ inputs.tag }}" \
-          "${{ inputs.exclude }}" \
-          "${{ inputs.move }}" \
-          "${{ inputs.message }}"
+      run: >
+        ${{ github.action_path }}/orphan-tag.sh
+        --source "${{ inputs.source }}"
+        --tag "${{ inputs.tag }}"
+        --exclude "${{ inputs.exclude }}"
+        --move "${{ inputs.move }}"
+        --message "${{ inputs.message }}"

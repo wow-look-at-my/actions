@@ -1,18 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: orphan-tag.sh <source> <tags> [exclude] [move] [message]
-#   source  - Source directory to package
-#   tags    - Space-separated tag names to create
-#   exclude - Space-separated patterns to exclude (optional)
-#   move    - Space-separated src:dst pairs to move files (optional)
-#   message - Commit message, defaults to "Release <first_tag>" (optional)
+# Usage: orphan-tag.sh --source <dir> --tag <tags> [--exclude <patterns>] [--move <pairs>] [--message <msg>]
 
-source="$1"
-tags="$2"
-exclude="${3:-}"
-move="${4:-}"
-message="${5:-}"
+source=""
+tags=""
+exclude=""
+move=""
+message=""
+
+while [[ $# -gt 0 ]]; do
+	case $1 in
+		--source) source="$2"; shift 2 ;;
+		--tag) tags="$2"; shift 2 ;;
+		--exclude) exclude="$2"; shift 2 ;;
+		--move) move="$2"; shift 2 ;;
+		--message) message="$2"; shift 2 ;;
+		*) echo "Unknown option: $1" >&2; exit 1 ;;
+	esac
+done
+
+if [ -z "$source" ] || [ -z "$tags" ]; then
+	echo "Error: --source and --tag are required" >&2
+	exit 1
+fi
 
 first_tag="${tags%% *}"
 [ -z "$message" ] && message="Release $first_tag"
