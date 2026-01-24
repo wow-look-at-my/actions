@@ -105,3 +105,14 @@ jobs:
             tag=$(./orphan-tag-name/orphan-tag-name.sh --path "$action")
             ./orphan-tag/orphan-tag.sh --source "$action" --tags "$tag"
           done
+
+  all-checks-completed:
+    if: always()
+    needs: [cleanup, release-node, release-composite]
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
+            echo "One or more jobs failed"
+            exit 1
+          fi
