@@ -37,28 +37,25 @@ runs:
         done
         echo "tmpdir=$tmpdir" >> $GITHUB_OUTPUT
 
-    - name: Create orphan commit
-      id: commit
+    - name: Create and push orphan tags
       shell: bash
+      working-directory: ${{ steps.prepare.outputs.tmpdir }}
+      env:
+        TAGS: ${{ inputs.tag }}
       run: |
-        tmpdir="${{ steps.prepare.outputs.tmpdir }}"
-        tags="${{ inputs.tag }}"
         msg="${{ inputs.message }}"
-        [ -z "$msg" ] && msg="Release $(echo "$tags" | head -n1)"
-        git -C "$tmpdir" init
-        git -C "$tmpdir" config user.name "github-actions[bot]"
-        git -C "$tmpdir" config user.email "github-actions[bot]@users.noreply.github.com"
-        git -C "$tmpdir" add -A
-        git -C "$tmpdir" commit -m "$msg"
-        echo "sha=$(git -C "$tmpdir" rev-parse HEAD)" >> $GITHUB_OUTPUT
+        [ -z "$msg" ] && msg="Release $(echo "$TAGS" | head -n1)"
 
-    - name: Push tags
-      shell: bash
-      run: |
-        git fetch "${{ steps.prepare.outputs.tmpdir }}" "${{ steps.commit.outputs.sha }}"
-        echo "${{ inputs.tag }}" | while read -r tag; do
+        git init
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add -A
+        git commit -m "$msg"
+        git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+
+        for tag in $TAGS; do
           [ -z "$tag" ] && continue
-          git tag -f "$tag" "${{ steps.commit.outputs.sha }}"
-          git push --force origin "$tag"
+          git tag "$tag"
           echo "Created tag: $tag"
         done
+        git push --force origin $TAGS
