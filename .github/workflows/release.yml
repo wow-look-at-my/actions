@@ -26,25 +26,34 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
-      actions: ${{ steps.find.outputs.actions }}
+      node: ${{ steps.find.outputs.node }}
+      composite: ${{ steps.find.outputs.composite }}
     steps:
       - uses: actions/checkout@v4
       - id: find
         run: |
-          actions=$(find . -maxdepth 2 -name action.yml -exec dirname {} \; | while read dir; do
-            if [ -f "$dir/package.json" ]; then
-              basename "$dir"
-            fi
-          done | jq -Rsc 'split("\n") | map(select(length > 0))')
-          echo "actions=$actions" >> $GITHUB_OUTPUT
+          node() {
+            for d in */action.yml; do
+              n=$(dirname "$d")
+              [ -f "$n/package.json" ] && echo "$n"
+            done
+          }
+          composite() {
+            for d in */action.yml; do
+              n=$(dirname "$d")
+              [ ! -f "$n/package.json" ] && echo "$n"
+            done
+          }
+          echo "node=$(node | jq -R | jq -sc)" >> $GITHUB_OUTPUT
+          echo "composite=$(composite | jq -R | jq -sc)" >> $GITHUB_OUTPUT
 
-  release:
+  release-node:
     needs: detect
-    if: needs.detect.outputs.actions != '[]'
+    if: needs.detect.outputs.node != '[]'
     strategy:
       fail-fast: false
       matrix:
-        action: ${{ fromJson(needs.detect.outputs.actions) }}
+        action: ${{ fromJson(needs.detect.outputs.node) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -65,22 +74,45 @@ jobs:
         working-directory: ${{ matrix.action }}
         run: just build
 
-      - name: Get version and tag
+      - name: Get tag
         id: version
-        run: |
-          version=$(jq -r '.version | split(".")[0]' ${{ matrix.action }}/package.json)
-          branch="${{ github.ref_name }}"
-          if [ "$branch" = "master" ]; then
-            tag="${{ matrix.action }}@v$version"
-          else
-            tag="${{ matrix.action }}/$branch@v$version"
-          fi
-          echo "version=$version" >> $GITHUB_OUTPUT
-          echo "tag=$tag" >> $GITHUB_OUTPUT
+        run: echo "tag=$(./orphan-tag-name/orphan-tag-name.sh --path ${{ matrix.action }})" >> $GITHUB_OUTPUT
 
-      - uses: ./orphan-tag
-        with:
-          source: ${{ matrix.action }}
-          tag: ${{ steps.version.outputs.tag }}
-          exclude: src node_modules tsconfig.json justfile dist
-          move: dist/index.js:index.js
+      - name: Create orphan tag
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >
+          ./orphan-tag/orphan-tag.sh
+          --source "${{ matrix.action }}"
+          --tags "${{ steps.version.outputs.tag }}"
+          --exclude "src node_modules tsconfig.json justfile dist"
+          --move "dist/index.js:index.js"
+
+  release-composite:
+    needs: detect
+    if: needs.detect.outputs.composite != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create orphan tags
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          for action in $(echo '${{ needs.detect.outputs.composite }}' | jq -r '.[]'); do
+            tag=$(./orphan-tag-name/orphan-tag-name.sh --path "$action")
+            ./orphan-tag/orphan-tag.sh --source "$action" --tags "$tag"
+          done
+
+  all-checks-completed:
+    if: always()
+    needs: [cleanup, release-node, release-composite]
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
+            echo "One or more jobs failed"
+            exit 1
+          fi
