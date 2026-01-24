@@ -33,9 +33,9 @@ else
 fi
 
 # Build tag strings: versioned + latest
-# Output: "name#version name" or "name/branch#version name/branch"
+# Output: "name#version name#latest" or "name/branch#version name/branch#latest"
 if [ "$branch" = "master" ] || [ "$branch" = "main" ]; then
-	echo "$path#$version $path"
+	echo "$path#$version $path#latest"
 else
-	echo "$path/$branch#$version $path/$branch"
+	echo "$path/$branch#$version $path/$branch#latest"
 fi
