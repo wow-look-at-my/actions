@@ -1,0 +1,105 @@
+name: Release Actions
+
+on:
+  push:
+  delete:
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    if: github.event_name == 'delete' && github.event.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: git fetch --tags
+      - name: Delete branch tags
+        run: |
+          branch="${{ github.event.ref }}"
+          git tag -l "*/$branch" | while read tag; do
+            echo "Deleting tag: $tag"
+            git push origin --delete "$tag" || true
+          done
+
+  detect:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      actions: ${{ steps.find.outputs.actions }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: find
+        run: |
+          actions=$(find . -maxdepth 2 -name action.yml -exec dirname {} \; | while read dir; do
+            if [ -f "$dir/package.json" ]; then
+              basename "$dir"
+            fi
+          done | jq -Rsc 'split("\n") | map(select(length > 0))')
+          echo "actions=$actions" >> $GITHUB_OUTPUT
+
+  release:
+    needs: detect
+    if: needs.detect.outputs.actions != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        action: ${{ fromJson(needs.detect.outputs.actions) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - uses: extractions/setup-just@v2
+
+      - name: Build
+        working-directory: ${{ matrix.action }}
+        run: just build
+
+      - name: Get version and tag
+        id: version
+        run: |
+          version=$(jq -r '.version | split(".")[0]' ${{ matrix.action }}/package.json)
+          branch="${{ github.ref_name }}"
+          if [ "$branch" = "master" ]; then
+            tag="${{ matrix.action }}/v$version"
+          else
+            tag="${{ matrix.action }}/v$version/$branch"
+          fi
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "tag=$tag" >> $GITHUB_OUTPUT
+
+      - name: Create orphan tag
+        run: |
+          tmpdir=$(mktemp -d)
+          cp -r ${{ matrix.action }}/* "$tmpdir/"
+          rm -rf "$tmpdir/src" "$tmpdir/node_modules" "$tmpdir/tsconfig.json" "$tmpdir/justfile" "$tmpdir/dist"
+
+          # Move dist/index.js to index.js if it exists
+          if [ -f "${{ matrix.action }}/dist/index.js" ]; then
+            cp "${{ matrix.action }}/dist/index.js" "$tmpdir/index.js"
+          fi
+
+          # Create orphan commit in temp dir
+          cd "$tmpdir"
+          git init
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Release ${{ steps.version.outputs.tag }}"
+          sha=$(git rev-parse HEAD)
+
+          # Fetch commit into main repo and create tag there
+          cd ${{ github.workspace }}
+          git fetch "$tmpdir" "$sha"
+          git tag -f ${{ steps.version.outputs.tag }} "$sha"
+          git push --force origin ${{ steps.version.outputs.tag }}
