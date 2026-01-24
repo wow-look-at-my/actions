@@ -1,4 +1,5 @@
 name: Tag Runner Image
+version: 1
 description: Tags runner images with branch/latest tags and triggers flush
 
 inputs:
