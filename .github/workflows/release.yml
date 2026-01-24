@@ -76,7 +76,13 @@ jobs:
 
       - name: Get action version
         id: version
-        run: echo "value=$(yq '.version' '${{ matrix.action }}/action.yml')" >> $GITHUB_OUTPUT
+        run: |
+          version=$(yq '.version' '${{ matrix.action }}/action.yml')
+          if [ "$version" = "null" ] || [ -z "$version" ]; then
+            echo "::error::${{ matrix.action }}/action.yml is missing required 'version' field"
+            exit 1
+          fi
+          echo "value=$version" >> $GITHUB_OUTPUT
 
       - name: Create orphan tag
         env:
@@ -103,6 +109,10 @@ jobs:
         run: |
           for action in $(echo '${{ needs.detect.outputs.composite }}' | jq -r '.[]'); do
             version=$(yq '.version' "$action/action.yml")
+            if [ "$version" = "null" ] || [ -z "$version" ]; then
+              echo "::error::$action/action.yml is missing required 'version' field"
+              exit 1
+            fi
             ./orphan-release/orphan-release.sh --source "$action" --version "$version" --include-branch
           done
 

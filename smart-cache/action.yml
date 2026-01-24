@@ -1,4 +1,5 @@
 name: Smart Cache
+version: 1
 description: Cache with change detection - only saves when files actually changed
 
 inputs:
