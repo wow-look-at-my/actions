@@ -17,7 +17,8 @@ jobs:
       - name: Delete branch tags
         run: |
           branch="${{ github.event.ref }}"
-          git tag -l "*/$branch@*" | while read tag; do
+          # Delete both versioned (name/branch#N) and latest (name/branch) tags
+          git tag -l "*/$branch#*" "*/$branch" | while read tag; do
             echo "Deleting tag: $tag"
             git push origin --delete "$tag" || true
           done
@@ -112,7 +113,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
+          echo "cleanup: ${{ needs.cleanup.result }}"
+          echo "release-node: ${{ needs.release-node.result }}"
+          echo "release-composite: ${{ needs.release-composite.result }}"
           if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
-            echo "One or more jobs failed"
             exit 1
           fi
