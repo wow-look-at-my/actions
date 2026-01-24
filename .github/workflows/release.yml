@@ -10,7 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      administration: write
     steps:
       - uses: actions/checkout@v4
       - name: Cleanup orphaned branch tags
@@ -20,7 +19,7 @@ jobs:
       - name: Block deleted branch
         if: github.event_name == 'delete' && github.event.ref_type == 'branch'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.BRANCH_BLOCK_PAT }}
         run: ./branch-block/branch-block.sh --branch "${{ github.event.ref }}"
 
   detect:
