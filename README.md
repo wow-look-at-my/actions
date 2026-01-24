@@ -59,6 +59,18 @@ Generate tag strings: `name#version name#latest` or `name/branch#version name/br
 - run: echo ${{ steps.tag.outputs.tag }}
 ```
 
+### [orphan-release](orphan-release/)
+
+Release an action as orphan tags (versioned + latest). Combines orphan-tag-name and orphan-tag.
+
+```yaml
+- uses: wow-look-at-my-code/actions@orphan-release#1
+  with:
+    path: my-action
+    exclude: src node_modules
+    move: dist/index.js:index.js
+```
+
 ### [tag-runner](tag-runner/)
 
 Tag runner images with branch/latest tags.
