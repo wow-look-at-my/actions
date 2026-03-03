@@ -74,15 +74,34 @@ jobs:
         working-directory: ${{ matrix.action }}
         run: just build
 
-      - name: Get action version
-        id: version
+      - name: Validate action.yml
         run: |
-          version=$(yq '.version' '${{ matrix.action }}/action.yml')
+          action="${{ matrix.action }}"
+          version=$(yq '.version' "$action/action.yml")
           if [ "$version" = "null" ] || [ -z "$version" ]; then
-            echo "::error::${{ matrix.action }}/action.yml is missing required 'version' field"
+            echo "::error::$action/action.yml is missing required 'version' field"
             exit 1
           fi
-          echo "value=$version" >> $GITHUB_OUTPUT
+          echo "version=$version" >> $GITHUB_OUTPUT
+
+          main=$(yq '.runs.main' "$action/action.yml")
+          if [ "$main" != "null" ] && [ -n "$main" ]; then
+            if [ ! -f "$action/$main" ]; then
+              echo "::error::$action/action.yml runs.main points to '$main' which does not exist"
+              exit 1
+            fi
+          fi
+
+          for field in pre post; do
+            file=$(yq ".runs.$field" "$action/action.yml")
+            if [ "$file" != "null" ] && [ -n "$file" ]; then
+              if [ ! -f "$action/$file" ]; then
+                echo "::error::$action/action.yml runs.$field points to '$file' which does not exist"
+                exit 1
+              fi
+            fi
+          done
+        id: version
 
       - name: Create orphan tag
         env:
@@ -90,7 +109,7 @@ jobs:
         run: >
           ./orphan-release/orphan-release.sh
           --source "${{ matrix.action }}"
-          --version "${{ steps.version.outputs.value }}"
+          --version "${{ steps.version.outputs.version }}"
           --exclude "src node_modules tsconfig.json justfile"
           --include-branch
 
