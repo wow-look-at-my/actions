@@ -2,8 +2,7 @@
   "name": "tag-runner",
   "version": "1.0.0",
   "private": true,
-  "type": "module",
-  "scripts": {
+"scripts": {
     "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --minify --outfile=index.js"
   },
   "dependencies": {

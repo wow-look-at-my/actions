@@ -103,6 +103,11 @@ jobs:
           done
         id: version
 
+      - name: Test bundle loads
+        run: |
+          main=$(yq '.runs.main' "${{ matrix.action }}/action.yml")
+          node -e "require('./${{ matrix.action }}/$main')" 2>/tmp/stderr || [ ! -s /tmp/stderr ]
+
       - name: Create orphan tag
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -110,7 +115,7 @@ jobs:
           ./orphan-release/orphan-release.sh
           --source "${{ matrix.action }}"
           --version "${{ steps.version.outputs.version }}"
-          --exclude "src node_modules tsconfig.json justfile"
+          --exclude "src node_modules tsconfig.json justfile package.json pnpm-lock.yaml"
           --include-branch
 
   release-composite:
