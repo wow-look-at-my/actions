@@ -104,8 +104,9 @@ jobs:
         id: version
 
       - name: Test bundle loads
-        working-directory: ${{ matrix.action }}
-        run: node -e "require('./index.js')"
+        run: |
+          main=$(yq '.runs.main' "${{ matrix.action }}/action.yml")
+          node -e "require('./${{ matrix.action }}/$main')"
 
       - name: Create orphan tag
         env:
