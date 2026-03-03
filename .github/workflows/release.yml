@@ -106,7 +106,7 @@ jobs:
       - name: Test bundle loads
         run: |
           main=$(yq '.runs.main' "${{ matrix.action }}/action.yml")
-          node --check "${{ matrix.action }}/$main"
+          node -e "require('./${{ matrix.action }}/$main')" 2>/tmp/stderr || [ ! -s /tmp/stderr ]
 
       - name: Create orphan tag
         env:
