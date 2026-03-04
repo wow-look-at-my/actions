@@ -13,6 +13,9 @@ inputs:
     description: 'Release tag to download (defaults to latest)'
     required: false
     default: 'latest'
+  token:
+    description: 'GitHub token for private repos. If omitted, uses unauthenticated access.'
+    required: false
 
 outputs:
   path:
