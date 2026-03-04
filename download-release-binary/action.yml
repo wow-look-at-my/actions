@@ -10,7 +10,7 @@ inputs:
     description: 'Binary name — filters the asset ({name}_{os}_{arch}) and names the result. If omitted, matches any asset and derives name by stripping the platform suffix.'
     required: false
   version:
-    description: 'Release tag to download (defaults to latest)'
+    description: 'Release tag to download (omit or set to "latest" for the most recent release)'
     required: false
     default: 'latest'
   token:

@@ -30,18 +30,11 @@ async function run(): Promise<void> {
 
 	process.env.GH_TOKEN = core.getInput("token", { required: true });
 
-	await exec.exec("gh", [
-		"release",
-		"download",
-		version,
-		"--repo",
-		repo,
-		"--pattern",
-		pattern,
-		"--dir",
-		bindir,
-		"--clobber",
-	]);
+	const ghArgs = ["release", "download"];
+	if (version !== "latest") ghArgs.push(version);
+	ghArgs.push("--repo", repo, "--pattern", pattern, "--dir", bindir, "--clobber");
+
+	await exec.exec("gh", ghArgs);
 
 	// Find downloaded files matching the pattern
 	const downloaded = readdirSync(bindir).filter((f) => f.endsWith(suffix));
