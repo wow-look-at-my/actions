@@ -28,9 +28,12 @@ async function run(): Promise<void> {
 	const bindir = join(homedir(), ".local", "bin");
 	mkdirSync(bindir, { recursive: true });
 
-	// gh CLI needs GH_TOKEN — use GITHUB_TOKEN which Actions provides automatically
-	if (!process.env.GH_TOKEN) {
-		process.env.GH_TOKEN = process.env.GITHUB_TOKEN;
+	const token = core.getInput("token");
+	if (token) {
+		process.env.GH_TOKEN = token;
+	} else {
+		delete process.env.GH_TOKEN;
+		delete process.env.GITHUB_TOKEN;
 	}
 
 	await exec.exec("gh", [
