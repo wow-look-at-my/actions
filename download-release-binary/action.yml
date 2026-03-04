@@ -14,8 +14,8 @@ inputs:
     required: false
     default: 'latest'
   token:
-    description: 'GitHub token for private repos. If omitted, uses unauthenticated access.'
-    required: false
+    description: 'GitHub token for API authentication (e.g. github.token)'
+    required: true
 
 outputs:
   path:
