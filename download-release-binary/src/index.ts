@@ -28,7 +28,11 @@ async function run(): Promise<void> {
 	const bindir = join(homedir(), ".local", "bin");
 	mkdirSync(bindir, { recursive: true });
 
-	process.env.GH_TOKEN = core.getInput("token", { required: true });
+	const token = core.getInput("token", { required: true });
+	if (!token) {
+		throw new Error("A GitHub token is required. Pass `token:` (e.g. github.token or a PAT with repo scope).");
+	}
+	process.env.GH_TOKEN = token;
 
 	const ghArgs = ["release", "download"];
 	if (version !== "latest") ghArgs.push(version);
