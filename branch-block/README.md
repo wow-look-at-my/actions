@@ -37,15 +37,15 @@ jobs:
   block:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: wow-look-at-my/actions/branch-block@main
         with:
           branch: ${{ github.head_ref }}
+        env:
+          GH_TOKEN: ${{ secrets.BRANCH_BLOCK_PAT }}
 ```
 
 ## Requirements
 
-- The `GITHUB_TOKEN` (provided automatically via `github.token`) must have permission to manage repository rulesets. This typically requires `contents: write` permission.
+- **`BRANCH_BLOCK_PAT`**: This action requires the `BRANCH_BLOCK_PAT` org-wide secret — a Personal Access Token (PAT) with permission to manage repository rulesets. The default `GITHUB_TOKEN` does not have sufficient privileges to create or update rulesets. Set `BRANCH_BLOCK_PAT` as an organization-level secret so it is available to all repositories using this action.
 - The repository must support rulesets (GitHub Free for public repos, GitHub Pro/Team/Enterprise for private repos).
