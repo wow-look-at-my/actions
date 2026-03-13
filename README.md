@@ -20,6 +20,7 @@ Add merged branches to a ruleset that blocks re-creation.
 - uses: wow-look-at-my/actions@branch-block#latest
   with:
     branch: ${{ github.head_ref }}
+    token: ${{ secrets.BRANCH_BLOCK_PAT }}
 ```
 
 ### [download-release-binary](download-release-binary/)
