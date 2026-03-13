@@ -1,3 +1,4 @@
+version: 1
 name: 'No Scripts Check'
 description: 'Ensures package.json files do not contain scripts sections (use justfiles instead)'
 author: 'PazerOP'
