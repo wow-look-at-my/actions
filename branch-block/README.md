@@ -16,6 +16,7 @@ When a branch is merged, this action adds its name to a GitHub repository rulese
 - uses: wow-look-at-my/actions@branch-block#latest
   with:
     branch: ${{ github.head_ref }}
+    token: ${{ secrets.BRANCH_BLOCK_PAT }}
 ```
 
 ### Inputs
