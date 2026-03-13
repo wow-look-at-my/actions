@@ -2,10 +2,7 @@
   "name": "tag-runner",
   "version": "1.0.0",
   "private": true,
-"scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --minify --outfile=index.js"
-  },
-  "dependencies": {
+"dependencies": {
     "@actions/core": "^2.0.2",
     "@actions/exec": "^2.0.0",
     "@actions/github": "^7.0.0"
