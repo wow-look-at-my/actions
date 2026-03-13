@@ -140,15 +140,3 @@ jobs:
             ./orphan-release/orphan-release.sh --source "$action" --version "$version" --include-branch
           done
 
-  all-checks-completed:
-    if: always()
-    needs: [cleanup, release-node, release-composite]
-    runs-on: ubuntu-latest
-    steps:
-      - run: |
-          echo "cleanup: ${{ needs.cleanup.result }}"
-          echo "release-node: ${{ needs.release-node.result }}"
-          echo "release-composite: ${{ needs.release-composite.result }}"
-          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
-            exit 1
-          fi
