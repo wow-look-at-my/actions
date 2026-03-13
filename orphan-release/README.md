@@ -9,7 +9,7 @@ Create orphan tags from a directory. Orphan tags contain only the contents of th
 Just specify the source - version auto-increments from existing tags:
 
 ```yaml
-- uses: wow-look-at-my-code/actions@orphan-release#1
+- uses: wow-look-at-my/actions@orphan-release#latest
   with:
     source: my-action
 ```
@@ -22,7 +22,7 @@ Next release creates `my-action#2` and updates `my-action#latest`.
 Override the tag name (defaults to source directory):
 
 ```yaml
-- uses: wow-look-at-my-code/actions@orphan-release#1
+- uses: wow-look-at-my/actions@orphan-release#latest
   with:
     source: plugins/my-plugin
     name: my-plugin
@@ -33,7 +33,7 @@ Creates `my-plugin#1` instead of `plugins/my-plugin#1`.
 ### Pin to specific version
 
 ```yaml
-- uses: wow-look-at-my-code/actions@orphan-release#1
+- uses: wow-look-at-my/actions@orphan-release#latest
   with:
     source: my-action
     version: 1
@@ -54,7 +54,7 @@ This is useful for GitHub Actions where you want separate tags per branch.
 Delete all orphaned branch tags (tags for branches that no longer exist):
 
 ```yaml
-- uses: wow-look-at-my-code/actions@orphan-release#1
+- uses: wow-look-at-my/actions@orphan-release#latest
   with:
     cleanup: true
 ```
@@ -78,7 +78,7 @@ Delete all orphaned branch tags (tags for branches that no longer exist):
 ### Release with auto-increment
 
 ```yaml
-- uses: wow-look-at-my-code/actions@orphan-release#1
+- uses: wow-look-at-my/actions@orphan-release#latest
   with:
     source: my-action
 ```
@@ -86,7 +86,7 @@ Delete all orphaned branch tags (tags for branches that no longer exist):
 ### Release a GitHub Action (with branch tags)
 
 ```yaml
-- uses: wow-look-at-my-code/actions@orphan-release#1
+- uses: wow-look-at-my/actions@orphan-release#latest
   with:
     source: my-action
     exclude: src node_modules tsconfig.json
@@ -96,7 +96,7 @@ Delete all orphaned branch tags (tags for branches that no longer exist):
 ### Release a marketplace plugin (no branch tags)
 
 ```yaml
-- uses: wow-look-at-my-code/actions@orphan-release#1
+- uses: wow-look-at-my/actions@orphan-release#latest
   with:
     source: plugins/my-plugin
     name: my-plugin
@@ -112,7 +112,7 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - uses: wow-look-at-my-code/actions@orphan-release#1
+      - uses: wow-look-at-my/actions@orphan-release#latest
         with:
           source: my-action
 ```

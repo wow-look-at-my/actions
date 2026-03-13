@@ -5,7 +5,7 @@ Validate GitHub Action `action.yml` and workflow files using [action-validator](
 ## Usage
 
 ```yaml
-- uses: wow-look-at-my-code/actions/action-validator@v1
+- uses: wow-look-at-my/actions@action-validator#latest
 ```
 
 ## Inputs
@@ -20,13 +20,13 @@ Validate GitHub Action `action.yml` and workflow files using [action-validator](
 ### Validate all actions and workflows (default)
 
 ```yaml
-- uses: wow-look-at-my-code/actions/action-validator@v1
+- uses: wow-look-at-my/actions@action-validator#latest
 ```
 
 ### Validate only actions
 
 ```yaml
-- uses: wow-look-at-my-code/actions/action-validator@v1
+- uses: wow-look-at-my/actions@action-validator#latest
   with:
     workflows: ''
 ```
@@ -34,7 +34,7 @@ Validate GitHub Action `action.yml` and workflow files using [action-validator](
 ### Custom patterns
 
 ```yaml
-- uses: wow-look-at-my-code/actions/action-validator@v1
+- uses: wow-look-at-my/actions@action-validator#latest
   with:
     actions: 'actions/*/action.yml'
     workflows: '.github/workflows/ci.yml'

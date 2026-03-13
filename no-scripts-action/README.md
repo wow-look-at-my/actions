@@ -5,13 +5,13 @@ Ensures package.json files don't contain `scripts` sections. Use justfiles inste
 ## Usage
 
 ```yaml
-- uses: PazerOP/actions/no-scripts-action@v1
+- uses: wow-look-at-my/actions@no-scripts-action#latest
 ```
 
 ### Check specific directory
 
 ```yaml
-- uses: PazerOP/actions/no-scripts-action@v1
+- uses: wow-look-at-my/actions@no-scripts-action#latest
   with:
     path: ./packages
 ```
@@ -19,7 +19,7 @@ Ensures package.json files don't contain `scripts` sections. Use justfiles inste
 ### Don't fail on violations
 
 ```yaml
-- uses: PazerOP/actions/no-scripts-action@v1
+- uses: wow-look-at-my/actions@no-scripts-action#latest
   with:
     fail-on-violation: false
 ```
