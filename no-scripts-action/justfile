@@ -1,0 +1,7 @@
+build:
+	npx esbuild src/main.ts --bundle --platform=node --target=node20 --minify --outfile=dist/index.js --external:undici --external:@actions/http-client --external:@actions/exec
+
+typecheck:
+	npx tsc --noEmit
+
+all: typecheck build

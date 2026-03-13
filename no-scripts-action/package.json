@@ -1,0 +1,21 @@
+{
+	"name": "no-scripts-action",
+	"version": "1.0.0",
+	"description": "GitHub Action to ensure package.json files don't have scripts sections",
+	"main": "dist/index.js",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/PazerOP/actions.git"
+	},
+	"author": "PazerOP",
+	"license": "MIT",
+	"dependencies": {
+		"@actions/core": "^1.10.1",
+		"glob": "^10.3.10"
+	},
+	"devDependencies": {
+		"@types/node": "^20.10.0",
+		"esbuild": "^0.27.2",
+		"typescript": "^5.3.2"
+	}
+}
