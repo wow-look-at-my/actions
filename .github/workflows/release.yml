@@ -2,7 +2,6 @@ name: Release Actions
 
 on:
   push:
-  delete:
   workflow_dispatch:
 
 jobs:
@@ -16,11 +15,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: ./orphan-release/orphan-cleanup.sh
-      - name: Block deleted branch
-        if: github.event_name == 'delete' && github.event.ref_type == 'branch'
-        env:
-          GH_TOKEN: ${{ secrets.BRANCH_BLOCK_PAT }}
-        run: ./branch-block/branch-block.sh --branch "${{ github.event.ref }}"
 
   detect:
     if: github.event_name == 'push'

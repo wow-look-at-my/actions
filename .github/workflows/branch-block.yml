@@ -1,0 +1,15 @@
+name: Branch Block
+
+on:
+  delete:
+
+jobs:
+  block-branch:
+    if: github.event.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./branch-block
+        with:
+          branch: ${{ github.event.ref }}
+          token: ${{ secrets.BRANCH_BLOCK_PAT }}

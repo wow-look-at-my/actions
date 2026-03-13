@@ -10,6 +10,10 @@ inputs:
     description: 'Ruleset name (defaults to merged-branches)'
     required: false
     default: 'merged-branches'
+  token:
+    description: 'GitHub token with admin access to manage rulesets (defaults to github.token)'
+    required: false
+    default: ${{ github.token }}
 
 runs:
   using: composite
@@ -17,7 +21,7 @@ runs:
     - name: Block branch creation
       shell: bash
       env:
-        GH_TOKEN: ${{ github.token }}
+        GH_TOKEN: ${{ inputs.token }}
       run: |
         "${{ github.action_path }}/branch-block.sh" \
           --branch "${{ inputs.branch }}" \
