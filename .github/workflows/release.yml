@@ -18,9 +18,10 @@ jobs:
         run: ./orphan-release/orphan-cleanup.sh
       - name: Block deleted branch
         if: github.event_name == 'delete' && github.event.ref_type == 'branch'
-        env:
-          GH_TOKEN: ${{ secrets.BRANCH_BLOCK_PAT }}
-        run: ./branch-block/branch-block.sh --branch "${{ github.event.ref }}"
+        uses: ./branch-block
+        with:
+          branch: ${{ github.event.ref }}
+          token: ${{ secrets.BRANCH_BLOCK_PAT }}
 
   detect:
     if: github.event_name == 'push'

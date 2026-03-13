@@ -22,16 +22,13 @@ fi
 
 echo "::group::Block branch creation: $branch"
 
-# Get existing ruleset or create new one
-ruleset=$(gh api "repos/{owner}/{repo}/rulesets" --jq ".[] | select(.name == \"$ruleset_name\")" 2>/dev/null || true)
+# Find existing ruleset ID by name
+ruleset_id=$(gh api "repos/{owner}/{repo}/rulesets" --jq ".[] | select(.name == \"$ruleset_name\") | .id" 2>/dev/null || true)
 
-if [ -z "$ruleset" ]; then
+if [ -z "$ruleset_id" ]; then
 	echo "Creating ruleset: $ruleset_name"
 	gh api "repos/{owner}/{repo}/rulesets" \
 		--method POST \
-		-f name="$ruleset_name" \
-		-f target="branch" \
-		-f enforcement="active" \
 		--input - <<EOF
 {
 	"name": "$ruleset_name",
@@ -49,11 +46,11 @@ if [ -z "$ruleset" ]; then
 }
 EOF
 else
-	ruleset_id=$(echo "$ruleset" | jq -r '.id')
 	echo "Updating ruleset: $ruleset_name (ID: $ruleset_id)"
 
-	# Get current include patterns
-	current_includes=$(echo "$ruleset" | jq -r '.conditions.ref_name.include // []')
+	# Fetch the full ruleset to get current conditions
+	ruleset=$(gh api "repos/{owner}/{repo}/rulesets/$ruleset_id")
+	current_includes=$(echo "$ruleset" | jq '.conditions.ref_name.include // []')
 	new_pattern="refs/heads/$branch"
 
 	# Check if pattern already exists
@@ -65,9 +62,6 @@ else
 
 		gh api "repos/{owner}/{repo}/rulesets/$ruleset_id" \
 			--method PUT \
-			-f name="$ruleset_name" \
-			-f target="branch" \
-			-f enforcement="active" \
 			--input - <<EOF
 {
 	"name": "$ruleset_name",
