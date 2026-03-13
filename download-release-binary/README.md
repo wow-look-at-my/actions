@@ -30,7 +30,7 @@ mytool_windows_arm64.exe
 ## Usage
 
 ```yaml
-- uses: wow-look-at-my-code/actions@download-release-binary#1
+- uses: wow-look-at-my/actions@download-release-binary#latest
   with:
     repo: owner/repo
     name: mytool
@@ -40,7 +40,7 @@ mytool_windows_arm64.exe
 Download a specific version:
 
 ```yaml
-- uses: wow-look-at-my-code/actions@download-release-binary#1
+- uses: wow-look-at-my/actions@download-release-binary#latest
   with:
     repo: owner/repo
     name: mytool
@@ -51,7 +51,7 @@ Download a specific version:
 Use the binary path in a later step:
 
 ```yaml
-- uses: wow-look-at-my-code/actions@download-release-binary#1
+- uses: wow-look-at-my/actions@download-release-binary#latest
   id: tool
   with:
     repo: owner/repo

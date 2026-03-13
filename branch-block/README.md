@@ -13,7 +13,7 @@ When a branch is merged, this action adds its name to a GitHub repository rulese
 ## Usage
 
 ```yaml
-- uses: wow-look-at-my/actions/branch-block@main
+- uses: wow-look-at-my/actions@branch-block#latest
   with:
     branch: ${{ github.head_ref }}
 ```
@@ -24,6 +24,7 @@ When a branch is merged, this action adds its name to a GitHub repository rulese
 |------|----------|---------|-------------|
 | `branch` | Yes | — | Branch name to block from being re-created |
 | `ruleset` | No | `merged-branches` | Name of the ruleset to create or update |
+| `token` | No | `github.token` | GitHub token with admin access to manage rulesets |
 
 ### Example: Block branch after PR merge
 
@@ -38,11 +39,10 @@ jobs:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
-      - uses: wow-look-at-my/actions/branch-block@main
+      - uses: wow-look-at-my/actions@branch-block#latest
         with:
           branch: ${{ github.head_ref }}
-        env:
-          GH_TOKEN: ${{ secrets.BRANCH_BLOCK_PAT }}
+          token: ${{ secrets.BRANCH_BLOCK_PAT }}
 ```
 
 ## Requirements

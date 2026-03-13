@@ -5,7 +5,7 @@ Run OS-specific commands in a single step without boilerplate if-checks.
 ## Usage
 
 ```yaml
-- uses: wow-look-at-my-code/actions/multicmd@v1
+- uses: wow-look-at-my/actions@multicmd#latest
   with:
     default: echo "Hello from any OS"
     windows: Write-Host "Hello from Windows"
@@ -37,7 +37,7 @@ Priority order for Linux/macOS: `linux`/`macos` > `unix` > `default`
 ### Same command on all platforms
 
 ```yaml
-- uses: wow-look-at-my-code/actions/multicmd@v1
+- uses: wow-look-at-my/actions@multicmd#latest
   with:
     default: npm test
 ```
@@ -45,7 +45,7 @@ Priority order for Linux/macOS: `linux`/`macos` > `unix` > `default`
 ### Different commands per OS
 
 ```yaml
-- uses: wow-look-at-my-code/actions/multicmd@v1
+- uses: wow-look-at-my/actions@multicmd#latest
   with:
     windows: choco install jq
     linux: sudo apt-get install -y jq
@@ -55,7 +55,7 @@ Priority order for Linux/macOS: `linux`/`macos` > `unix` > `default`
 ### Override default for one OS
 
 ```yaml
-- uses: wow-look-at-my-code/actions/multicmd@v1
+- uses: wow-look-at-my/actions@multicmd#latest
   with:
     default: ./build.sh
     windows: .\build.ps1
@@ -64,7 +64,7 @@ Priority order for Linux/macOS: `linux`/`macos` > `unix` > `default`
 ### Unix (Linux + macOS) vs Windows
 
 ```yaml
-- uses: wow-look-at-my-code/actions/multicmd@v1
+- uses: wow-look-at-my/actions@multicmd#latest
   with:
     unix: ./install.sh
     windows: .\install.ps1
