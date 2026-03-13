@@ -23,11 +23,11 @@ fi
 echo "::group::Block branch creation: $branch"
 
 # Find existing ruleset ID by name
-ruleset_id=$(gh api "repos/{owner}/{repo}/rulesets" --jq ".[] | select(.name == \"$ruleset_name\") | .id" 2>/dev/null || true)
+ruleset_id=$(gh api "repos/$GITHUB_REPOSITORY/rulesets" --jq ".[] | select(.name == \"$ruleset_name\") | .id" 2>/dev/null || true)
 
 if [ -z "$ruleset_id" ]; then
 	echo "Creating ruleset: $ruleset_name"
-	gh api "repos/{owner}/{repo}/rulesets" \
+	gh api "repos/$GITHUB_REPOSITORY/rulesets" \
 		--method POST \
 		--input - <<EOF
 {
@@ -49,7 +49,7 @@ else
 	echo "Updating ruleset: $ruleset_name (ID: $ruleset_id)"
 
 	# Fetch the full ruleset to get current conditions
-	ruleset=$(gh api "repos/{owner}/{repo}/rulesets/$ruleset_id")
+	ruleset=$(gh api "repos/$GITHUB_REPOSITORY/rulesets/$ruleset_id")
 	current_includes=$(echo "$ruleset" | jq '.conditions.ref_name.include // []')
 	new_pattern="refs/heads/$branch"
 
@@ -60,7 +60,7 @@ else
 		# Add new pattern
 		updated_includes=$(echo "$current_includes" | jq ". + [\"$new_pattern\"]")
 
-		gh api "repos/{owner}/{repo}/rulesets/$ruleset_id" \
+		gh api "repos/$GITHUB_REPOSITORY/rulesets/$ruleset_id" \
 			--method PUT \
 			--input - <<EOF
 {
