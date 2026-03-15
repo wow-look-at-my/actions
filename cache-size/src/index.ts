@@ -18,15 +18,9 @@ interface SizeEntry {
 const TOP_N = 10;
 
 function humanSize(bytes: number): string {
-	if (bytes < 1024) return `${bytes} B`;
-	const units = ['KiB', 'MiB', 'GiB', 'TiB'];
-	let i = -1;
-	let size = bytes;
-	do {
-		size /= 1024;
-		i++;
-	} while (size >= 1024 && i < units.length - 1);
-	return `${size.toFixed(1)} ${units[i]}`;
+	const mb = bytes / (1024 * 1024);
+	if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GiB`;
+	return `${mb.toFixed(1)} MiB`;
 }
 
 function dirSize(dir: string): number {
