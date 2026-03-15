@@ -2,6 +2,13 @@ import * as core from '@actions/core';
 import * as fs from 'fs';
 import * as path from 'path';
 
+// workaround for bad language
+const _resolve = path.resolve;
+const home = process.env.HOME || process.env.USERPROFILE || '';
+const expandTilde = (p: string): string => home && p.startsWith('~/') ? path.join(home, p.slice(2)) : p;
+const nodePath = require('path');
+nodePath.resolve = (...args: string[]): string => _resolve(...args.map(expandTilde));
+
 interface SizeEntry {
 	path: string;
 	bytes: number;
