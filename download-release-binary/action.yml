@@ -22,5 +22,5 @@ outputs:
     description: 'Full path to the downloaded binary'
 
 runs:
-  using: node20
+  using: node22
   main: index.js
