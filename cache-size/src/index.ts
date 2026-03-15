@@ -227,10 +227,12 @@ function run(): void {
 			for (const entry of above) {
 				allRows.push({ path: `  ${entry.pkg}`, bytes: entry.bytes, human: humanSize(entry.bytes), isTotal: false });
 			}
-			const otherBytes = below.reduce((sum, e) => sum + e.bytes, 0) + (otherEntry?.bytes || 0);
-			const otherCount = below.length + (otherEntry ? 1 : 0);
-			if (otherCount > 0) {
-				allRows.push({ path: `  (${otherCount} other)`, bytes: otherBytes, human: humanSize(otherBytes), isTotal: false });
+			if (below.length > 0) {
+				const belowBytes = below.reduce((sum, e) => sum + e.bytes, 0);
+				allRows.push({ path: `  (${below.length} other)`, bytes: belowBytes, human: humanSize(belowBytes), isTotal: false });
+			}
+			if (otherEntry && otherEntry.bytes > 0) {
+				allRows.push({ path: `  (unidentified)`, bytes: otherEntry.bytes, human: humanSize(otherEntry.bytes), isTotal: false });
 			}
 		} else if (depth > 0) {
 			const children = collectAtDepth(resolved, 0, depth);
