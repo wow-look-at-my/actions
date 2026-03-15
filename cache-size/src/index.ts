@@ -61,10 +61,125 @@ function isGoBuildCache(dir: string): boolean {
 	}
 }
 
-// Extract a Go module path from the first bytes of a build cache data file.
-// Go archives start with "!<arch>\n" and contain package paths as strings
-// in the export data. We scan for domain-based import paths.
-const importPathRe = /(?<![a-zA-Z0-9])(?:github\.com|gitlab\.com|golang\.org|modernc\.org|gopkg\.in|gotest\.tools|code\.gitea\.io|dario\.cat)\/[A-Za-z0-9_.\/@-]+/;
+// Number of section kinds in Go's unified IR export format (internal/pkgbits).
+const NUM_SECTIONS = 10; // SectionString=0 ... SectionBody=9
+
+// Extract the package import path from a Go build cache data file by parsing
+// the Go archive format: !<arch> → __.PKGDEF → $$B → unified IR export data.
+// Returns the raw import path (e.g. "github.com/foo/bar", "net/http", "fmt").
+function extractPackagePath(buf: Buffer, n: number): string | null {
+	// Must be a Go archive
+	if (n < 8 || buf.toString('ascii', 0, 8) !== '!<arch>\n') return null;
+
+	// Find the $$B\n marker that starts binary export data
+	const marker = Buffer.from('$$B\n');
+	let pos = -1;
+	for (let i = 8; i < n - 3; i++) {
+		if (buf[i] === 0x24 && buf[i + 1] === 0x24 && buf[i + 2] === 0x42 && buf[i + 3] === 0x0a) {
+			pos = i + 4;
+			break;
+		}
+	}
+	if (pos < 0 || pos >= n) return null;
+
+	// Format byte — must be 'u' (unified IR)
+	if (buf[pos] !== 0x75) return null; // 'u'
+	pos++;
+
+	// Version: uint32 LE
+	if (pos + 4 > n) return null;
+	const version = buf.readUInt32LE(pos);
+	pos += 4;
+
+	// Flags: uint32 LE (present in all current versions; version >= 1 has Flags)
+	if (version >= 1) {
+		if (pos + 4 > n) return null;
+		pos += 4; // skip flags
+	}
+
+	// elemEndsEnds: NUM_SECTIONS × uint32 LE — cumulative element counts per section
+	if (pos + NUM_SECTIONS * 4 > n) return null;
+	const elemEndsEnds = new Uint32Array(NUM_SECTIONS);
+	for (let i = 0; i < NUM_SECTIONS; i++) {
+		elemEndsEnds[i] = buf.readUInt32LE(pos + i * 4);
+	}
+	pos += NUM_SECTIONS * 4;
+
+	// elemEnds: totalElems × uint32 LE — cumulative byte offsets in elemData
+	const totalElems = elemEndsEnds[NUM_SECTIONS - 1];
+	if (pos + totalElems * 4 > n) return null;
+	const elemEnds = new Uint32Array(totalElems);
+	for (let i = 0; i < totalElems; i++) {
+		elemEnds[i] = buf.readUInt32LE(pos + i * 4);
+	}
+	pos += totalElems * 4;
+
+	// elemData starts at pos
+	const elemDataStart = pos;
+
+	// SectionString is section 0. String elements are indices 0..elemEndsEnds[0]-1.
+	// SectionPkg is section 3. The first Pkg element contains the self-package path
+	// as a reloc to a string. Rather than parsing relocation tables, we read all
+	// string elements and find the one that looks like a package path.
+	const numStrings = elemEndsEnds[0];
+	for (let i = 0; i < numStrings && i < 64; i++) {
+		const start = i === 0 ? 0 : elemEnds[i - 1];
+		const end = elemEnds[i];
+		if (elemDataStart + end > n) break;
+
+		const raw = buf.toString('utf-8', elemDataStart + start, elemDataStart + end);
+		// String elements in pkgbits have a relocation table prefix (SyncRelocs):
+		// a uvarint count of relocs (usually 0 for strings), then the string data
+		// prefixed with SyncString marker (if sync enabled, but usually disabled).
+		// With no sync markers and 0 relocs, the first byte is 0x00 (varint 0)
+		// followed by the raw string content.
+		const str = raw[0] === '\x00' ? raw.slice(1) : raw;
+		if (str.length === 0) continue;
+
+		// Accept any valid Go import path
+		if (isGoImportPath(str)) return str;
+	}
+
+	return null;
+}
+
+// Check if a string looks like a valid Go import path.
+// Stdlib: single word or slash-separated words starting with lowercase (e.g. "fmt", "net/http")
+// Third-party: domain/path (e.g. "github.com/foo/bar")
+function isGoImportPath(s: string): boolean {
+	if (s.length === 0 || s.length > 200) return false;
+	// Must not contain spaces, control chars, or backslashes
+	if (/[\s\\]/.test(s)) return false;
+	// Must start with a lowercase letter
+	if (!/^[a-z]/.test(s)) return false;
+	// Each path component must be a valid Go identifier-like string
+	const parts = s.split('/');
+	return parts.every(p => /^[a-z][a-z0-9_.\-]*$/i.test(p) && p.length > 0);
+}
+
+// Normalize an import path to module level for aggregation.
+function normalizeToModule(importPath: string): string {
+	const parts = importPath.split('/');
+	// Third-party: domain-based paths
+	if (parts[0].includes('.')) {
+		// github.com/org/repo, gitlab.com/org/repo → 3 components
+		if (parts[0] === 'github.com' || parts[0] === 'gitlab.com') {
+			return parts.slice(0, 3).join('/');
+		}
+		// golang.org/x/pkg → 3 components
+		if (parts[0] === 'golang.org' && parts[1] === 'x') {
+			return parts.slice(0, 3).join('/');
+		}
+		// gopkg.in/pkg → 2 components
+		if (parts[0] === 'gopkg.in') {
+			return parts.slice(0, 2).join('/');
+		}
+		// other domains: domain/pkg → 2 components
+		return parts.slice(0, 2).join('/');
+	}
+	// Stdlib: group as "stdlib"
+	return 'stdlib';
+}
 
 function extractModulePath(filePath: string): string | null {
 	let fd: number;
@@ -74,26 +189,16 @@ function extractModulePath(filePath: string): string | null {
 		return null;
 	}
 	try {
-		const buf = Buffer.alloc(8192);
-		const n = fs.readSync(fd, buf, 0, 8192, 0);
-		// Convert to string, replacing non-printable chars so regex works on the printable spans
-		const str = buf.toString('latin1', 0, n);
-		const m = str.match(importPathRe);
-		if (!m) return null;
+		// Read enough to cover the archive header + export data header + string table.
+		// The PKGDEF ar header is ~60 bytes, go object line ~50 bytes, $$B marker,
+		// then the unified IR header. 256KB covers even large string tables.
+		const buf = Buffer.alloc(256 * 1024);
+		const n = fs.readSync(fd, buf, 0, buf.length, 0);
 
-		// Normalize to module level: github.com/org/repo, golang.org/x/pkg, modernc.org/pkg, etc.
-		const raw = m[0].replace(/@[^/]*/g, ''); // strip Go module @version suffixes
-		const parts = raw.split('/');
-		if (parts[0] === 'github.com' || parts[0] === 'gitlab.com') {
-			return parts.slice(0, 3).join('/');
-		}
-		if (parts[0] === 'golang.org' && parts[1] === 'x') {
-			return parts.slice(0, 3).join('/');
-		}
-		if (parts[0] === 'gopkg.in') {
-			return parts.slice(0, 2).join('/');
-		}
-		return parts.slice(0, 2).join('/');
+		const importPath = extractPackagePath(buf, n);
+		if (!importPath) return null;
+
+		return normalizeToModule(importPath);
 	} finally {
 		fs.closeSync(fd);
 	}
