@@ -5,7 +5,7 @@ Shows what's consuming your GitHub Actions cache at a glance. Auto-detects Go bu
 ## Usage
 
 ```yaml
-- uses: wow-look-at-my/actions/cache-size@latest
+- uses: wow-look-at-my/actions@cache-size#latest
   with:
     paths: |
       ~/.cache/go-build
