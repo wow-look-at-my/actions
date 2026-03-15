@@ -7,7 +7,7 @@ inputs:
     description: 'Directories to measure (newline or space separated)'
     required: true
   depth:
-    description: 'How many levels deep to break down (default: 1)'
+    description: 'How many levels deep to break down (0 = top-level totals only). Go build caches are auto-detected and broken down by package.'
     required: false
     default: '1'
 
