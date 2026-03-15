@@ -36,7 +36,7 @@ Report disk usage breakdown of cached directories.
     paths: # Directories to measure (newline or space separated)
 ```
 
-Type: Node.js (node20)
+Type: Node.js (node24)
 
 ### [Download Release Binary](download-release-binary/)
 
@@ -49,7 +49,7 @@ Download a platform-specific binary from a GitHub release.
     token: # GitHub token for API authentication (e.g. github.token)
 ```
 
-Type: Node.js (node20)
+Type: Node.js (node24)
 
 ### [Multi-Command](multicmd/)
 
@@ -69,7 +69,7 @@ Ensures package.json files do not contain scripts sections (use justfiles instea
 - uses: wow-look-at-my/actions@no-scripts-action#latest
 ```
 
-Type: Node.js (node20)
+Type: Node.js (node24)
 
 ### [Orphan Release](orphan-release/)
 
@@ -92,7 +92,7 @@ Cache with change detection - only saves when files actually changed.
     key: # Cache key
 ```
 
-Type: Node.js (node20)
+Type: Node.js (node24)
 
 ### [Tag Runner Image](tag-runner/)
 
@@ -104,4 +104,4 @@ Tags runner images with branch/latest tags and triggers flush.
     token: # GitHub token with packages:write and actions:write permissions
 ```
 
-Type: Node.js (node20)
+Type: Node.js (node24)

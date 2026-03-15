@@ -15,7 +15,20 @@ interface SizeEntry {
 	human: string;
 }
 
-const MIN_DISPLAY_FRAC = 0.01; // show entries that are ≥1% of the cache dir total
+// Show all entries above this fraction of their parent directory's total size
+const MIN_DISPLAY_FRAC = 0.01;
+
+// Go object file magic (cmd/internal/goobj)
+const GOOBJ_MAGIC = '\x00go120ld';
+// Block indices in goobj header Offsets array (cmd/internal/goobj/objfile.go)
+const BLK_PKG_IDX = 1;
+const BLK_FILE = 2;
+// Number of blocks (determines Offsets array length)
+const N_BLK = 15;
+// goobj header: Magic(8) + Fingerprint(8) + Flags(4) + Offsets(N_BLK*4)
+const GOOBJ_HEADER_SIZE = 8 + 8 + 4 + N_BLK * 4;
+// String references in goobj are 8 bytes: uint32 length + uint32 offset
+const STRING_REF_SIZE = 8;
 
 function humanSize(bytes: number): string {
 	const mb = bytes / (1024 * 1024);
@@ -61,147 +74,214 @@ function isGoBuildCache(dir: string): boolean {
 	}
 }
 
-// Number of section kinds in Go's unified IR export format (internal/pkgbits).
-const NUM_SECTIONS = 10; // SectionString=0 ... SectionBody=9
-
-// Extract the package import path from a Go build cache data file by parsing
-// the Go archive format: !<arch> → __.PKGDEF → $$B → unified IR export data.
-// Returns the raw import path (e.g. "github.com/foo/bar", "net/http", "fmt").
-function extractPackagePath(buf: Buffer, n: number): string | null {
-	// Must be a Go archive
-	if (n < 8 || buf.toString('ascii', 0, 8) !== '!<arch>\n') return null;
-
-	// Find the $$B\n marker that starts binary export data
-	const marker = Buffer.from('$$B\n');
-	let pos = -1;
-	for (let i = 8; i < n - 3; i++) {
-		if (buf[i] === 0x24 && buf[i + 1] === 0x24 && buf[i + 2] === 0x42 && buf[i + 3] === 0x0a) {
-			pos = i + 4;
-			break;
-		}
-	}
-	if (pos < 0 || pos >= n) return null;
-
-	// Format byte — must be 'u' (unified IR)
-	if (buf[pos] !== 0x75) return null; // 'u'
-	pos++;
-
-	// Version: uint32 LE
-	if (pos + 4 > n) return null;
-	const version = buf.readUInt32LE(pos);
-	pos += 4;
-
-	// Flags: uint32 LE (present in all current versions; version >= 1 has Flags)
-	if (version >= 1) {
-		if (pos + 4 > n) return null;
-		pos += 4; // skip flags
-	}
-
-	// elemEndsEnds: NUM_SECTIONS × uint32 LE — cumulative element counts per section
-	if (pos + NUM_SECTIONS * 4 > n) return null;
-	const elemEndsEnds = new Uint32Array(NUM_SECTIONS);
-	for (let i = 0; i < NUM_SECTIONS; i++) {
-		elemEndsEnds[i] = buf.readUInt32LE(pos + i * 4);
-	}
-	pos += NUM_SECTIONS * 4;
-
-	// elemEnds: totalElems × uint32 LE — cumulative byte offsets in elemData
-	const totalElems = elemEndsEnds[NUM_SECTIONS - 1];
-	if (pos + totalElems * 4 > n) return null;
-	const elemEnds = new Uint32Array(totalElems);
-	for (let i = 0; i < totalElems; i++) {
-		elemEnds[i] = buf.readUInt32LE(pos + i * 4);
-	}
-	pos += totalElems * 4;
-
-	// elemData starts at pos
-	const elemDataStart = pos;
-
-	// SectionString is section 0. String elements are indices 0..elemEndsEnds[0]-1.
-	// SectionPkg is section 3. The first Pkg element contains the self-package path
-	// as a reloc to a string. Rather than parsing relocation tables, we read all
-	// string elements and find the one that looks like a package path.
-	const numStrings = elemEndsEnds[0];
-	for (let i = 0; i < numStrings && i < 64; i++) {
-		const start = i === 0 ? 0 : elemEnds[i - 1];
-		const end = elemEnds[i];
-		if (elemDataStart + end > n) break;
-
-		const raw = buf.toString('utf-8', elemDataStart + start, elemDataStart + end);
-		// String elements in pkgbits have a relocation table prefix (SyncRelocs):
-		// a uvarint count of relocs (usually 0 for strings), then the string data
-		// prefixed with SyncString marker (if sync enabled, but usually disabled).
-		// With no sync markers and 0 relocs, the first byte is 0x00 (varint 0)
-		// followed by the raw string content.
-		const str = raw[0] === '\x00' ? raw.slice(1) : raw;
-		if (str.length === 0) continue;
-
-		// Accept any valid Go import path
-		if (isGoImportPath(str)) return str;
-	}
-
-	return null;
+// Read a little-endian uint32 from a buffer at the given offset.
+function readUint32LE(buf: Buffer, off: number): number {
+	return buf.readUInt32LE(off);
 }
 
-// Check if a string looks like a valid Go import path.
-// Stdlib: single word or slash-separated words starting with lowercase (e.g. "fmt", "net/http")
-// Third-party: domain/path (e.g. "github.com/foo/bar")
-function isGoImportPath(s: string): boolean {
-	if (s.length === 0 || s.length > 200) return false;
-	// Must not contain spaces, control chars, or backslashes
-	if (/[\s\\]/.test(s)) return false;
-	// Must start with a lowercase letter
-	if (!/^[a-z]/.test(s)) return false;
-	// Each path component must be a valid Go identifier-like string
-	const parts = s.split('/');
-	return parts.every(p => /^[a-z][a-z0-9_.\-]*$/i.test(p) && p.length > 0);
-}
+// Parse a Go archive to find the go object entry and return its offset within the file.
+// Go archives: "!<arch>\n" followed by 60-byte entry headers.
+// The __.PKGDEF entry can be very large (100+ KB of export data), so we parse
+// entry headers to compute offsets and seek directly rather than reading everything.
+// Returns the file offset where the goobj binary data starts (after the "\n!\n" text header end),
+// or -1 if not found.
+function findGoobjOffset(fd: number, fileSize: number): number {
+	// Read archive magic
+	const magicBuf = Buffer.alloc(8);
+	if (fs.readSync(fd, magicBuf, 0, 8, 0) < 8) return -1;
+	if (magicBuf.toString('ascii') !== '!<arch>\n') return -1;
 
-// Normalize an import path to module level for aggregation.
-function normalizeToModule(importPath: string): string {
-	const parts = importPath.split('/');
-	// Third-party: domain-based paths
-	if (parts[0].includes('.')) {
-		// github.com/org/repo, gitlab.com/org/repo → 3 components
-		if (parts[0] === 'github.com' || parts[0] === 'gitlab.com') {
-			return parts.slice(0, 3).join('/');
+	let pos = 8;
+	const hdrBuf = Buffer.alloc(60);
+
+	// Iterate archive entries by reading each 60-byte header
+	while (pos + 60 <= fileSize) {
+		if (fs.readSync(fd, hdrBuf, 0, 60, pos) < 60) return -1;
+		const name = hdrBuf.toString('ascii', 0, 16).trimEnd();
+		const sizeStr = hdrBuf.toString('ascii', 48, 58).trim();
+		const entrySize = parseInt(sizeStr, 10);
+		if (isNaN(entrySize)) return -1;
+		pos += 60; // past entry header
+
+		if (name === '__.PKGDEF' || name === 'preferlinkext' || name === 'dynimportfail') {
+			// Skip non-object entries entirely (PKGDEF can be 100+ KB)
+			pos += entrySize;
+			if (entrySize & 1) pos++;
+			continue;
 		}
-		// golang.org/x/pkg → 3 components
-		if (parts[0] === 'golang.org' && parts[1] === 'x') {
-			return parts.slice(0, 3).join('/');
+
+		// This should be the go object entry. Read its text header to find "\n!\n".
+		// The text header is typically < 256 bytes.
+		const textBuf = Buffer.alloc(Math.min(512, entrySize));
+		const textRead = fs.readSync(fd, textBuf, 0, textBuf.length, pos);
+		for (let i = 0; i + 2 < textRead; i++) {
+			if (textBuf[i] === 0x0a && textBuf[i + 1] === 0x21 && textBuf[i + 2] === 0x0a) {
+				return pos + i + 3;
+			}
 		}
-		// gopkg.in/pkg → 2 components
-		if (parts[0] === 'gopkg.in') {
-			return parts.slice(0, 2).join('/');
-		}
-		// other domains: domain/pkg → 2 components
-		return parts.slice(0, 2).join('/');
+		// Skip this entry if no text header end found
+		pos += entrySize;
+		if (entrySize & 1) pos++;
 	}
-	// Stdlib: group as "stdlib"
-	return 'stdlib';
+	return -1;
 }
 
+// Extract source file paths and package paths from a Go build cache data file
+// by parsing the goobj binary format.
+//
+// Go build cache -d files are Go archives containing:
+//   1. __.PKGDEF (export data)
+//   2. Go object entries with goobj binary format (magic "\x00go120ld")
+//
+// The goobj format (cmd/internal/goobj/objfile.go) has:
+//   Header: Magic(8) + Fingerprint(8) + Flags(4) + Offsets(NBlk*4)
+//   Then data blocks including:
+//     - Strings: raw string bytes
+//     - PkgIndex: imported package paths (string refs)
+//     - Files: source file paths (string refs)
+//
+// String refs are 8 bytes: uint32 length + uint32 offset (into the goobj data).
 function extractModulePath(filePath: string): string | null {
 	let fd: number;
+	let fileSize: number;
 	try {
 		fd = fs.openSync(filePath, 'r');
+		fileSize = fs.fstatSync(fd).size;
 	} catch {
 		return null;
 	}
 	try {
-		// Read enough to cover the archive header + export data header + string table.
-		// The PKGDEF ar header is ~60 bytes, go object line ~50 bytes, $$B marker,
-		// then the unified IR header. 256KB covers even large string tables.
-		const buf = Buffer.alloc(256 * 1024);
-		const n = fs.readSync(fd, buf, 0, buf.length, 0);
+		const goobjFileOffset = findGoobjOffset(fd, fileSize);
+		if (goobjFileOffset < 0) return null;
 
-		const importPath = extractPackagePath(buf, n);
-		if (!importPath) return null;
+		// Read the goobj header
+		const hdrBuf = Buffer.alloc(GOOBJ_HEADER_SIZE);
+		const hdrRead = fs.readSync(fd, hdrBuf, 0, GOOBJ_HEADER_SIZE, goobjFileOffset);
+		if (hdrRead < GOOBJ_HEADER_SIZE) return null;
 
-		return normalizeToModule(importPath);
+		// Verify magic
+		if (hdrBuf.toString('ascii', 0, 8) !== GOOBJ_MAGIC) return null;
+
+		// Read block offsets (after Magic:8 + Fingerprint:8 + Flags:4 = 20)
+		const offsets: number[] = [];
+		for (let i = 0; i < N_BLK; i++) {
+			offsets.push(readUint32LE(hdrBuf, 20 + i * 4));
+		}
+
+		// Try Files block first (BlkFile=2) — source file paths contain module paths
+		const mod = readModuleFromBlock(fd, goobjFileOffset, offsets[BLK_FILE], offsets[BLK_FILE + 1], true);
+		if (mod) return mod;
+
+		// Fall back to PkgIndex block (BlkPkgIdx=1) — imported package paths
+		return readModuleFromBlock(fd, goobjFileOffset, offsets[BLK_PKG_IDX], offsets[BLK_PKG_IDX + 1], false);
 	} finally {
 		fs.closeSync(fd);
 	}
+}
+
+// Read string references from a goobj block and extract a module path.
+// If isFilePaths is true, strings are source file paths (extract module from path).
+// Otherwise, strings are package import paths (extract module directly).
+function readModuleFromBlock(
+	fd: number, goobjBase: number,
+	blockStart: number, blockEnd: number,
+	isFilePaths: boolean,
+): string | null {
+	const blockSize = blockEnd - blockStart;
+	if (blockSize < STRING_REF_SIZE) return null;
+
+	const entryCount = Math.floor(blockSize / STRING_REF_SIZE);
+	// Read all string refs in the block
+	const refBuf = Buffer.alloc(blockSize);
+	fs.readSync(fd, refBuf, 0, blockSize, goobjBase + blockStart);
+
+	// Also need to read the strings data. The strings block is at the start
+	// of goobj data, from byte GOOBJ_HEADER_SIZE to offsets[0] (BlkAutolib).
+	// But string offsets are absolute from the goobj start, so we just read
+	// individual strings on demand using their offset+length.
+
+	for (let i = 0; i < Math.min(entryCount, 20); i++) {
+		const strLen = readUint32LE(refBuf, i * STRING_REF_SIZE);
+		const strOff = readUint32LE(refBuf, i * STRING_REF_SIZE + 4);
+		if (strLen === 0 || strLen > 4096) continue;
+
+		const strBuf = Buffer.alloc(strLen);
+		const read = fs.readSync(fd, strBuf, 0, strLen, goobjBase + strOff);
+		if (read < strLen) continue;
+
+		const str = strBuf.toString('utf-8');
+		// Skip compiler-generated wrapper files
+		if (str === '<autogenerated>') continue;
+
+		const mod = isFilePaths ? moduleFromFilePath(str) : moduleFromImportPath(str);
+		if (mod) return mod;
+	}
+	return null;
+}
+
+// Extract a module path from a Go source file path.
+// The Go compiler stores paths in the Files block as:
+//   - $GOROOT/src/runtime/proc.go           (stdlib)
+//   - $GOROOT/src/vendor/golang.org/x/...   (vendored in stdlib)
+//   - /home/runner/go/pkg/mod/golang.org/x/net@v0.33.0/http2/hpack/encode.go (module cache)
+//   - /home/runner/work/repo/internal/foo.go (local source)
+function moduleFromFilePath(filePath: string): string | null {
+	// $GOROOT/src/... is stdlib (including vendored deps)
+	if (filePath.startsWith('$GOROOT/')) {
+		return 'stdlib';
+	}
+
+	// Module cache path: /pkg/mod/<module>@<version>/...
+	const modIdx = filePath.indexOf('/pkg/mod/');
+	if (modIdx >= 0) {
+		const modPath = filePath.substring(modIdx + 9); // after "/pkg/mod/"
+		const atIdx = modPath.indexOf('@');
+		if (atIdx > 0) {
+			return normalizeModulePath(modPath.substring(0, atIdx));
+		}
+	}
+
+	// Fallback stdlib detection: /src/<pkg>/ where <pkg> has no dots
+	const srcIdx = filePath.lastIndexOf('/src/');
+	if (srcIdx >= 0 && !filePath.includes('/pkg/mod/')) {
+		const afterSrc = filePath.substring(srcIdx + 5);
+		const firstSlash = afterSrc.indexOf('/');
+		const firstPkg = firstSlash >= 0 ? afterSrc.substring(0, firstSlash) : afterSrc;
+		if (firstPkg && !firstPkg.includes('.')) {
+			return 'stdlib';
+		}
+	}
+
+	// Local project source — not from module cache or GOROOT
+	return 'local';
+}
+
+// Extract a module path from a Go import path (from PkgIndex).
+function moduleFromImportPath(importPath: string): string | null {
+	// Skip stdlib packages (no dots in first path component)
+	const firstSlash = importPath.indexOf('/');
+	const firstComponent = firstSlash >= 0 ? importPath.substring(0, firstSlash) : importPath;
+	if (!firstComponent.includes('.')) return null;
+
+	return normalizeModulePath(importPath);
+}
+
+// Normalize an import/module path to the module root level.
+function normalizeModulePath(raw: string): string {
+	// Strip @version suffixes
+	const cleaned = raw.replace(/@[^/]*/g, '');
+	const parts = cleaned.split('/');
+
+	if (parts[0] === 'github.com' || parts[0] === 'gitlab.com') {
+		return parts.slice(0, 3).join('/');
+	}
+	if (parts[0] === 'golang.org' && parts[1] === 'x') {
+		return parts.slice(0, 3).join('/');
+	}
+	if (parts[0] === 'gopkg.in') {
+		return parts.slice(0, 2).join('/');
+	}
+	return parts.slice(0, 2).join('/');
 }
 
 interface PkgBreakdown {
@@ -324,20 +404,23 @@ function run(): void {
 		if (isGoBuildCache(resolved)) {
 			const breakdown = analyzeGoBuildCache(resolved);
 			const threshold = totalBytes * MIN_DISPLAY_FRAC;
-			// Separate '(other)' (unidentified files) from named modules
+
+			// Separate unidentified from named entries
+			const unidentifiedEntry = breakdown.find(e => e.pkg === '(other)');
 			const named = breakdown.filter(e => e.pkg !== '(other)');
-			const otherEntry = breakdown.find(e => e.pkg === '(other)');
-			const above = named.filter(e => e.bytes >= threshold);
-			const below = named.filter(e => e.bytes < threshold);
-			for (const entry of above) {
+
+			const aboveThreshold = named.filter(e => e.bytes >= threshold);
+			const belowThreshold = named.filter(e => e.bytes < threshold);
+
+			for (const entry of aboveThreshold) {
 				allRows.push({ path: `  ${entry.pkg}`, bytes: entry.bytes, human: humanSize(entry.bytes), isTotal: false });
 			}
-			if (below.length > 0) {
-				const belowBytes = below.reduce((sum, e) => sum + e.bytes, 0);
-				allRows.push({ path: `  (${below.length} other)`, bytes: belowBytes, human: humanSize(belowBytes), isTotal: false });
+			if (belowThreshold.length > 0) {
+				const belowBytes = belowThreshold.reduce((sum, e) => sum + e.bytes, 0);
+				allRows.push({ path: `  (${belowThreshold.length} other)`, bytes: belowBytes, human: humanSize(belowBytes), isTotal: false });
 			}
-			if (otherEntry && otherEntry.bytes > 0) {
-				allRows.push({ path: `  (unidentified)`, bytes: otherEntry.bytes, human: humanSize(otherEntry.bytes), isTotal: false });
+			if (unidentifiedEntry && unidentifiedEntry.bytes > 0) {
+				allRows.push({ path: `  (unidentified)`, bytes: unidentifiedEntry.bytes, human: humanSize(unidentifiedEntry.bytes), isTotal: false });
 			}
 		} else if (depth > 0) {
 			const children = collectAtDepth(resolved, 0, depth);

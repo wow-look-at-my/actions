@@ -43,6 +43,30 @@ jobs:
         run: just build
       - uses: ./no-scripts-action
 
+  validate-slugs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate action slugs
+        run: |
+          repo="${{ github.repository }}"
+          errors=0
+
+          # Correct format:   repo@action-name#ref
+          # Wrong format:     repo/action-name@ref
+          while IFS= read -r line; do
+            file=$(echo "$line" | cut -d: -f1)
+            num=$(echo "$line" | cut -d: -f2)
+            match=$(echo "$line" | cut -d: -f3- | sed 's/^[[:space:]]*//')
+            slug=$(echo "$match" | grep -oP "(?<=${repo}/)[^@/]+" || true)
+            echo "::error file=${file},line=${num}::Wrong action slug format '${slug}' — use ${repo}@${slug}#ref instead of ${repo}/${slug}@ref"
+            errors=$((errors + 1))
+          done < <(grep -rn "${repo}/[a-zA-Z0-9_-]*@" --include='*.yml' --include='*.yaml' --include='*.md' . || true)
+
+          if [ "$errors" -gt 0 ]; then
+            exit 1
+          fi
+
   detect:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
