@@ -1,6 +1,6 @@
 # Cache Size
 
-Shows what's consuming your GitHub Actions cache at a glance.
+Shows what's consuming your GitHub Actions cache at a glance. Automatically collapses hex-sharded directories (like Go's build cache) so you see useful information instead of noise.
 
 ## Usage
 
@@ -18,7 +18,7 @@ Shows what's consuming your GitHub Actions cache at a glance.
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `paths` | Yes | | Directories to measure (newline or space separated) |
-| `depth` | No | `0` | Subdirectory levels to expand (`0` = totals only, `1` = one level of children) |
+| `depth` | No | `1` | Subdirectory levels to expand (`0` = totals only). Hex-sharded dirs are auto-collapsed regardless of depth. |
 
 ## Outputs
 
@@ -29,29 +29,25 @@ Shows what's consuming your GitHub Actions cache at a glance.
 
 ## Example Output
 
-Default (`depth: 0`) — just the totals:
+Default (`depth: 1`) — go-build auto-collapses, go/pkg/mod expands usefully:
 
 ```
 Cache Size Breakdown
 ────────────────────────────────────────────
 /home/runner/.cache/go-build       1.9 GiB
 /home/runner/.cache/go-toolchain   241.6 MiB
+  go1.24.11                        241.6 MiB
+  deps.db                          12.0 KiB
 /home/runner/go/pkg/mod            1.3 GiB
+  cache                            774.0 MiB
+  modernc.org                      336.1 MiB
+  github.com                       176.1 MiB
+  golang.org                       69.9 MiB
+  gitlab.com                        6.6 MiB
+  gotest.tools                      1.0 MiB
+  gopkg.in                        741.9 KiB
+  code.gitea.io                   432.7 KiB
+  dario.cat                       107.3 KiB
 ────────────────────────────────────────────
 Total                              3.5 GiB
-```
-
-With `depth: 1` — one level of children:
-
-```
-Cache Size Breakdown
-────────────────────────────────────────────
-/home/runner/.cache/pip    12.3 MiB
-  wheels                   10.1 MiB
-  http                      2.2 MiB
-/home/runner/.npm          45.6 MiB
-  _cacache                 40.2 MiB
-  _logs                     5.4 MiB
-────────────────────────────────────────────
-Total                      57.9 MiB
 ```

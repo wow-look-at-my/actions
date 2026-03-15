@@ -7,9 +7,9 @@ inputs:
     description: 'Directories to measure (newline or space separated)'
     required: true
   depth:
-    description: 'How many levels deep to break down (0 = top-level totals only)'
+    description: 'How many levels deep to break down (0 = top-level totals only). Hex-sharded directories (like go-build cache) are auto-collapsed.'
     required: false
-    default: '0'
+    default: '1'
 
 outputs:
   total-bytes:

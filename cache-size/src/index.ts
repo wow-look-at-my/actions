@@ -55,6 +55,21 @@ function dirSize(dir: string): number {
 	return total;
 }
 
+// Returns true if a directory's children are all 1-2 char hex-named entries (e.g. 00-ff),
+// indicating an opaque sharded cache where expanding children is useless.
+function isHexSharded(dir: string): boolean {
+	let entries: fs.Dirent[];
+	try {
+		entries = fs.readdirSync(dir, { withFileTypes: true });
+	} catch {
+		return false;
+	}
+	if (entries.length < 16) return false; // too few to be a hex shard
+	const hexPattern = /^[0-9a-f]{1,2}$/i;
+	const hexCount = entries.filter(e => e.isDirectory() && hexPattern.test(e.name)).length;
+	return hexCount / entries.length > 0.9;
+}
+
 function collectAtDepth(dir: string, currentDepth: number, maxDepth: number): SizeEntry[] {
 	if (!fs.existsSync(dir)) return [];
 
@@ -63,7 +78,7 @@ function collectAtDepth(dir: string, currentDepth: number, maxDepth: number): Si
 		return [{ path: dir, bytes: stat.size, human: humanSize(stat.size) }];
 	}
 
-	if (currentDepth >= maxDepth) {
+	if (currentDepth >= maxDepth || isHexSharded(dir)) {
 		const bytes = dirSize(dir);
 		return [{ path: dir, bytes, human: humanSize(bytes) }];
 	}
@@ -95,7 +110,7 @@ function collectAtDepth(dir: string, currentDepth: number, maxDepth: number): Si
 
 function run(): void {
 	const rawPaths = core.getInput('paths');
-	const depth = parseInt(core.getInput('depth') || '0', 10);
+	const depth = parseInt(core.getInput('depth') || '1', 10);
 	const paths = rawPaths.split(/[\n\s]+/).filter(Boolean);
 
 	if (paths.length === 0) {
@@ -148,11 +163,7 @@ function run(): void {
 
 	for (const row of allRows) {
 		const line = `${row.path.padEnd(maxPath)}  ${row.human.padStart(maxSize)}`;
-		if (row.isTotal) {
-			core.info(line);
-		} else {
-			core.info(line);
-		}
+		core.info(line);
 	}
 
 	core.info('─'.repeat(maxPath + maxSize + 5));
