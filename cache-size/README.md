@@ -1,6 +1,6 @@
 # Cache Size
 
-Reports a clean breakdown of disk usage for directories you're caching.
+Shows what's consuming your GitHub Actions cache at a glance.
 
 ## Usage
 
@@ -8,10 +8,9 @@ Reports a clean breakdown of disk usage for directories you're caching.
 - uses: wow-look-at-my/actions/cache-size@latest
   with:
     paths: |
-      ~/.cache/pip
-      ~/.npm
-      ~/.cargo/registry
-    depth: 1  # optional, default 1
+      ~/.cache/go-build
+      ~/.cache/go-toolchain
+      ~/go/pkg/mod
 ```
 
 ## Inputs
@@ -19,7 +18,7 @@ Reports a clean breakdown of disk usage for directories you're caching.
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `paths` | Yes | | Directories to measure (newline or space separated) |
-| `depth` | No | `1` | How many levels deep to break down |
+| `depth` | No | `0` | Subdirectory levels to expand (`0` = totals only, `1` = one level of children) |
 
 ## Outputs
 
@@ -29,6 +28,20 @@ Reports a clean breakdown of disk usage for directories you're caching.
 | `breakdown` | JSON array of `{path, bytes, human}` objects |
 
 ## Example Output
+
+Default (`depth: 0`) — just the totals:
+
+```
+Cache Size Breakdown
+────────────────────────────────────────────
+/home/runner/.cache/go-build       1.9 GiB
+/home/runner/.cache/go-toolchain   241.6 MiB
+/home/runner/go/pkg/mod            1.3 GiB
+────────────────────────────────────────────
+Total                              3.5 GiB
+```
+
+With `depth: 1` — one level of children:
 
 ```
 Cache Size Breakdown

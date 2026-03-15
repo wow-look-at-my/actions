@@ -95,7 +95,7 @@ function collectAtDepth(dir: string, currentDepth: number, maxDepth: number): Si
 
 function run(): void {
 	const rawPaths = core.getInput('paths');
-	const depth = parseInt(core.getInput('depth') || '1', 10);
+	const depth = parseInt(core.getInput('depth') || '0', 10);
 	const paths = rawPaths.split(/[\n\s]+/).filter(Boolean);
 
 	if (paths.length === 0) {
