@@ -74,16 +74,6 @@ function isGoBuildCache(dir: string): boolean {
 	}
 }
 
-// Detect Go toolchain directory (contains a go<version>/ subdirectory with bin/go).
-function isGoToolchain(dir: string): boolean {
-	try {
-		const entries = fs.readdirSync(dir);
-		return entries.some(e => /^go\d/.test(e) && fs.existsSync(path.join(dir, e, 'bin', 'go')));
-	} catch {
-		return false;
-	}
-}
-
 // Read a little-endian uint32 from a buffer at the given offset.
 function readUint32LE(buf: Buffer, off: number): number {
 	return buf.readUInt32LE(off);
@@ -344,6 +334,69 @@ function analyzeGoBuildCache(dir: string): PkgBreakdown[] {
 		.sort((a, b) => b.bytes - a.bytes);
 }
 
+// Detect Go module download cache (contains a download/ subdirectory with
+// domain-named folders like github.com/, golang.org/).
+function isGoModDownloadCache(dir: string): boolean {
+	const dl = path.join(dir, 'download');
+	try {
+		if (!fs.statSync(dl).isDirectory()) return false;
+		// Check for at least one domain-like directory (contains a dot)
+		return fs.readdirSync(dl).some(e => e.includes('.') && fs.statSync(path.join(dl, e)).isDirectory());
+	} catch {
+		return false;
+	}
+}
+
+// Walk the Go module download cache and group sizes by module.
+// Structure: cache/download/<module-path>/@v/<version>.{zip,mod,info,ziphash}
+function analyzeGoModDownloadCache(cacheDir: string): PkgBreakdown[] {
+	const downloadDir = path.join(cacheDir, 'download');
+	const pkgSizes = new Map<string, number>();
+
+	function walk(dir: string, relPath: string): void {
+		let entries: fs.Dirent[];
+		try {
+			entries = fs.readdirSync(dir, { withFileTypes: true });
+		} catch {
+			return;
+		}
+
+		for (const entry of entries) {
+			const full = path.join(dir, entry.name);
+			const rel = relPath ? `${relPath}/${entry.name}` : entry.name;
+
+			if (entry.name === '@v') {
+				// Version directory — relPath is the module path
+				const mod = normalizeModulePath(relPath);
+				const size = dirSize(full);
+				pkgSizes.set(mod, (pkgSizes.get(mod) || 0) + size);
+			} else if (entry.isDirectory()) {
+				walk(full, rel);
+			}
+		}
+	}
+
+	if (fs.existsSync(downloadDir)) {
+		walk(downloadDir, '');
+	}
+
+	// Account for non-download contents (sumdb, lock files, etc.)
+	try {
+		for (const entry of fs.readdirSync(cacheDir, { withFileTypes: true })) {
+			if (entry.name === 'download') continue;
+			const full = path.join(cacheDir, entry.name);
+			const size = entry.isDirectory() ? dirSize(full) : (entry.isFile() ? fs.statSync(full).size : 0);
+			if (size > 0) {
+				pkgSizes.set(`(${entry.name})`, (pkgSizes.get(`(${entry.name})`) || 0) + size);
+			}
+		}
+	} catch {}
+
+	return Array.from(pkgSizes.entries())
+		.map(([pkg, bytes]) => ({ pkg, bytes }))
+		.sort((a, b) => b.bytes - a.bytes);
+}
+
 function collectAtDepth(dir: string, currentDepth: number, maxDepth: number): SizeEntry[] {
 	if (!fs.existsSync(dir)) return [];
 
@@ -441,21 +494,26 @@ function run(): void {
 				allRows.push({ path: `  (unidentified)`, bytes: unidentifiedEntry.bytes, human: humanSize(unidentifiedEntry.bytes), isTotal: false });
 			}
 		} else if (depth > 0) {
-			// Go toolchain dirs benefit from extra depth to show contents of
-			// src/ and pkg/ rather than just listing top-level folders.
-			const effectiveDepth = isGoToolchain(resolved) ? Math.max(depth, 2) : depth;
-			const children = collectAtDepth(resolved, 0, effectiveDepth);
+			const children = collectAtDepth(resolved, 0, depth);
 			children.sort((a, b) => b.bytes - a.bytes);
-			const threshold = totalBytes * MIN_DISPLAY_FRAC;
-			const aboveThreshold = children.filter(c => c.bytes >= threshold);
-			const belowThreshold = children.filter(c => c.bytes < threshold);
-			for (const child of aboveThreshold) {
+			for (const child of children) {
 				const rel = path.relative(resolved, child.path);
 				allRows.push({ path: `  ${rel}`, bytes: child.bytes, human: child.human, isTotal: false });
-			}
-			if (belowThreshold.length > 0) {
-				const belowBytes = belowThreshold.reduce((sum, c) => sum + c.bytes, 0);
-				allRows.push({ path: `  (${belowThreshold.length} other)`, bytes: belowBytes, human: humanSize(belowBytes), isTotal: false });
+
+				// If this child is a Go module download cache, drill into it
+				if (fs.statSync(child.path).isDirectory() && isGoModDownloadCache(child.path)) {
+					const breakdown = analyzeGoModDownloadCache(child.path);
+					const threshold = child.bytes * MIN_DISPLAY_FRAC;
+					const above = breakdown.filter(e => e.bytes >= threshold);
+					const below = breakdown.filter(e => e.bytes < threshold);
+					for (const entry of above) {
+						allRows.push({ path: `    ${entry.pkg}`, bytes: entry.bytes, human: humanSize(entry.bytes), isTotal: false });
+					}
+					if (below.length > 0) {
+						const belowBytes = below.reduce((sum, e) => sum + e.bytes, 0);
+						allRows.push({ path: `    (${below.length} other)`, bytes: belowBytes, human: humanSize(belowBytes), isTotal: false });
+					}
+				}
 			}
 		}
 	}
