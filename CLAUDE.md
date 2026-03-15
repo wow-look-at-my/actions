@@ -12,6 +12,7 @@ Each action lives in its own directory with an `action.yml` file:
 - `multicmd/` - Composite action (YAML only)
 - `orphan-release/` - Composite action (shell script)
 - `smart-cache/` - Node.js action (TypeScript compiled to JS)
+- `cache-size/` - Node.js action (TypeScript compiled to JS)
 - `tag-runner/` - Node.js action (TypeScript compiled to JS)
 
 ## Action Types
@@ -19,9 +20,10 @@ Each action lives in its own directory with an `action.yml` file:
 ### Node.js Actions
 
 Actions using `runs.using: node20` require:
-- `package.json` with dependencies
-- TypeScript source compiled to `index.js`
-- Run `npm run build` after changes and commit the output
+- `package.json` with dependencies — **no `scripts` section** (enforced by `no-scripts-action`)
+- TypeScript source in `src/`
+- A `justfile` with a `build` recipe that runs `pnpm install`, `pnpm tsc`, and `pnpm esbuild`
+- **Do NOT commit `dist/` or built JS files.** CI builds these automatically via `just build` and publishes them through orphan release tags.
 
 ### Composite Actions
 
@@ -29,9 +31,10 @@ Actions using `runs.using: composite` are pure YAML - no build step needed.
 
 ## CI
 
-The CI workflow validates Node.js actions by:
-1. Type checking with `tsc --noEmit`
-2. Building with `npm run build`
-3. Verifying `index.js` is up to date
+The release workflow (`release.yml`) handles Node.js actions by:
+1. Auto-detecting which directories contain a `package.json`
+2. Running `just build` to install deps, typecheck, and bundle
+3. Validating `action.yml` (version field, runs.main exists)
+4. Publishing via orphan release tags (excluding `src/`, `node_modules/`, `tsconfig.json`, `justfile`, `package.json`, `pnpm-lock.yaml`)
 
-Composite actions don't need CI validation beyond YAML syntax.
+Composite actions are released directly without a build step.
