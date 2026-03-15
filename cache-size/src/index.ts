@@ -64,7 +64,7 @@ function isGoBuildCache(dir: string): boolean {
 // Extract a Go module path from the first bytes of a build cache data file.
 // Go archives start with "!<arch>\n" and contain package paths as strings
 // in the export data. We scan for domain-based import paths.
-const importPathRe = /(?:github\.com|gitlab\.com|golang\.org|modernc\.org|gopkg\.in|gotest\.tools|code\.gitea\.io|dario\.cat|[a-z][a-z0-9-]*\.[a-z]{2,})\/[A-Za-z0-9_.\/@-]+/;
+const importPathRe = /(?<![a-zA-Z0-9])(?:github\.com|gitlab\.com|golang\.org|modernc\.org|gopkg\.in|gotest\.tools|code\.gitea\.io|dario\.cat)\/[A-Za-z0-9_.\/@-]+/;
 
 function extractModulePath(filePath: string): string | null {
 	let fd: number;
