@@ -102,8 +102,11 @@ function run(): void {
 	// Find longest path for alignment
 	const allRows: { path: string; bytes: number; human: string; isTotal: boolean }[] = [];
 
+	const home = process.env.HOME || process.env.USERPROFILE || '';
+
 	for (const p of paths) {
-		const resolved = path.resolve(p);
+		const expanded = home && p.startsWith('~/') ? path.join(home, p.slice(2)) : p;
+		const resolved = path.resolve(expanded);
 		if (!fs.existsSync(resolved)) {
 			core.warning(`Path does not exist: ${resolved}`);
 			continue;
