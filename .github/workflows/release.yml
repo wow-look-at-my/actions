@@ -43,6 +43,40 @@ jobs:
         run: just build
       - uses: ./no-scripts-action
 
+  validate-slugs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate action slugs in workflow files
+        run: |
+          repo="${{ github.repository }}"
+          valid_actions=$(for d in */action.yml; do dirname "$d"; done)
+          errors=0
+
+          while IFS= read -r line; do
+            file=$(echo "$line" | cut -d: -f1)
+            num=$(echo "$line" | cut -d: -f2)
+            match=$(echo "$line" | cut -d: -f3- | sed 's/^[[:space:]]*//')
+
+            slug=$(echo "$match" | grep -oP "(?<=${repo}/)[^@]+" | sed 's:/*$::')
+
+            if [ -z "$slug" ]; then
+              continue
+            fi
+
+            if ! echo "$valid_actions" | grep -qx "$slug"; then
+              echo "::error file=${file},line=${num}::Invalid action slug '${slug}' in '${match}'. No action directory '${slug}/' exists in this repo."
+              errors=$((errors + 1))
+            fi
+          done < <(grep -rn "uses:.*${repo}/" .github/workflows/ || true)
+
+          if [ "$errors" -gt 0 ]; then
+            echo ""
+            echo "Valid action slugs are:"
+            echo "$valid_actions" | sed 's/^/  - /'
+            exit 1
+          fi
+
   detect:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
