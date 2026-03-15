@@ -19,7 +19,7 @@ Each action lives in its own directory with an `action.yml` file:
 
 ### Node.js Actions
 
-Actions using `runs.using: node22` require:
+Actions using `runs.using: node24` require:
 - `package.json` with dependencies — **no `scripts` section** (enforced by `no-scripts-action`)
 - TypeScript source in `src/`
 - A `justfile` with a `build` recipe that runs `pnpm install`, `pnpm tsc`, and `pnpm esbuild`
