@@ -342,12 +342,6 @@ function collectAtDepth(dir: string, currentDepth: number, maxDepth: number): Si
 		return [{ path: dir, bytes: stat.size, human: humanSize(stat.size) }];
 	}
 
-	if (currentDepth >= maxDepth) {
-		const bytes = dirSize(dir);
-		return [{ path: dir, bytes, human: humanSize(bytes) }];
-	}
-
-	const results: SizeEntry[] = [];
 	let entries: fs.Dirent[];
 	try {
 		entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -355,6 +349,20 @@ function collectAtDepth(dir: string, currentDepth: number, maxDepth: number): Si
 		return [];
 	}
 
+	// If this directory has a single subdirectory child (and only small files
+	// otherwise), pass through it without counting as a depth level. This
+	// flattens structures like cache/ → cache/download/ → domain dirs.
+	const subdirs = entries.filter(e => e.isDirectory());
+	if (subdirs.length === 1) {
+		return collectAtDepth(path.join(dir, subdirs[0].name), currentDepth, maxDepth);
+	}
+
+	if (currentDepth >= maxDepth) {
+		const bytes = dirSize(dir);
+		return [{ path: dir, bytes, human: humanSize(bytes) }];
+	}
+
+	const results: SizeEntry[] = [];
 	for (const entry of entries) {
 		const full = path.join(dir, entry.name);
 		if (entry.isDirectory()) {
