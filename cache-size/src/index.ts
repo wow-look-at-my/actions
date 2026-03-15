@@ -5,9 +5,9 @@ import * as path from 'path';
 // workaround for bad language
 const _resolve = path.resolve;
 const home = process.env.HOME || process.env.USERPROFILE || '';
-(path as any).resolve = (...args: string[]): string => {
-	return _resolve(...args.map(a => home && a.startsWith('~/') ? path.join(home, a.slice(2)) : a));
-};
+const expandTilde = (p: string): string => home && p.startsWith('~/') ? path.join(home, p.slice(2)) : p;
+const nodePath = require('path');
+nodePath.resolve = (...args: string[]): string => _resolve(...args.map(expandTilde));
 
 interface SizeEntry {
 	path: string;
