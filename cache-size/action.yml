@@ -1,0 +1,22 @@
+name: Cache Size
+version: 1
+description: Report disk usage breakdown of cached directories
+
+inputs:
+  paths:
+    description: 'Directories to measure (newline or space separated)'
+    required: true
+  depth:
+    description: 'How many levels deep to break down (default: 1)'
+    required: false
+    default: '1'
+
+outputs:
+  total-bytes:
+    description: 'Total size in bytes across all paths'
+  breakdown:
+    description: 'JSON array of {path, bytes, human} objects'
+
+runs:
+  using: node20
+  main: dist/index.js
