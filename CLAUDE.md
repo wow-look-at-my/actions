@@ -20,7 +20,7 @@ Each action lives in its own directory with an `action.yml` file:
 ### Node.js Actions
 
 Actions using `runs.using: node20` require:
-- `package.json` with dependencies
+- `package.json` with dependencies — **no `scripts` section** (enforced by `no-scripts-action`)
 - TypeScript source in `src/`
 - A `justfile` with a `build` recipe that runs `pnpm install`, `pnpm tsc`, and `pnpm esbuild`
 - **Do NOT commit `dist/` or built JS files.** CI builds these automatically via `just build` and publishes them through orphan release tags.
