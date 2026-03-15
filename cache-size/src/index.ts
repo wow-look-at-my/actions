@@ -15,7 +15,7 @@ interface SizeEntry {
 	human: string;
 }
 
-const TOP_N = 10;
+const MIN_DISPLAY_FRAC = 0.01; // show entries that are ≥1% of the cache dir total
 
 function humanSize(bytes: number): string {
 	const mb = bytes / (1024 * 1024);
@@ -218,20 +218,19 @@ function run(): void {
 		// Go build cache: break down by package instead of by directory
 		if (isGoBuildCache(resolved)) {
 			const breakdown = analyzeGoBuildCache(resolved);
+			const threshold = totalBytes * MIN_DISPLAY_FRAC;
 			// Separate '(other)' (unidentified files) from named modules
 			const named = breakdown.filter(e => e.pkg !== '(other)');
 			const otherEntry = breakdown.find(e => e.pkg === '(other)');
-			const top = named.slice(0, TOP_N);
-			const rest = named.slice(TOP_N);
-			for (const entry of top) {
+			const above = named.filter(e => e.bytes >= threshold);
+			const below = named.filter(e => e.bytes < threshold);
+			for (const entry of above) {
 				allRows.push({ path: `  ${entry.pkg}`, bytes: entry.bytes, human: humanSize(entry.bytes), isTotal: false });
 			}
-			if (rest.length > 0) {
-				const restBytes = rest.reduce((sum, e) => sum + e.bytes, 0);
-				allRows.push({ path: `  (${rest.length} other)`, bytes: restBytes, human: humanSize(restBytes), isTotal: false });
-			}
-			if (otherEntry && otherEntry.bytes > 0) {
-				allRows.push({ path: `  (unidentified)`, bytes: otherEntry.bytes, human: humanSize(otherEntry.bytes), isTotal: false });
+			const otherBytes = below.reduce((sum, e) => sum + e.bytes, 0) + (otherEntry?.bytes || 0);
+			const otherCount = below.length + (otherEntry ? 1 : 0);
+			if (otherCount > 0) {
+				allRows.push({ path: `  (${otherCount} other)`, bytes: otherBytes, human: humanSize(otherBytes), isTotal: false });
 			}
 		} else if (depth > 0) {
 			const children = collectAtDepth(resolved, 0, depth);
