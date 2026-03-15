@@ -74,6 +74,16 @@ function isGoBuildCache(dir: string): boolean {
 	}
 }
 
+// Detect Go toolchain directory (contains a go<version>/ subdirectory with bin/go).
+function isGoToolchain(dir: string): boolean {
+	try {
+		const entries = fs.readdirSync(dir);
+		return entries.some(e => /^go\d/.test(e) && fs.existsSync(path.join(dir, e, 'bin', 'go')));
+	} catch {
+		return false;
+	}
+}
+
 // Read a little-endian uint32 from a buffer at the given offset.
 function readUint32LE(buf: Buffer, off: number): number {
 	return buf.readUInt32LE(off);
@@ -431,11 +441,21 @@ function run(): void {
 				allRows.push({ path: `  (unidentified)`, bytes: unidentifiedEntry.bytes, human: humanSize(unidentifiedEntry.bytes), isTotal: false });
 			}
 		} else if (depth > 0) {
-			const children = collectAtDepth(resolved, 0, depth);
+			// Go toolchain dirs benefit from extra depth to show contents of
+			// src/ and pkg/ rather than just listing top-level folders.
+			const effectiveDepth = isGoToolchain(resolved) ? Math.max(depth, 2) : depth;
+			const children = collectAtDepth(resolved, 0, effectiveDepth);
 			children.sort((a, b) => b.bytes - a.bytes);
-			for (const child of children) {
+			const threshold = totalBytes * MIN_DISPLAY_FRAC;
+			const aboveThreshold = children.filter(c => c.bytes >= threshold);
+			const belowThreshold = children.filter(c => c.bytes < threshold);
+			for (const child of aboveThreshold) {
 				const rel = path.relative(resolved, child.path);
 				allRows.push({ path: `  ${rel}`, bytes: child.bytes, human: child.human, isTotal: false });
+			}
+			if (belowThreshold.length > 0) {
+				const belowBytes = belowThreshold.reduce((sum, c) => sum + c.bytes, 0);
+				allRows.push({ path: `  (${belowThreshold.length} other)`, bytes: belowBytes, human: humanSize(belowBytes), isTotal: false });
 			}
 		}
 	}
