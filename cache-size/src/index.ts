@@ -2,6 +2,7 @@ import * as core from '@actions/core';
 import * as fs from 'fs';
 import * as path from 'path';
 
+// workaround for bad language
 const _resolve = path.resolve;
 const home = process.env.HOME || process.env.USERPROFILE || '';
 (path as any).resolve = (...args: string[]): string => {
