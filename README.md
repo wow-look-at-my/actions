@@ -4,49 +4,64 @@ Reusable GitHub Actions.
 
 ## Actions
 
-### [action-validator](action-validator/)
+### [Action Validator](action-validator/)
 
-Validate `action.yml` and workflow files.
+Validate GitHub Action action.yml files.
 
 ```yaml
 - uses: wow-look-at-my/actions@action-validator#latest
 ```
 
-### [branch-block](branch-block/)
+Type: Composite
+
+### [Branch Block](branch-block/)
 
 Add merged branches to a ruleset that blocks re-creation.
 
 ```yaml
 - uses: wow-look-at-my/actions@branch-block#latest
   with:
-    branch: ${{ github.head_ref }}
-    token: ${{ secrets.BRANCH_BLOCK_PAT }}
+    branch: # Branch name to block
 ```
 
-### [download-release-binary](download-release-binary/)
+Type: Composite
+
+### [Cache Size](cache-size/)
+
+Report disk usage breakdown of cached directories.
+
+```yaml
+- uses: wow-look-at-my/actions@cache-size#latest
+  with:
+    paths: # Directories to measure (newline or space separated)
+```
+
+Type: Node.js (node20)
+
+### [Download Release Binary](download-release-binary/)
 
 Download a platform-specific binary from a GitHub release.
 
 ```yaml
 - uses: wow-look-at-my/actions@download-release-binary#latest
   with:
-    repo: owner/repo
-    name: my-tool
-    token: ${{ secrets.GITHUB_TOKEN }}
+    repo: # Repository (owner/name) to download from
+    token: # GitHub token for API authentication (e.g. github.token)
 ```
 
-### [multicmd](multicmd/)
+Type: Node.js (node20)
 
-Run OS-specific commands without boilerplate if-checks.
+### [Multi-Command](multicmd/)
+
+Run OS-specific commands in a single step without boilerplate if-checks.
 
 ```yaml
 - uses: wow-look-at-my/actions@multicmd#latest
-  with:
-    unix: ./install.sh
-    windows: .\install.ps1
 ```
 
-### [no-scripts-action](no-scripts-action/)
+Type: Composite
+
+### [No Scripts Check](no-scripts-action/)
 
 Ensures package.json files do not contain scripts sections (use justfiles instead).
 
@@ -54,36 +69,39 @@ Ensures package.json files do not contain scripts sections (use justfiles instea
 - uses: wow-look-at-my/actions@no-scripts-action#latest
 ```
 
-### [orphan-release](orphan-release/)
+Type: Node.js (node20)
 
-Create orphan tags from a directory with auto-incrementing versions.
+### [Orphan Release](orphan-release/)
+
+Create orphan tags from a directory.
 
 ```yaml
 - uses: wow-look-at-my/actions@orphan-release#latest
-  with:
-    source: my-action
-    exclude: src node_modules
 ```
 
-Creates `my-action#1` + `my-action#latest`. Next release auto-increments to `my-action#2`.
+Type: Composite
 
-### [smart-cache](smart-cache/)
+### [Smart Cache](smart-cache/)
 
 Cache with change detection - only saves when files actually changed.
 
 ```yaml
 - uses: wow-look-at-my/actions@smart-cache#latest
   with:
-    path: node_modules
-    key: deps-${{ hashFiles('package-lock.json') }}
+    path: # Paths to cache (space-separated)
+    key: # Cache key
 ```
 
-### [tag-runner](tag-runner/)
+Type: Node.js (node20)
 
-Tag runner images with branch/latest tags.
+### [Tag Runner Image](tag-runner/)
+
+Tags runner images with branch/latest tags and triggers flush.
 
 ```yaml
 - uses: wow-look-at-my/actions@tag-runner#latest
   with:
-    token: ${{ secrets.GITHUB_TOKEN }}
+    token: # GitHub token with packages:write and actions:write permissions
 ```
+
+Type: Node.js (node20)
