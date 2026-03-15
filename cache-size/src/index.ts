@@ -82,7 +82,7 @@ function extractModulePath(filePath: string): string | null {
 		if (!m) return null;
 
 		// Normalize to module level: github.com/org/repo, golang.org/x/pkg, modernc.org/pkg, etc.
-		const raw = m[0].replace(/\/@.*$/, ''); // strip Go module @version suffixes
+		const raw = m[0].replace(/@[^/]*/g, ''); // strip Go module @version suffixes
 		const parts = raw.split('/');
 		if (parts[0] === 'github.com' || parts[0] === 'gitlab.com') {
 			return parts.slice(0, 3).join('/');
@@ -226,11 +226,12 @@ function run(): void {
 			for (const entry of top) {
 				allRows.push({ path: `  ${entry.pkg}`, bytes: entry.bytes, human: humanSize(entry.bytes), isTotal: false });
 			}
-			// Merge tail modules and unidentified files into a single "(N other)" line
-			const otherCount = rest.length + (otherEntry ? 1 : 0);
-			const otherBytes = rest.reduce((sum, e) => sum + e.bytes, 0) + (otherEntry?.bytes || 0);
-			if (otherCount > 0) {
-				allRows.push({ path: `  (${otherCount} other)`, bytes: otherBytes, human: humanSize(otherBytes), isTotal: false });
+			if (rest.length > 0) {
+				const restBytes = rest.reduce((sum, e) => sum + e.bytes, 0);
+				allRows.push({ path: `  (${rest.length} other)`, bytes: restBytes, human: humanSize(restBytes), isTotal: false });
+			}
+			if (otherEntry && otherEntry.bytes > 0) {
+				allRows.push({ path: `  (unidentified)`, bytes: otherEntry.bytes, human: humanSize(otherEntry.bytes), isTotal: false });
 			}
 		} else if (depth > 0) {
 			const children = collectAtDepth(resolved, 0, depth);
