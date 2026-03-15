@@ -15,6 +15,8 @@ interface SizeEntry {
 	human: string;
 }
 
+const TOP_N = 10;
+
 function humanSize(bytes: number): string {
 	if (bytes < 1024) return `${bytes} B`;
 	const units = ['KiB', 'MiB', 'GiB', 'TiB'];
@@ -55,19 +57,102 @@ function dirSize(dir: string): number {
 	return total;
 }
 
-// Returns true if a directory's children are all 1-2 char hex-named entries (e.g. 00-ff),
-// indicating an opaque sharded cache where expanding children is useless.
-function isHexSharded(dir: string): boolean {
-	let entries: fs.Dirent[];
+// Detect Go build cache by checking for its README marker file.
+function isGoBuildCache(dir: string): boolean {
 	try {
-		entries = fs.readdirSync(dir, { withFileTypes: true });
+		const readme = fs.readFileSync(path.join(dir, 'README'), 'utf-8');
+		return readme.includes('build artifacts');
 	} catch {
 		return false;
 	}
-	if (entries.length < 16) return false; // too few to be a hex shard
-	const hexPattern = /^[0-9a-f]{1,2}$/i;
-	const hexCount = entries.filter(e => e.isDirectory() && hexPattern.test(e.name)).length;
-	return hexCount / entries.length > 0.9;
+}
+
+// Extract a Go module path from the first bytes of a build cache data file.
+// Go archives start with "!<arch>\n" and contain package paths as strings
+// in the export data. We scan for domain-based import paths.
+const importPathRe = /(?:github\.com|gitlab\.com|golang\.org|modernc\.org|gopkg\.in|gotest\.tools|code\.gitea\.io|dario\.cat|[a-z][a-z0-9-]*\.[a-z]{2,})\/[A-Za-z0-9_.\/@-]+/;
+
+function extractModulePath(filePath: string): string | null {
+	let fd: number;
+	try {
+		fd = fs.openSync(filePath, 'r');
+	} catch {
+		return null;
+	}
+	try {
+		const buf = Buffer.alloc(8192);
+		const n = fs.readSync(fd, buf, 0, 8192, 0);
+		// Convert to string, replacing non-printable chars so regex works on the printable spans
+		const str = buf.toString('latin1', 0, n);
+		const m = str.match(importPathRe);
+		if (!m) return null;
+
+		// Normalize to module level: github.com/org/repo, golang.org/x/pkg, modernc.org/pkg, etc.
+		const raw = m[0].replace(/\/@.*$/, ''); // strip Go module @version suffixes
+		const parts = raw.split('/');
+		if (parts[0] === 'github.com' || parts[0] === 'gitlab.com') {
+			return parts.slice(0, 3).join('/');
+		}
+		if (parts[0] === 'golang.org' && parts[1] === 'x') {
+			return parts.slice(0, 3).join('/');
+		}
+		if (parts[0] === 'gopkg.in') {
+			return parts.slice(0, 2).join('/');
+		}
+		return parts.slice(0, 2).join('/');
+	} finally {
+		fs.closeSync(fd);
+	}
+}
+
+interface PkgBreakdown {
+	pkg: string;
+	bytes: number;
+}
+
+// Scan a Go build cache and attribute data files to modules by reading
+// the package path embedded in each compiled archive.
+function analyzeGoBuildCache(dir: string): PkgBreakdown[] {
+	const pkgSizes = new Map<string, number>();
+	const hexPattern = /^[0-9a-f]{2}$/;
+
+	let entries: string[];
+	try {
+		entries = fs.readdirSync(dir);
+	} catch {
+		return [];
+	}
+
+	for (const hexDir of entries) {
+		if (!hexPattern.test(hexDir)) continue;
+		const hexPath = path.join(dir, hexDir);
+
+		let files: string[];
+		try {
+			files = fs.readdirSync(hexPath);
+		} catch {
+			continue;
+		}
+
+		for (const file of files) {
+			if (!file.endsWith('-d')) continue; // only data files, skip action files (-a)
+			const filePath = path.join(hexPath, file);
+
+			let size: number;
+			try {
+				size = fs.statSync(filePath).size;
+			} catch {
+				continue;
+			}
+
+			const pkg = extractModulePath(filePath) || '(other)';
+			pkgSizes.set(pkg, (pkgSizes.get(pkg) || 0) + size);
+		}
+	}
+
+	return Array.from(pkgSizes.entries())
+		.map(([pkg, bytes]) => ({ pkg, bytes }))
+		.sort((a, b) => b.bytes - a.bytes);
 }
 
 function collectAtDepth(dir: string, currentDepth: number, maxDepth: number): SizeEntry[] {
@@ -78,7 +163,7 @@ function collectAtDepth(dir: string, currentDepth: number, maxDepth: number): Si
 		return [{ path: dir, bytes: stat.size, human: humanSize(stat.size) }];
 	}
 
-	if (currentDepth >= maxDepth || isHexSharded(dir)) {
+	if (currentDepth >= maxDepth) {
 		const bytes = dirSize(dir);
 		return [{ path: dir, bytes, human: humanSize(bytes) }];
 	}
@@ -121,7 +206,6 @@ function run(): void {
 	const allEntries: SizeEntry[] = [];
 	let grandTotal = 0;
 
-	// Find longest path for alignment
 	const allRows: { path: string; bytes: number; human: string; isTotal: boolean }[] = [];
 
 	for (const p of paths) {
@@ -137,9 +221,20 @@ function run(): void {
 		allRows.push({ path: resolved, bytes: totalBytes, human: humanSize(totalBytes), isTotal: true });
 		allEntries.push({ path: resolved, bytes: totalBytes, human: humanSize(totalBytes) });
 
-		if (depth > 0) {
+		// Go build cache: break down by package instead of by directory
+		if (isGoBuildCache(resolved)) {
+			const breakdown = analyzeGoBuildCache(resolved);
+			const top = breakdown.slice(0, TOP_N);
+			const rest = breakdown.slice(TOP_N);
+			for (const entry of top) {
+				allRows.push({ path: `  ${entry.pkg}`, bytes: entry.bytes, human: humanSize(entry.bytes), isTotal: false });
+			}
+			if (rest.length > 0) {
+				const restBytes = rest.reduce((sum, e) => sum + e.bytes, 0);
+				allRows.push({ path: `  (${rest.length} more)`, bytes: restBytes, human: humanSize(restBytes), isTotal: false });
+			}
+		} else if (depth > 0) {
 			const children = collectAtDepth(resolved, 0, depth);
-			// Sort children by size descending
 			children.sort((a, b) => b.bytes - a.bytes);
 			for (const child of children) {
 				const rel = path.relative(resolved, child.path);
