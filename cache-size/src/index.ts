@@ -218,14 +218,19 @@ function run(): void {
 		// Go build cache: break down by package instead of by directory
 		if (isGoBuildCache(resolved)) {
 			const breakdown = analyzeGoBuildCache(resolved);
-			const top = breakdown.slice(0, TOP_N);
-			const rest = breakdown.slice(TOP_N);
+			// Separate '(other)' (unidentified files) from named modules
+			const named = breakdown.filter(e => e.pkg !== '(other)');
+			const otherEntry = breakdown.find(e => e.pkg === '(other)');
+			const top = named.slice(0, TOP_N);
+			const rest = named.slice(TOP_N);
 			for (const entry of top) {
 				allRows.push({ path: `  ${entry.pkg}`, bytes: entry.bytes, human: humanSize(entry.bytes), isTotal: false });
 			}
-			if (rest.length > 0) {
-				const restBytes = rest.reduce((sum, e) => sum + e.bytes, 0);
-				allRows.push({ path: `  (${rest.length} more)`, bytes: restBytes, human: humanSize(restBytes), isTotal: false });
+			// Merge tail modules and unidentified files into a single "(N other)" line
+			const otherCount = rest.length + (otherEntry ? 1 : 0);
+			const otherBytes = rest.reduce((sum, e) => sum + e.bytes, 0) + (otherEntry?.bytes || 0);
+			if (otherCount > 0) {
+				allRows.push({ path: `  (${otherCount} other)`, bytes: otherBytes, human: humanSize(otherBytes), isTotal: false });
 			}
 		} else if (depth > 0) {
 			const children = collectAtDepth(resolved, 0, depth);
