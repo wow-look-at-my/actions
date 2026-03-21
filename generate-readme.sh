@@ -8,22 +8,27 @@ cat <<'HEADER'
 Reusable GitHub Actions.
 
 ## Actions
+
+```
 HEADER
 
+first=true
 for action_yml in */action.yml; do
   dir=$(dirname "$action_yml")
   name=$(yq -r '.name' "$action_yml")
   desc=$(yq -r '.description' "$action_yml")
-  using=$(yq -r '.runs.using' "$action_yml")
 
-  echo ""
-  echo "### [$name]($dir/)"
-  echo ""
-  echo "$desc."
-  echo ""
+  # Blank line between entries
+  if [ "$first" = true ]; then
+    first=false
+  else
+    echo ""
+  fi
 
-  # Build usage block with required inputs
-  echo '```yaml'
+  echo "# $name: $desc."
+  if [ -f "$dir/README.md" ]; then
+    echo "# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/$dir/README.md"
+  fi
   echo "- uses: wow-look-at-my/actions@${dir}#latest"
 
   # Get required inputs as newline-separated keys
@@ -37,22 +42,6 @@ for action_yml in */action.yml; do
       echo "    $key: # $desc_input"
     done <<< "$required_keys"
   fi
-
-  echo '```'
-
-  # Show type badge
-  case "$using" in
-    composite) echo "" ; echo "Type: Composite" ;;
-    node*)     echo "" ; echo "Type: Node.js ($using)" ;;
-  esac
-
-  # Add copyable setup command
-  echo ""
-  echo '```'
-  if [ -f "$dir/README.md" ]; then
-    echo "setup https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/$dir/README.md"
-  else
-    echo "setup https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/$dir/action.yml"
-  fi
-  echo '```'
 done
+
+echo '```'
