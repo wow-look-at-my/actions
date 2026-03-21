@@ -6,7 +6,7 @@ Reusable GitHub Actions.
 
 ### [Action Validator](action-validator/)
 
-```
+```yml
 # Validate GitHub Action action.yml files.
 # Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/action-validator/README.md
 - uses: wow-look-at-my/actions@action-validator#latest
@@ -14,7 +14,7 @@ Reusable GitHub Actions.
 
 ### [Branch Block](branch-block/)
 
-```
+```yml
 # Add merged branches to a ruleset that blocks re-creation.
 # Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/branch-block/README.md
 - uses: wow-look-at-my/actions@branch-block#latest
@@ -24,7 +24,7 @@ Reusable GitHub Actions.
 
 ### [Cache Size](cache-size/)
 
-```
+```yml
 # Report disk usage breakdown of cached directories.
 # Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/cache-size/README.md
 - uses: wow-look-at-my/actions@cache-size#latest
@@ -34,7 +34,7 @@ Reusable GitHub Actions.
 
 ### [Download Release Binary](download-release-binary/)
 
-```
+```yml
 # Download a platform-specific binary from a GitHub release.
 # Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/download-release-binary/README.md
 - uses: wow-look-at-my/actions@download-release-binary#latest
@@ -45,7 +45,7 @@ Reusable GitHub Actions.
 
 ### [Multi-Command](multicmd/)
 
-```
+```yml
 # Run OS-specific commands in a single step without boilerplate if-checks.
 # Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/multicmd/README.md
 - uses: wow-look-at-my/actions@multicmd#latest
@@ -53,7 +53,7 @@ Reusable GitHub Actions.
 
 ### [No Scripts Check](no-scripts-action/)
 
-```
+```yml
 # Ensures package.json files do not contain scripts sections (use justfiles instead).
 # Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/no-scripts-action/README.md
 - uses: wow-look-at-my/actions@no-scripts-action#latest
@@ -61,7 +61,7 @@ Reusable GitHub Actions.
 
 ### [Orphan Release](orphan-release/)
 
-```
+```yml
 # Create orphan tags from a directory.
 # Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/orphan-release/README.md
 - uses: wow-look-at-my/actions@orphan-release#latest
@@ -69,7 +69,7 @@ Reusable GitHub Actions.
 
 ### [Smart Cache](smart-cache/)
 
-```
+```yml
 # Cache with change detection - only saves when files actually changed.
 - uses: wow-look-at-my/actions@smart-cache#latest
   with:
@@ -79,7 +79,7 @@ Reusable GitHub Actions.
 
 ### [Tag Runner Image](tag-runner/)
 
-```
+```yml
 # Tags runner images with branch/latest tags and triggers flush.
 - uses: wow-look-at-my/actions@tag-runner#latest
   with:

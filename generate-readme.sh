@@ -18,7 +18,7 @@ for action_yml in */action.yml; do
   echo ""
   echo "### [$name]($dir/)"
   echo ""
-  echo '```'
+  echo '```yml'
 
   echo "# $desc."
   if [ -f "$dir/README.md" ]; then
