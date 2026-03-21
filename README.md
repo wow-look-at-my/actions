@@ -14,6 +14,10 @@ Validate GitHub Action action.yml files.
 
 Type: Composite
 
+```
+setup https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/action-validator/README.md
+```
+
 ### [Branch Block](branch-block/)
 
 Add merged branches to a ruleset that blocks re-creation.
@@ -26,6 +30,10 @@ Add merged branches to a ruleset that blocks re-creation.
 
 Type: Composite
 
+```
+setup https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/branch-block/README.md
+```
+
 ### [Cache Size](cache-size/)
 
 Report disk usage breakdown of cached directories.
@@ -37,6 +45,10 @@ Report disk usage breakdown of cached directories.
 ```
 
 Type: Node.js (node24)
+
+```
+setup https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/cache-size/README.md
+```
 
 ### [Download Release Binary](download-release-binary/)
 
@@ -51,6 +63,10 @@ Download a platform-specific binary from a GitHub release.
 
 Type: Node.js (node24)
 
+```
+setup https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/download-release-binary/README.md
+```
+
 ### [Multi-Command](multicmd/)
 
 Run OS-specific commands in a single step without boilerplate if-checks.
@@ -60,6 +76,10 @@ Run OS-specific commands in a single step without boilerplate if-checks.
 ```
 
 Type: Composite
+
+```
+setup https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/multicmd/README.md
+```
 
 ### [No Scripts Check](no-scripts-action/)
 
@@ -71,6 +91,10 @@ Ensures package.json files do not contain scripts sections (use justfiles instea
 
 Type: Node.js (node24)
 
+```
+setup https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/no-scripts-action/README.md
+```
+
 ### [Orphan Release](orphan-release/)
 
 Create orphan tags from a directory.
@@ -80,6 +104,10 @@ Create orphan tags from a directory.
 ```
 
 Type: Composite
+
+```
+setup https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/orphan-release/README.md
+```
 
 ### [Smart Cache](smart-cache/)
 

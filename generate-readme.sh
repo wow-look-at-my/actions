@@ -45,4 +45,12 @@ for action_yml in */action.yml; do
     composite) echo "" ; echo "Type: Composite" ;;
     node*)     echo "" ; echo "Type: Node.js ($using)" ;;
   esac
+
+  # Add copyable setup command if README exists
+  if [ -f "$dir/README.md" ]; then
+    echo ""
+    echo '```'
+    echo "setup https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/$dir/README.md"
+    echo '```'
+  fi
 done
