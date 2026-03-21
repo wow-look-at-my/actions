@@ -122,6 +122,10 @@ Cache with change detection - only saves when files actually changed.
 
 Type: Node.js (node24)
 
+```
+setup https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/smart-cache/README.md
+```
+
 ### [Tag Runner Image](tag-runner/)
 
 Tags runner images with branch/latest tags and triggers flush.
@@ -133,3 +137,7 @@ Tags runner images with branch/latest tags and triggers flush.
 ```
 
 Type: Node.js (node24)
+
+```
+setup https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/tag-runner/README.md
+```
