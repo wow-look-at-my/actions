@@ -14,16 +14,16 @@ for action_yml in */action.yml; do
   dir=$(dirname "$action_yml")
   name=$(yq -r '.name' "$action_yml")
   desc=$(yq -r '.description' "$action_yml")
-  using=$(yq -r '.runs.using' "$action_yml")
 
   echo ""
   echo "### [$name]($dir/)"
   echo ""
-  echo "$desc."
-  echo ""
+  echo '```yml'
 
-  # Build usage block with required inputs
-  echo '```yaml'
+  echo "# $desc."
+  if [ -f "$dir/README.md" ]; then
+    echo "# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/$dir/README.md"
+  fi
   echo "- uses: wow-look-at-my/actions@${dir}#latest"
 
   # Get required inputs as newline-separated keys
@@ -39,10 +39,4 @@ for action_yml in */action.yml; do
   fi
 
   echo '```'
-
-  # Show type badge
-  case "$using" in
-    composite) echo "" ; echo "Type: Composite" ;;
-    node*)     echo "" ; echo "Type: Node.js ($using)" ;;
-  esac
 done
