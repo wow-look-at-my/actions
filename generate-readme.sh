@@ -49,6 +49,10 @@ for action_yml in */action.yml; do
   # Add copyable setup command
   echo ""
   echo '```'
-  echo "setup https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/$dir/README.md"
+  if [ -f "$dir/README.md" ]; then
+    echo "setup https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/$dir/README.md"
+  else
+    echo "setup https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/$dir/action.yml"
+  fi
   echo '```'
 done
