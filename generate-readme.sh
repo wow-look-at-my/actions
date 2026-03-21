@@ -8,24 +8,19 @@ cat <<'HEADER'
 Reusable GitHub Actions.
 
 ## Actions
-
-```
 HEADER
 
-first=true
 for action_yml in */action.yml; do
   dir=$(dirname "$action_yml")
   name=$(yq -r '.name' "$action_yml")
   desc=$(yq -r '.description' "$action_yml")
 
-  # Blank line between entries
-  if [ "$first" = true ]; then
-    first=false
-  else
-    echo ""
-  fi
+  echo ""
+  echo "### [$name]($dir/)"
+  echo ""
+  echo '```'
 
-  echo "# $name: $desc."
+  echo "# $desc."
   if [ -f "$dir/README.md" ]; then
     echo "# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/$dir/README.md"
   fi
@@ -42,6 +37,6 @@ for action_yml in */action.yml; do
       echo "    $key: # $desc_input"
     done <<< "$required_keys"
   fi
-done
 
-echo '```'
+  echo '```'
+done
