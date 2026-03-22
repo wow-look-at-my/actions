@@ -32,6 +32,15 @@ Reusable GitHub Actions.
     paths: # Directories to measure (newline or space separated)
 ```
 
+### [Download Executable Artifact](download-exe/)
+
+```yml
+# Download an artifact, optionally select/rename files, and set +x.
+- uses: wow-look-at-my/actions@download-exe#latest
+  with:
+    name: # Artifact name to download
+```
+
 ### [Download Release Binary](download-release-binary/)
 
 ```yml
