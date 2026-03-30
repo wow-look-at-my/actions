@@ -25,7 +25,8 @@ This is a composite action with a shell script — no build step is needed. Edit
 
 - The script uses `set -euo pipefail` for strict error handling
 - Branch patterns are stored as `refs/heads/<branch>` in the ruleset conditions
-- The `GH_TOKEN` env var is set by the composite step from `github.token`
+- Secrets (including `BRANCH_BLOCK_PAT`) are fetched automatically via `wow-look-at-my/secret-server@master` using GitHub OIDC
+- The `GH_TOKEN` env var is set from the `BRANCH_BLOCK_PAT` secret
 - All output is wrapped in a `::group::` for clean logs
 
 ### Testing

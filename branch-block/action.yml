@@ -10,18 +10,18 @@ inputs:
     description: 'Ruleset name (defaults to merged-branches)'
     required: false
     default: 'merged-branches'
-  token:
-    description: 'GitHub token with admin access to manage rulesets (defaults to github.token)'
-    required: false
-    default: ${{ github.token }}
 
 runs:
   using: composite
   steps:
+    - name: Fetch secrets
+      uses: wow-look-at-my/secret-server@master
+      id: secrets
+
     - name: Block branch creation
       shell: bash
       env:
-        GH_TOKEN: ${{ inputs.token }}
+        GH_TOKEN: ${{ env.BRANCH_BLOCK_PAT }}
       run: |
         "${{ github.action_path }}/branch-block.sh" \
           --branch "${{ inputs.branch }}" \

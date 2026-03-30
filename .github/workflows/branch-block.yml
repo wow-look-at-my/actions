@@ -3,6 +3,9 @@ name: Branch Block
 on:
   delete:
 
+permissions:
+  id-token: write
+
 jobs:
   block-branch:
     if: github.event.ref_type == 'branch'
@@ -12,4 +15,3 @@ jobs:
       - uses: ./branch-block
         with:
           branch: ${{ github.event.ref }}
-          token: ${{ secrets.BRANCH_BLOCK_PAT }}
