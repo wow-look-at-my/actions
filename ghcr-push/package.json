@@ -1,0 +1,15 @@
+{
+  "name": "ghcr-push",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@actions/core": "^2.0.2",
+    "@actions/exec": "^2.0.0",
+    "@actions/github": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.10",
+    "esbuild": "^0.27.2",
+    "typescript": "^5.9.3"
+  }
+}
