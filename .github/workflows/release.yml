@@ -144,10 +144,16 @@ jobs:
           done
         id: version
 
-      - name: Test bundle loads
+      - name: Validate JS files are loadable
+        working-directory: ${{ matrix.action }}
         run: |
-          main=$(yq '.runs.main' "${{ matrix.action }}/action.yml")
-          node -e "require('./${{ matrix.action }}/$main')" 2>/tmp/stderr || [ ! -s /tmp/stderr ]
+          for field in main pre post; do
+            file=$(yq ".runs.$field" action.yml)
+            if [ "$file" != "null" ] && [ -n "$file" ]; then
+              echo "Checking runs.$field: $file"
+              node -e "require('./$file')"
+            fi
+          done
 
       - name: Create orphan tag
         env:
