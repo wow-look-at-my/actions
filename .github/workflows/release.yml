@@ -144,14 +144,14 @@ jobs:
           done
         id: version
 
-      - name: Validate JS files are loadable
+      - name: Validate JS files are parseable
         working-directory: ${{ matrix.action }}
         run: |
           for field in main pre post; do
             file=$(yq ".runs.$field" action.yml)
             if [ "$file" != "null" ] && [ -n "$file" ]; then
               echo "Checking runs.$field: $file"
-              node -e "require('./$file')"
+              node --check "$file"
             fi
           done
 
