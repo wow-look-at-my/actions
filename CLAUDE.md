@@ -9,6 +9,7 @@ Each action lives in its own directory with an `action.yml` file:
 - `action-validator/` - Composite action (YAML only)
 - `branch-block/` - Composite action (shell script)
 - `download-release-binary/` - Node.js action (TypeScript compiled to JS)
+- `ghcr-push/` - Node.js action (TypeScript compiled to JS)
 - `multicmd/` - Composite action (YAML only)
 - `orphan-release/` - Composite action (shell script)
 - `smart-cache/` - Node.js action (TypeScript compiled to JS)

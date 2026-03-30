@@ -53,6 +53,17 @@ Reusable GitHub Actions.
     token: # GitHub token for API authentication (e.g. github.token)
 ```
 
+### [GHCR Push](ghcr-push/)
+
+```yml
+# Push container image to GHCR and prune old versions, keeping the last N tagged versions and their referenced untagged versions..
+- uses: wow-look-at-my/actions@ghcr-push#latest
+  with:
+    image: # Full image reference to push (e.g., ghcr.io/owner/package:tag)
+    token: # GitHub token with packages:write and packages:read permissions
+    keep: # Number of tagged versions to keep
+```
+
 ### [Multi-Command](multicmd/)
 
 ```yml
