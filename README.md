@@ -36,6 +36,7 @@ Reusable GitHub Actions.
 
 ```yml
 # Download an artifact, optionally select/rename files, and set +x.
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/download-exe/README.md
 - uses: wow-look-at-my/actions@download-exe#latest
   with:
     name: # Artifact name to download
@@ -80,6 +81,7 @@ Reusable GitHub Actions.
 
 ```yml
 # Cache with change detection - only saves when files actually changed.
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/smart-cache/README.md
 - uses: wow-look-at-my/actions@smart-cache#latest
   with:
     path: # Paths to cache (space-separated)
@@ -90,6 +92,7 @@ Reusable GitHub Actions.
 
 ```yml
 # Tags runner images with branch/latest tags and triggers flush.
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/tag-runner/README.md
 - uses: wow-look-at-my/actions@tag-runner#latest
   with:
     token: # GitHub token with packages:write and actions:write permissions
