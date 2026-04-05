@@ -173,6 +173,7 @@ async function run(): Promise<void> {
   const image = core.getInput("image", { required: true });
   const token = core.getInput("token", { required: true });
   const keepStr = core.getInput("keep", { required: true });
+  const push = core.getInput("push") !== "false";
   const prune = core.getInput("prune") !== "false";
 
   const keep = parseInt(keepStr, 10);
@@ -192,8 +193,12 @@ async function run(): Promise<void> {
   );
 
   // Push
-  core.info(`Pushing ${image}`);
-  await exec.exec("docker", ["push", image]);
+  if (push) {
+    core.info(`Pushing ${image}`);
+    await exec.exec("docker", ["push", image]);
+  } else {
+    core.info(`Skipping push (push=false)`);
+  }
 
   // Fetch all versions
   const octokit = github.getOctokit(token);

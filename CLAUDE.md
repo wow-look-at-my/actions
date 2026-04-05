@@ -10,6 +10,7 @@ Each action lives in its own directory with an `action.yml` file:
 - `branch-block/` - Composite action (shell script)
 - `download-release-binary/` - Node.js action (TypeScript compiled to JS)
 - `ghcr-push/` - Node.js action (TypeScript compiled to JS)
+- `go-packages/` - Composite action (builds Go binaries and publishes multi-arch scratch container images to GHCR)
 - `multicmd/` - Composite action (YAML only)
 - `orphan-release/` - Composite action (shell script)
 - `smart-cache/` - Node.js action (TypeScript compiled to JS)
