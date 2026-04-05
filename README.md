@@ -64,6 +64,35 @@ Reusable GitHub Actions.
     keep: # Number of tagged versions to keep
 ```
 
+### [GHCR Login](ghcr/steps/login/)
+
+```yml
+# Log in to GitHub Container Registry..
+- uses: wow-look-at-my/actions@ghcr/steps/login#latest
+  with:
+    token: # GitHub token with packages:write permission
+```
+
+### [GHCR Prune](ghcr/steps/prune/)
+
+```yml
+# Prune old container image versions from GHCR, keeping the last N tagged versions and their referenced untagged versions..
+- uses: wow-look-at-my/actions@ghcr/steps/prune#latest
+  with:
+    image: # Full image reference (e.g., ghcr.io/owner/package:tag)
+    token: # GitHub token with packages:write and packages:read permissions
+    keep: # Number of tagged versions to keep
+```
+
+### [GHCR Push](ghcr/steps/push/)
+
+```yml
+# Push a container image to GHCR..
+- uses: wow-look-at-my/actions@ghcr/steps/push#latest
+  with:
+    image: # Full image reference to push (e.g., ghcr.io/owner/package:tag)
+```
+
 ### [Go Packages](go-packages/)
 
 ```yml

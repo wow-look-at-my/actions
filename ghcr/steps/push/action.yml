@@ -1,0 +1,17 @@
+name: 'GHCR Push'
+version: 1
+description: Push a container image to GHCR.
+
+inputs:
+  image:
+    description: 'Full image reference to push (e.g., ghcr.io/owner/package:tag)'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Push image
+      shell: bash
+      run: |
+        echo "Pushing ${{ inputs.image }}"
+        docker push "${{ inputs.image }}"

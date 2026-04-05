@@ -173,7 +173,6 @@ async function run(): Promise<void> {
   const image = core.getInput("image", { required: true });
   const token = core.getInput("token", { required: true });
   const keepStr = core.getInput("keep", { required: true });
-  const push = core.getInput("push") !== "false";
   const prune = core.getInput("prune") !== "false";
 
   const keep = parseInt(keepStr, 10);
@@ -184,21 +183,6 @@ async function run(): Promise<void> {
   const { owner, packageName, tag } = parseImageRef(image);
   core.info(`Image: ghcr.io/${owner}/${packageName}:${tag}`);
   core.info(`Keeping last ${keep} tagged version(s), prune=${prune}`);
-
-  // Docker login
-  await exec.exec(
-    "docker",
-    ["login", "ghcr.io", "-u", "x-access-token", "--password-stdin"],
-    { input: Buffer.from(token) }
-  );
-
-  // Push
-  if (push) {
-    core.info(`Pushing ${image}`);
-    await exec.exec("docker", ["push", image]);
-  } else {
-    core.info(`Skipping push (push=false)`);
-  }
 
   // Fetch all versions
   const octokit = github.getOctokit(token);

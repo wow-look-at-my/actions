@@ -1,0 +1,22 @@
+name: 'GHCR Prune'
+version: 1
+description: Prune old container image versions from GHCR, keeping the last N tagged versions and their referenced untagged versions.
+
+inputs:
+  image:
+    description: 'Full image reference (e.g., ghcr.io/owner/package:tag)'
+    required: true
+  token:
+    description: 'GitHub token with packages:write and packages:read permissions'
+    required: true
+  keep:
+    description: 'Number of tagged versions to keep'
+    required: true
+  prune:
+    description: 'Whether to actually delete old versions (set to false for dry-run)'
+    required: false
+    default: 'true'
+
+runs:
+  using: node24
+  main: index.js

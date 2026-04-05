@@ -1,0 +1,17 @@
+name: 'GHCR Login'
+version: 1
+description: Log in to GitHub Container Registry.
+
+inputs:
+  token:
+    description: 'GitHub token with packages:write permission'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Login to GHCR
+      shell: bash
+      env:
+        TOKEN: ${{ inputs.token }}
+      run: echo "$TOKEN" | docker login ghcr.io -u x-access-token --password-stdin

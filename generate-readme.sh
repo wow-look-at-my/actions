@@ -10,7 +10,7 @@ Reusable GitHub Actions.
 ## Actions
 HEADER
 
-for action_yml in */action.yml; do
+while IFS= read -r action_yml; do
   dir=$(dirname "$action_yml")
   name=$(yq -r '.name' "$action_yml")
   desc=$(yq -r '.description' "$action_yml")
@@ -39,4 +39,4 @@ for action_yml in */action.yml; do
   fi
 
   echo '```'
-done
+done < <(find . -name action.yml -not -path './.github/*' -printf '%P\n' | sort)

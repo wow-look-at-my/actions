@@ -12,15 +12,25 @@ inputs:
   keep:
     description: 'Number of tagged versions to keep'
     required: true
-  push:
-    description: 'Whether to push the image (set to false to skip push and only prune)'
-    required: false
-    default: 'true'
   prune:
     description: 'Whether to actually delete old versions (set to false for dry-run)'
     required: false
     default: 'true'
 
 runs:
-  using: node24
-  main: index.js
+  using: composite
+  steps:
+    - uses: wow-look-at-my/actions@ghcr/steps/login#latest
+      with:
+        token: ${{ inputs.token }}
+
+    - uses: wow-look-at-my/actions@ghcr/steps/push#latest
+      with:
+        image: ${{ inputs.image }}
+
+    - uses: wow-look-at-my/actions@ghcr/steps/prune#latest
+      with:
+        image: ${{ inputs.image }}
+        token: ${{ inputs.token }}
+        keep: ${{ inputs.keep }}
+        prune: ${{ inputs.prune }}
