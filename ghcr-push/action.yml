@@ -1,5 +1,5 @@
 name: GHCR Push
-version: 2
+version: 1
 description: Push container image to GHCR and prune old versions, keeping the last N tagged versions and their referenced untagged versions.
 
 inputs:

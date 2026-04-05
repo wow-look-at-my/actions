@@ -142,7 +142,7 @@ runs:
             cp "$build_dir/${name}_linux_${arch}" "$ctx/$arch/binary"
           done
 
-          # Build and push multi-arch image
+          # Build and push multi-arch image (buildx --push is required for multi-platform)
           docker buildx build \
             --platform "$platforms" \
             --tag "$image" \
@@ -156,11 +156,10 @@ runs:
         done
 
     - name: Prune old versions
-      if: inputs.prune == 'true'
       uses: wow-look-at-my/actions@ghcr-push#latest
       with:
         image: '${{ inputs.image }}:${{ inputs.tag }}'
         token: ${{ github.token }}
         keep: ${{ inputs.keep }}
         push: 'false'
-        prune: 'true'
+        prune: ${{ inputs.prune }}

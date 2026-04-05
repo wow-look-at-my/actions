@@ -32,7 +32,7 @@ Runs `pnpm install`, `pnpm tsc`, and `pnpm esbuild`.
 - Recursively inspects sub-manifests for multi-arch images
 - If manifest inspection fails, conservatively skips untagged cleanup
 - Individual deletion failures are logged as warnings, not fatal errors
-- `push: false` skips the `docker push` step (useful when called only for pruning, e.g. from `go-packages`)
+- `push: false` skips the `docker push` step — still does docker login and pruning (useful when the image was already pushed, e.g. by `docker buildx build --push`)
 - `prune: false` enables dry-run mode (logs what would be deleted)
 
 ### Testing
