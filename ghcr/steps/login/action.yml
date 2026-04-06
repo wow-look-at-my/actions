@@ -9,4 +9,4 @@ runs:
 
     - name: Login to GHCR
       shell: bash
-      run: echo "$GHCR_TOKEN" | docker login ghcr.io -u x-access-token --password-stdin
+      run: echo "$GHCR_WRITE_TOKEN" | docker login ghcr.io -u x-access-token --password-stdin
