@@ -171,9 +171,13 @@ async function deleteVersion(
 
 async function run(): Promise<void> {
   const image = core.getInput("image", { required: true });
-  const token = core.getInput("token", { required: true });
   const keepStr = core.getInput("keep", { required: true });
   const prune = core.getInput("prune") !== "false";
+
+  const token = process.env.GHCR_WRITE_TOKEN;
+  if (!token) {
+    throw new Error("GHCR_WRITE_TOKEN environment variable is not set. Run ghcr/steps/login first.");
+  }
 
   const keep = parseInt(keepStr, 10);
   if (!Number.isFinite(keep) || keep < 1) {
@@ -183,17 +187,6 @@ async function run(): Promise<void> {
   const { owner, packageName, tag } = parseImageRef(image);
   core.info(`Image: ghcr.io/${owner}/${packageName}:${tag}`);
   core.info(`Keeping last ${keep} tagged version(s), prune=${prune}`);
-
-  // Docker login
-  await exec.exec(
-    "docker",
-    ["login", "ghcr.io", "-u", "x-access-token", "--password-stdin"],
-    { input: Buffer.from(token) }
-  );
-
-  // Push
-  core.info(`Pushing ${image}`);
-  await exec.exec("docker", ["push", image]);
 
   // Fetch all versions
   const octokit = github.getOctokit(token);

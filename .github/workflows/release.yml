@@ -78,14 +78,12 @@ jobs:
       - id: find
         run: |
           node() {
-            for d in */action.yml; do
-              n=$(dirname "$d")
+            find . -name action.yml -not -path './.github/*' -printf '%h\n' | sed 's|^\./||' | while read -r n; do
               [ -f "$n/package.json" ] && echo "$n"
             done
           }
           composite() {
-            for d in */action.yml; do
-              n=$(dirname "$d")
+            find . -name action.yml -not -path './.github/*' -printf '%h\n' | sed 's|^\./||' | while read -r n; do
               [ ! -f "$n/package.json" ] && echo "$n"
             done
           }
