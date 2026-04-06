@@ -46,8 +46,6 @@ runs:
       uses: docker/setup-buildx-action@v3
 
     - uses: wow-look-at-my/actions@ghcr/steps/login#latest
-      with:
-        token: ${{ github.token }}
 
     - name: Build and push images
       shell: bash
@@ -155,6 +153,5 @@ runs:
     - uses: wow-look-at-my/actions@ghcr/steps/prune#latest
       with:
         image: '${{ inputs.image }}:${{ inputs.tag }}'
-        token: ${{ github.token }}
         keep: ${{ inputs.keep }}
         prune: ${{ inputs.prune }}

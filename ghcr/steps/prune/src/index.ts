@@ -171,9 +171,13 @@ async function deleteVersion(
 
 async function run(): Promise<void> {
   const image = core.getInput("image", { required: true });
-  const token = core.getInput("token", { required: true });
   const keepStr = core.getInput("keep", { required: true });
   const prune = core.getInput("prune") !== "false";
+
+  const token = process.env.GHCR_TOKEN;
+  if (!token) {
+    throw new Error("GHCR_TOKEN environment variable is not set. Run ghcr/steps/login first.");
+  }
 
   const keep = parseInt(keepStr, 10);
   if (!Number.isFinite(keep) || keep < 1) {

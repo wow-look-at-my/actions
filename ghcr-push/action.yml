@@ -6,9 +6,6 @@ inputs:
   image:
     description: 'Full image reference to push (e.g., ghcr.io/owner/package:tag)'
     required: true
-  token:
-    description: 'GitHub token with packages:write and packages:read permissions'
-    required: true
   keep:
     description: 'Number of tagged versions to keep'
     required: true
@@ -21,8 +18,6 @@ runs:
   using: composite
   steps:
     - uses: wow-look-at-my/actions@ghcr/steps/login#latest
-      with:
-        token: ${{ inputs.token }}
 
     - uses: wow-look-at-my/actions@ghcr/steps/push#latest
       with:
@@ -31,6 +26,5 @@ runs:
     - uses: wow-look-at-my/actions@ghcr/steps/prune#latest
       with:
         image: ${{ inputs.image }}
-        token: ${{ inputs.token }}
         keep: ${{ inputs.keep }}
         prune: ${{ inputs.prune }}

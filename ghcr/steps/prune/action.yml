@@ -6,9 +6,6 @@ inputs:
   image:
     description: 'Full image reference (e.g., ghcr.io/owner/package:tag)'
     required: true
-  token:
-    description: 'GitHub token with packages:write and packages:read permissions'
-    required: true
   keep:
     description: 'Number of tagged versions to keep'
     required: true

@@ -60,17 +60,14 @@ Reusable GitHub Actions.
 - uses: wow-look-at-my/actions@ghcr-push#latest
   with:
     image: # Full image reference to push (e.g., ghcr.io/owner/package:tag)
-    token: # GitHub token with packages:write and packages:read permissions
     keep: # Number of tagged versions to keep
 ```
 
 ### [GHCR Login](ghcr/steps/login/)
 
 ```yml
-# Log in to GitHub Container Registry..
+# Log in to GitHub Container Registry using secrets from secret-server..
 - uses: wow-look-at-my/actions@ghcr/steps/login#latest
-  with:
-    token: # GitHub token with packages:write permission
 ```
 
 ### [GHCR Prune](ghcr/steps/prune/)
@@ -80,7 +77,6 @@ Reusable GitHub Actions.
 - uses: wow-look-at-my/actions@ghcr/steps/prune#latest
   with:
     image: # Full image reference (e.g., ghcr.io/owner/package:tag)
-    token: # GitHub token with packages:write and packages:read permissions
     keep: # Number of tagged versions to keep
 ```
 
