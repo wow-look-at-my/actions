@@ -120,6 +120,14 @@ Reusable GitHub Actions.
 - uses: wow-look-at-my/actions@orphan-release#latest
 ```
 
+### [Fetch Secrets](secret-server/)
+
+```yml
+# Fetch secrets from a self-hosted secret server using GitHub Actions OIDC.
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/secret-server/README.md
+- uses: wow-look-at-my/actions@secret-server#latest
+```
+
 ### [Smart Cache](smart-cache/)
 
 ```yml
