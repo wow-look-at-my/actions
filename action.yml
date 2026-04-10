@@ -1,0 +1,157 @@
+name: Go Packages
+version: 1
+description: Build Go binaries with go-toolchain and publish multi-arch scratch container images to GHCR.
+
+inputs:
+  image:
+    description: 'Base image name (e.g., ghcr.io/owner/name)'
+    required: false
+    default: 'ghcr.io/${{ github.repository }}'
+  tag:
+    description: 'Image tag'
+    required: false
+    default: 'latest'
+  keep:
+    description: 'Number of tagged versions to keep when pruning'
+    required: false
+    default: '10'
+  prune:
+    description: 'Whether to prune old versions'
+    required: false
+    default: 'true'
+  working-directory:
+    description: 'Working directory for the build'
+    required: false
+    default: '.'
+  binary:
+    description: 'Binary name to package (auto-detected from build/ if omitted)'
+    required: false
+    default: ''
+  skip-build:
+    description: 'Skip the go-toolchain build step (use when build already ran)'
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Build with go-toolchain
+      if: inputs.skip-build != 'true'
+      uses: wow-look-at-my/go-toolchain@v1
+      with:
+        os: linux
+        working-directory: ${{ inputs.working-directory }}
+
+    - name: Setup Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - uses: wow-look-at-my/actions@ghcr/steps/login#latest
+
+    - name: Build and push images
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        INPUT_IMAGE: ${{ inputs.image }}
+        INPUT_TAG: ${{ inputs.tag }}
+        INPUT_BINARY: ${{ inputs.binary }}
+      run: |
+        set -euo pipefail
+
+        build_dir="build"
+        if [ ! -d "$build_dir" ]; then
+          echo "::error::build/ directory not found in $(pwd)"
+          exit 1
+        fi
+
+        # Discover binaries: find real files (not symlinks) matching *_linux_*
+        declare -A binaries  # binary_name -> space-separated archs
+        for f in "$build_dir"/*_linux_*; do
+          [ -f "$f" ] || continue
+          [ -L "$f" ] && continue
+          base=$(basename "$f")
+          # Extract name and arch from pattern: name_linux_arch
+          name="${base%_linux_*}"
+          arch="${base##*_linux_}"
+          binaries[$name]+="${arch} "
+        done
+
+        if [ ${#binaries[@]} -eq 0 ]; then
+          echo "::error::No Linux binaries found in $build_dir/"
+          exit 1
+        fi
+
+        # Filter to requested binary if specified
+        if [ -n "$INPUT_BINARY" ]; then
+          if [ -z "${binaries[$INPUT_BINARY]+x}" ]; then
+            echo "::error::Binary '$INPUT_BINARY' not found. Available: ${!binaries[*]}"
+            exit 1
+          fi
+          archs="${binaries[$INPUT_BINARY]}"
+          unset binaries
+          declare -A binaries
+          binaries[$INPUT_BINARY]="$archs"
+        fi
+
+        echo "Discovered binaries:"
+        for name in "${!binaries[@]}"; do
+          echo "  $name: ${binaries[$name]}"
+        done
+
+        multi_binary=false
+        if [ ${#binaries[@]} -gt 1 ]; then
+          multi_binary=true
+        fi
+
+        for name in "${!binaries[@]}"; do
+          # Determine image name
+          if [ "$multi_binary" = true ]; then
+            image="${INPUT_IMAGE}/${name}:${INPUT_TAG}"
+          else
+            image="${INPUT_IMAGE}:${INPUT_TAG}"
+          fi
+
+          read -ra arch_list <<< "${binaries[$name]}"
+          platforms=""
+          for arch in "${arch_list[@]}"; do
+            platforms+="linux/${arch},"
+          done
+          platforms="${platforms%,}"
+
+          echo "==> Building $image for $platforms"
+
+          # Create a temp directory for the docker context
+          ctx=$(mktemp -d)
+          trap "rm -rf $ctx" EXIT
+
+          # Generate Dockerfile
+          cat > "$ctx/Dockerfile" <<'DOCKERFILE'
+        FROM scratch
+        ARG TARGETARCH
+        COPY ${TARGETARCH}/binary /app
+        ENTRYPOINT ["/app"]
+        DOCKERFILE
+
+          # Copy binaries into arch-specific dirs
+          for arch in "${arch_list[@]}"; do
+            mkdir -p "$ctx/$arch"
+            cp "$build_dir/${name}_linux_${arch}" "$ctx/$arch/binary"
+          done
+
+          # Build and push multi-arch image (buildx --push is required for multi-platform)
+          docker buildx build \
+            --platform "$platforms" \
+            --tag "$image" \
+            --push \
+            "$ctx"
+
+          rm -rf "$ctx"
+          trap - EXIT
+
+          echo "==> Pushed $image"
+        done
+
+    - uses: wow-look-at-my/actions@ghcr/steps/prune#latest
+      with:
+        image: '${{ inputs.image }}:${{ inputs.tag }}'
+        keep: ${{ inputs.keep }}
+        prune: ${{ inputs.prune }}
