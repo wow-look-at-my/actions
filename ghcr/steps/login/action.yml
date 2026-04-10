@@ -5,7 +5,7 @@ description: Log in to GitHub Container Registry using secrets from secret-serve
 runs:
   using: composite
   steps:
-    - uses: wow-look-at-my/secret-server@master
+    - uses: wow-look-at-my/actions@secret-server#latest
 
     - name: Login to GHCR
       shell: bash
