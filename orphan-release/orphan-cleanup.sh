@@ -18,9 +18,29 @@ remote_branches=$(git ls-remote --heads origin | awk '{print $2}' | sed 's|refs/
 
 # Find all branch tags and check if branch still exists
 for tag in $(git tag -l "*/*#*"); do
-	# Extract branch from tag (everything between first / and last #)
-	# e.g., "action/feature-branch#1" -> "feature-branch"
-	tag_branch=$(echo "$tag" | sed -E 's|^[^/]+/([^#]+)#.*|\1|')
+	# Get everything before the #
+	prefix="${tag%#*}"
+
+	# If the entire prefix is an action directory, it's not a branch tag — skip it.
+	# e.g., "ghcr/steps/push#latest" is the action "ghcr/steps/push", not a branch tag.
+	if [ -f "$prefix/action.yml" ]; then
+		continue
+	fi
+
+	# Walk up the path to find the action root; the remainder is the branch name.
+	# e.g., "ghcr/steps/push/feature-branch#1" -> action "ghcr/steps/push", branch "feature-branch"
+	tag_branch=""
+	check="$prefix"
+	while [[ "$check" == */* ]]; do
+		check="${check%/*}"
+		if [ -f "$check/action.yml" ]; then
+			tag_branch="${prefix#"$check"/}"
+			break
+		fi
+	done
+
+	# If no action root found, skip
+	[ -z "$tag_branch" ] && continue
 
 	# Skip current branch
 	if [ "$tag_branch" = "$current_branch" ]; then
