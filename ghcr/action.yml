@@ -1,0 +1,64 @@
+name: GHCR
+version: 1
+description: Build, push, and prune container images on GHCR.
+
+inputs:
+  login:
+    description: 'Log in to GHCR via secret-server OIDC'
+    required: false
+    default: 'true'
+  build:
+    description: 'Build the image with docker buildx'
+    required: false
+    default: 'true'
+  push:
+    description: 'Push the image to GHCR and prune old versions'
+    required: false
+    default: 'true'
+  image:
+    description: 'Full image reference (e.g., ghcr.io/owner/package:tag)'
+    required: false
+  dockerfile:
+    description: 'Path to Dockerfile'
+    required: false
+    default: 'Dockerfile'
+  context:
+    description: 'Docker build context'
+    required: false
+    default: '.'
+  keep:
+    description: 'Number of tagged versions to keep when pruning'
+    required: false
+    default: '10'
+
+runs:
+  using: composite
+  steps:
+    - uses: wow-look-at-my/actions@secret-server#latest
+      if: inputs.login == 'true'
+
+    - name: Login to GHCR
+      if: inputs.login == 'true'
+      shell: bash
+      run: echo "$GHCR_WRITE_TOKEN" | docker login ghcr.io -u x-access-token --password-stdin
+
+    - name: Build
+      if: inputs.build == 'true'
+      shell: bash
+      run: |
+        docker buildx build \
+          -f "${{ inputs.dockerfile }}" \
+          -t "${{ inputs.image }}" \
+          ${{ inputs.push == 'true' && '--push' || '' }} \
+          "${{ inputs.context }}"
+
+    - name: Push
+      if: inputs.build != 'true' && inputs.push == 'true'
+      shell: bash
+      run: docker push "${{ inputs.image }}"
+
+    - uses: wow-look-at-my/actions@ghcr-prune#latest
+      if: inputs.push == 'true'
+      with:
+        image: ${{ inputs.image }}
+        keep: ${{ inputs.keep }}
