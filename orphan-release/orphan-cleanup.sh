@@ -22,13 +22,13 @@ for tag in $(git tag -l "*/*#*"); do
 	prefix="${tag%#*}"
 
 	# If the entire prefix is an action directory, it's not a branch tag — skip it.
-	# e.g., "ghcr/steps/push#latest" is the action "ghcr/steps/push", not a branch tag.
+	# e.g., "multicmd/fix-typo#latest" — prefix "multicmd/fix-typo" is checked, then walked up.
 	if [ -f "$prefix/action.yml" ]; then
 		continue
 	fi
 
 	# Walk up the path to find the action root; the remainder is the branch name.
-	# e.g., "ghcr/steps/push/feature-branch#1" -> action "ghcr/steps/push", branch "feature-branch"
+	# e.g., "multicmd/feature-branch#1" -> action "multicmd", branch "feature-branch"
 	tag_branch=""
 	check="$prefix"
 	while [[ "$check" == */* ]]; do
