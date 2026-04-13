@@ -12,7 +12,6 @@ Each action lives in its own directory with an `action.yml` file:
 - `ghcr-login/` - Composite action (docker login to GHCR via secret-server OIDC)
 - `ghcr-prune/` - Node.js action (prune old GHCR package versions)
 - `ghcr-push/` - Composite action (wraps ghcr-login → docker push → ghcr-prune)
-- `docker-publish/` - Composite action (builds a Docker image and pushes to GHCR via ghcr-login → buildx build+push → ghcr-prune)
 - `go-packages/` - Composite action (builds Go binaries and publishes multi-arch scratch container images to GHCR)
 - `multicmd/` - Composite action (YAML only)
 - `orphan-release/` - Composite action (shell script)
