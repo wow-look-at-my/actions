@@ -11,22 +11,22 @@ inputs:
     description: 'Build the image with docker buildx'
     required: false
     default: 'true'
+  build_dockerfile:
+    description: 'Path to Dockerfile'
+    required: false
+    default: 'Dockerfile'
+  build_context:
+    description: 'Docker build context'
+    required: false
+    default: '.'
   push:
     description: 'Push the image to GHCR and prune old versions'
     required: false
     default: 'true'
-  image:
+  push_image:
     description: 'Full image reference (e.g., ghcr.io/owner/package:tag)'
     required: false
-  dockerfile:
-    description: 'Path to Dockerfile'
-    required: false
-    default: 'Dockerfile'
-  context:
-    description: 'Docker build context'
-    required: false
-    default: '.'
-  keep:
+  push_keep:
     description: 'Number of tagged versions to keep when pruning'
     required: false
     default: '10'
@@ -47,18 +47,18 @@ runs:
       shell: bash
       run: |
         docker buildx build \
-          -f "${{ inputs.dockerfile }}" \
-          -t "${{ inputs.image }}" \
+          -f "${{ inputs.build_dockerfile }}" \
+          -t "${{ inputs.push_image }}" \
           ${{ inputs.push == 'true' && '--push' || '' }} \
-          "${{ inputs.context }}"
+          "${{ inputs.build_context }}"
 
     - name: Push
       if: inputs.build != 'true' && inputs.push == 'true'
       shell: bash
-      run: docker push "${{ inputs.image }}"
+      run: docker push "${{ inputs.push_image }}"
 
     - uses: wow-look-at-my/actions@ghcr-prune#latest
       if: inputs.push == 'true'
       with:
-        image: ${{ inputs.image }}
-        keep: ${{ inputs.keep }}
+        image: ${{ inputs.push_image }}
+        keep: ${{ inputs.push_keep }}
