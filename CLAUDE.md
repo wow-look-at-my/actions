@@ -4,15 +4,14 @@ This repository contains reusable GitHub Actions.
 
 ## Structure
 
-Each action lives in its own directory with an `action.yml` file (may be nested):
+Each action lives in its own directory with an `action.yml` file:
 
 - `action-validator/` - Composite action (YAML only)
 - `branch-block/` - Composite action (shell script)
 - `download-release-binary/` - Node.js action (TypeScript compiled to JS)
-- `ghcr-push/` - Composite action (wraps ghcr/steps/login → push → prune)
-- `ghcr/steps/login/` - Composite action (docker login to GHCR)
-- `ghcr/steps/push/` - Composite action (docker push)
-- `ghcr/steps/prune/` - Node.js action (prune old GHCR package versions)
+- `ghcr-login/` - Composite action (docker login to GHCR via secret-server OIDC)
+- `ghcr-prune/` - Node.js action (prune old GHCR package versions)
+- `ghcr-push/` - Composite action (wraps ghcr-login → docker push → ghcr-prune)
 - `go-packages/` - Composite action (builds Go binaries and publishes multi-arch scratch container images to GHCR)
 - `multicmd/` - Composite action (YAML only)
 - `orphan-release/` - Composite action (shell script)

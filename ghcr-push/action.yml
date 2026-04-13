@@ -17,13 +17,13 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: wow-look-at-my/actions@ghcr/steps/login#latest
+    - uses: wow-look-at-my/actions@ghcr-login#latest
 
-    - uses: wow-look-at-my/actions@ghcr/steps/push#latest
-      with:
-        image: ${{ inputs.image }}
+    - name: Push image
+      shell: bash
+      run: docker push "${{ inputs.image }}"
 
-    - uses: wow-look-at-my/actions@ghcr/steps/prune#latest
+    - uses: wow-look-at-my/actions@ghcr-prune#latest
       with:
         image: ${{ inputs.image }}
         keep: ${{ inputs.keep }}

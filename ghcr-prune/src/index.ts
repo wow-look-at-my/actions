@@ -176,7 +176,7 @@ async function run(): Promise<void> {
 
   const token = process.env.GHCR_WRITE_TOKEN;
   if (!token) {
-    throw new Error("GHCR_WRITE_TOKEN environment variable is not set. Run ghcr/steps/login first.");
+    throw new Error("GHCR_WRITE_TOKEN environment variable is not set. Run ghcr-login first.");
   }
 
   const keep = parseInt(keepStr, 10);
