@@ -32,6 +32,16 @@ Reusable GitHub Actions.
     paths: # Directories to measure (newline or space separated)
 ```
 
+### [Docker Publish](docker-publish/)
+
+```yml
+# Build a Docker image and push it to GHCR, then prune old versions..
+- uses: wow-look-at-my/actions@docker-publish#latest
+  with:
+    dockerfile: # Path to the Dockerfile
+    image: # Full image name without tag (e.g., ghcr.io/owner/name)
+```
+
 ### [Download Executable Artifact](download-exe/)
 
 ```yml
