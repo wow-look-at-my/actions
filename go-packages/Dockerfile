@@ -1,0 +1,4 @@
+FROM scratch
+ARG TARGETARCH
+COPY ${TARGETARCH}/binary /app
+ENTRYPOINT ["/app"]
