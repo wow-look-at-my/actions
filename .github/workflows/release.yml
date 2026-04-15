@@ -43,6 +43,24 @@ jobs:
         run: just build
       - uses: ./no-scripts-action
 
+  test-cache-rg:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install rg via cache-rg
+        id: install
+        uses: ./cache-rg
+      - name: Verify rg works and is on PATH at the advertised location
+        run: |
+          set -euo pipefail
+          rg --version
+          actual="$(command -v rg)"
+          expected="${{ steps.install.outputs.path }}"
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::rg on PATH ($actual) does not match advertised path ($expected)"
+            exit 1
+          fi
+
   validate-slugs:
     runs-on: ubuntu-latest
     steps:
