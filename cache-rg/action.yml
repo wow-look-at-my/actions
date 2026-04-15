@@ -1,0 +1,65 @@
+name: Cache rg
+version: 1
+description: Install ripgrep from apt with the binary cached between runs for fast restores
+
+inputs:
+  version-tag:
+    description: 'Cache version tag; bump to invalidate all cached binaries'
+    required: false
+    default: 'v1'
+
+outputs:
+  cache-hit:
+    description: 'Whether the rg binary was restored from cache'
+    value: ${{ steps.cache.outputs.cache-hit }}
+  path:
+    description: 'Absolute path to the rg binary'
+    value: ${{ steps.install.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Require Linux
+      if: runner.os != 'Linux'
+      shell: bash
+      run: |
+        echo "::error::cache-rg only supports Linux (runner.os=${{ runner.os }})"
+        exit 1
+
+    - name: Restore rg binary from cache
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.local/bin/rg
+        key: cache-rg-${{ env.ImageOS || runner.os }}-${{ runner.arch }}-${{ inputs.version-tag }}
+
+    - name: Download and extract rg from apt
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        workdir="$(mktemp -d)"
+        trap 'rm -rf "$workdir"' EXIT
+        cd "$workdir"
+
+        # Try downloading with the existing apt index; refresh it only if that
+        # fails (the runner's index may be stale vs. the mirror).
+        if ! apt-get download ripgrep 2>/dev/null; then
+          echo "apt-get download failed; refreshing package index"
+          sudo apt-get update -qq
+          apt-get download ripgrep
+        fi
+
+        dpkg-deb -x ripgrep_*.deb extracted
+        mkdir -p "$HOME/.local/bin"
+        install -m 0755 extracted/usr/bin/rg "$HOME/.local/bin/rg"
+
+    - name: Expose rg on PATH
+      id: install
+      shell: bash
+      run: |
+        set -euo pipefail
+        chmod +x "$HOME/.local/bin/rg"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        echo "path=$HOME/.local/bin/rg" >> "$GITHUB_OUTPUT"
+        "$HOME/.local/bin/rg" --version
