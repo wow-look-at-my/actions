@@ -27,21 +27,19 @@ runs:
         path: /tmp/cache-rg/ripgrep.deb
         key: cache-rg-v1
 
-    - name: Download ripgrep .deb
-      if: steps.cache.outputs.cache-hit != 'true'
-      shell: bash
-      run: |
-        set -euo pipefail
-        mkdir -p /tmp/cache-rg
-        cd /tmp/cache-rg
-        apt-get download ripgrep
-        mv ripgrep_*.deb ripgrep.deb
-
     - name: Install rg
       id: install
       shell: bash
+      env:
+        CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
       run: |
         set -euo pipefail
+        if [ "$CACHE_HIT" != "true" ]; then
+          mkdir -p /tmp/cache-rg
+          cd /tmp/cache-rg
+          apt-get download ripgrep
+          mv ripgrep_*.deb ripgrep.deb
+        fi
         mkdir -p "$HOME/.local/bin"
         tmpdir="$(mktemp -d)"
         trap 'rm -rf "$tmpdir"' EXIT

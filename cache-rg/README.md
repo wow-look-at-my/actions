@@ -5,9 +5,7 @@ A composite GitHub Action that installs [ripgrep](https://github.com/BurntSushi/
 ## How It Works
 
 1. **Cache restore** — Looks up `/tmp/cache-rg/ripgrep.deb` under a fixed key.
-2. **Download on miss** — `apt-get download ripgrep` fetches the `.deb` (~1 MB). No packages are installed and no postinst scripts are run.
-3. **Extract** — `dpkg-deb -x` unpacks the `.deb` into a temp dir, and `usr/bin/rg` is copied to `~/.local/bin/rg`. Runs every time, cache hit or miss; takes well under a second.
-4. **PATH** — `~/.local/bin` is added to `GITHUB_PATH` so later steps can call `rg` directly.
+2. **Install** — On cache miss, `apt-get download ripgrep` fetches the `.deb` (~1 MB, no install, no postinst scripts). Then every run: `dpkg-deb -x` unpacks the `.deb` into a temp dir, `usr/bin/rg` is copied to `~/.local/bin/rg`, and `~/.local/bin` is added to `GITHUB_PATH` so later steps can call `rg` directly.
 
 Only the `rg` binary is installed. Its runtime deps (`libc6`, `libgcc-s1`, `libpcre2-8-0`) are preinstalled on `ubuntu-latest`, so no extra files are needed.
 
