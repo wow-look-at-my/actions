@@ -1,65 +1,52 @@
 name: Cache rg
 version: 1
-description: Install ripgrep from apt with the binary cached between runs for fast restores
-
-inputs:
-  version-tag:
-    description: 'Cache version tag; bump to invalidate all cached binaries'
-    required: false
-    default: 'v1'
+description: Install ripgrep from apt with the .deb cached between runs (ubuntu-latest only)
 
 outputs:
   cache-hit:
-    description: 'Whether the rg binary was restored from cache'
+    description: 'Whether the ripgrep .deb was restored from cache'
     value: ${{ steps.cache.outputs.cache-hit }}
   path:
-    description: 'Absolute path to the rg binary'
+    description: 'Absolute path to the installed rg binary'
     value: ${{ steps.install.outputs.path }}
 
 runs:
   using: composite
   steps:
-    - name: Require Linux
-      if: runner.os != 'Linux'
+    - name: Require ubuntu-latest (Linux/X64)
+      if: runner.os != 'Linux' || runner.arch != 'X64'
       shell: bash
       run: |
-        echo "::error::cache-rg only supports Linux (runner.os=${{ runner.os }})"
+        echo "::error::cache-rg only supports ubuntu-latest runners (Linux/X64); got ${{ runner.os }}/${{ runner.arch }}"
         exit 1
 
-    - name: Restore rg binary from cache
+    - name: Restore ripgrep .deb from cache
       id: cache
       uses: actions/cache@v4
       with:
-        path: ~/.local/bin/rg
-        key: cache-rg-${{ env.ImageOS || runner.os }}-${{ runner.arch }}-${{ inputs.version-tag }}
+        path: /tmp/cache-rg/ripgrep.deb
+        key: cache-rg-v1
 
-    - name: Download and extract rg from apt
+    - name: Download ripgrep .deb
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
       run: |
         set -euo pipefail
-        workdir="$(mktemp -d)"
-        trap 'rm -rf "$workdir"' EXIT
-        cd "$workdir"
+        mkdir -p /tmp/cache-rg
+        cd /tmp/cache-rg
+        apt-get download ripgrep
+        mv ripgrep_*.deb ripgrep.deb
 
-        # Try downloading with the existing apt index; refresh it only if that
-        # fails (the runner's index may be stale vs. the mirror).
-        if ! apt-get download ripgrep 2>/dev/null; then
-          echo "apt-get download failed; refreshing package index"
-          sudo apt-get update -qq
-          apt-get download ripgrep
-        fi
-
-        dpkg-deb -x ripgrep_*.deb extracted
-        mkdir -p "$HOME/.local/bin"
-        install -m 0755 extracted/usr/bin/rg "$HOME/.local/bin/rg"
-
-    - name: Expose rg on PATH
+    - name: Install rg
       id: install
       shell: bash
       run: |
         set -euo pipefail
-        chmod +x "$HOME/.local/bin/rg"
+        mkdir -p "$HOME/.local/bin"
+        tmpdir="$(mktemp -d)"
+        trap 'rm -rf "$tmpdir"' EXIT
+        dpkg-deb -x /tmp/cache-rg/ripgrep.deb "$tmpdir"
+        install -m 0755 "$tmpdir/usr/bin/rg" "$HOME/.local/bin/rg"
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
         echo "path=$HOME/.local/bin/rg" >> "$GITHUB_OUTPUT"
         "$HOME/.local/bin/rg" --version

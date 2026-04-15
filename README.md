@@ -25,7 +25,7 @@ Reusable GitHub Actions.
 ### [Cache rg](cache-rg/)
 
 ```yml
-# Install ripgrep from apt with the binary cached between runs for fast restores.
+# Install ripgrep from apt with the .deb cached between runs (ubuntu-latest only).
 # Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/cache-rg/README.md
 - uses: wow-look-at-my/actions@cache-rg#latest
 ```
