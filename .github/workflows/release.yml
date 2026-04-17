@@ -43,6 +43,12 @@ jobs:
         run: just build
       - uses: ./no-scripts-action
 
+  test-cache-rg:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./cache-rg/test
+
   validate-slugs:
     runs-on: ubuntu-latest
     steps:
@@ -77,13 +83,14 @@ jobs:
       - uses: actions/checkout@v4
       - id: find
         run: |
+          # Skip */test/* — those are dogfood harnesses invoked from CI, not released actions.
           node() {
-            find . -name action.yml -not -path './.github/*' -printf '%h\n' | sed 's|^\./||' | while read -r n; do
+            find . -name action.yml -not -path './.github/*' -not -path '*/test/*' -printf '%h\n' | sed 's|^\./||' | while read -r n; do
               [ -f "$n/package.json" ] && echo "$n"
             done
           }
           composite() {
-            find . -name action.yml -not -path './.github/*' -printf '%h\n' | sed 's|^\./||' | while read -r n; do
+            find . -name action.yml -not -path './.github/*' -not -path '*/test/*' -printf '%h\n' | sed 's|^\./||' | while read -r n; do
               [ ! -f "$n/package.json" ] && echo "$n"
             done
           }

@@ -39,4 +39,4 @@ while IFS= read -r action_yml; do
   fi
 
   echo '```'
-done < <(find . -name action.yml -not -path './.github/*' -printf '%P\n' | sort)
+done < <(find . -name action.yml -not -path './.github/*' -not -path '*/test/*' -printf '%P\n' | sort)
