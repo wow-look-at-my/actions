@@ -3,6 +3,10 @@ version: 1
 description: Build Go binaries with go-toolchain and publish multi-arch scratch container images to GHCR.
 
 inputs:
+  token:
+    description: 'Token for GHCR login. If empty, fetch GHCR_WRITE_TOKEN from secret-server.'
+    required: false
+    default: ''
   image:
     description: 'Base image name (e.g., ghcr.io/owner/name)'
     required: false
@@ -49,6 +53,7 @@ runs:
       with:
         build: 'false'
         push: 'false'
+        token: ${{ inputs.token }}
 
     - name: Build and push images
       shell: bash

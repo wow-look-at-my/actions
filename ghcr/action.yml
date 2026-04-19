@@ -3,6 +3,10 @@ version: 1
 description: Build, push, and prune container images on GHCR.
 
 inputs:
+  token:
+    description: 'Token for GHCR login. If empty, fetch GHCR_WRITE_TOKEN from secret-server.'
+    required: false
+    default: ''
   login:
     description: 'Log in to GHCR via secret-server OIDC'
     required: false
@@ -35,14 +39,14 @@ runs:
   using: composite
   steps:
     - uses: wow-look-at-my/actions@secret-server#latest
-      if: inputs.login == 'true'
+      if: inputs.login == 'true' && inputs.token == ''
 
     - name: Login to GHCR
       if: inputs.login == 'true'
       shell: bash
       env:
-        FALLBACK_TOKEN: ${{ github.token }}
-      run: echo "${GHCR_WRITE_TOKEN:-$FALLBACK_TOKEN}" | docker login ghcr.io -u x-access-token --password-stdin
+        INPUT_TOKEN: ${{ inputs.token }}
+      run: echo "${INPUT_TOKEN:-$GHCR_WRITE_TOKEN}" | docker login ghcr.io -u x-access-token --password-stdin
 
     - name: Build
       if: inputs.build == 'true'
