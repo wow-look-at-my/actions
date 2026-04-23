@@ -31,33 +31,62 @@ inputs:
     description: 'Skip the go-toolchain build step (use when build already ran)'
     required: false
     default: 'false'
-  master-only:
-    description: 'Only run on the master branch (no-op on other refs)'
+  refs:
+    description: 'Newline-separated list of ref globs (fnmatch-style) on which to deploy. No-op on refs that do not match. Empty disables the filter.'
     required: false
-    default: 'true'
+    default: |
+      refs/heads/master
 
 runs:
   using: composite
   steps:
+    - id: gate
+      name: Check ref against deploy globs
+      shell: bash
+      env:
+        INPUT_REFS: ${{ inputs.refs }}
+        GITHUB_REF: ${{ github.ref }}
+      run: |
+        set -euo pipefail
+        match=false
+        has_patterns=false
+        while IFS= read -r pattern; do
+          pattern="${pattern#"${pattern%%[![:space:]]*}"}"
+          pattern="${pattern%"${pattern##*[![:space:]]}"}"
+          [ -z "$pattern" ] && continue
+          has_patterns=true
+          # shellcheck disable=SC2254
+          case "$GITHUB_REF" in
+            $pattern) match=true; break ;;
+          esac
+        done <<< "$INPUT_REFS"
+        if [ "$has_patterns" = false ]; then
+          match=true
+        fi
+        echo "match=$match" >> "$GITHUB_OUTPUT"
+        if [ "$match" = false ]; then
+          echo "Skipping go-packages: ref '$GITHUB_REF' does not match any configured glob."
+        fi
+
     - name: Build with go-toolchain
-      if: inputs.skip-build != 'true' && (inputs.master-only != 'true' || github.ref == 'refs/heads/master')
+      if: inputs.skip-build != 'true' && steps.gate.outputs.match == 'true'
       uses: wow-look-at-my/go-toolchain@v1
       with:
         os: linux
         working-directory: ${{ inputs.working-directory }}
 
     - name: Setup Docker Buildx
-      if: inputs.master-only != 'true' || github.ref == 'refs/heads/master'
+      if: steps.gate.outputs.match == 'true'
       uses: docker/setup-buildx-action@v3
 
-    - if: inputs.master-only != 'true' || github.ref == 'refs/heads/master'
+    - if: steps.gate.outputs.match == 'true'
       uses: wow-look-at-my/actions@ghcr#latest
       with:
         build: 'false'
         push: 'false'
 
     - name: Build and push images
-      if: inputs.master-only != 'true' || github.ref == 'refs/heads/master'
+      if: steps.gate.outputs.match == 'true'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
@@ -160,7 +189,7 @@ runs:
           echo "==> Pushed $image"
         done
 
-    - if: inputs.master-only != 'true' || github.ref == 'refs/heads/master'
+    - if: steps.gate.outputs.match == 'true'
       uses: wow-look-at-my/actions@ghcr-prune#latest
       with:
         image: '${{ inputs.image }}:${{ inputs.tag }}'
