@@ -32,7 +32,7 @@ inputs:
     required: false
     default: 'false'
   refs:
-    description: 'Newline-separated list of ref globs (fnmatch-style) on which to deploy. No-op on refs that do not match. Empty disables the filter.'
+    description: 'Newline-separated list of ref globs (fnmatch-style) on which to upload images. The build still runs on other refs, but push and prune are skipped. Empty disables the filter.'
     required: false
     default: |
       refs/heads/master
@@ -41,7 +41,7 @@ runs:
   using: composite
   steps:
     - id: gate
-      name: Check ref against deploy globs
+      name: Check ref against upload globs
       uses: actions/github-script@v7
       env:
         INPUT_REFS: ${{ inputs.refs }}
@@ -68,34 +68,32 @@ runs:
           const match = patterns.length === 0 || patterns.some(p => globToRegex(p).test(ref));
           core.setOutput('match', match ? 'true' : 'false');
           if (!match) {
-            core.info(`Skipping go-packages: ref '${ref}' does not match any configured glob.`);
+            core.info(`Building only (no upload): ref '${ref}' does not match any configured glob.`);
           }
 
     - name: Build with go-toolchain
-      if: inputs.skip-build != 'true' && steps.gate.outputs.match == 'true'
+      if: inputs.skip-build != 'true'
       uses: wow-look-at-my/go-toolchain@v1
       with:
         os: linux
         working-directory: ${{ inputs.working-directory }}
 
     - name: Setup Docker Buildx
-      if: steps.gate.outputs.match == 'true'
       uses: docker/setup-buildx-action@v3
 
-    - if: steps.gate.outputs.match == 'true'
-      uses: wow-look-at-my/actions@ghcr#latest
+    - uses: wow-look-at-my/actions@ghcr#latest
       with:
         build: 'false'
         push: 'false'
 
     - name: Build and push images
-      if: steps.gate.outputs.match == 'true'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
         INPUT_IMAGE: ${{ inputs.image }}
         INPUT_TAG: ${{ inputs.tag }}
         INPUT_BINARY: ${{ inputs.binary }}
+        PUSH: ${{ steps.gate.outputs.match }}
       run: |
         set -euo pipefail
 
@@ -159,7 +157,11 @@ runs:
           done
           platforms="${platforms%,}"
 
-          echo "==> Building $image for $platforms"
+          if [ "$PUSH" = "true" ]; then
+            echo "==> Building and pushing $image for $platforms"
+          else
+            echo "==> Building $image for $platforms (upload skipped by refs filter)"
+          fi
 
           # Create a temp directory for the docker context
           ctx=$(mktemp -d)
@@ -179,17 +181,28 @@ runs:
             cp "$build_dir/${name}_linux_${arch}" "$ctx/$arch/binary"
           done
 
-          # Build and push multi-arch image (buildx --push is required for multi-platform)
+          # Multi-platform builds cannot --load into the local daemon; use --push
+          # only when the ref matches, otherwise build without an output for
+          # validation.
+          push_args=()
+          if [ "$PUSH" = "true" ]; then
+            push_args+=(--push)
+          fi
+
           docker buildx build \
             --platform "$platforms" \
             --tag "$image" \
-            --push \
+            "${push_args[@]}" \
             "$ctx"
 
           rm -rf "$ctx"
           trap - EXIT
 
-          echo "==> Pushed $image"
+          if [ "$PUSH" = "true" ]; then
+            echo "==> Pushed $image"
+          else
+            echo "==> Built $image (not pushed)"
+          fi
         done
 
     - if: steps.gate.outputs.match == 'true'
