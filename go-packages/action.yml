@@ -31,26 +31,33 @@ inputs:
     description: 'Skip the go-toolchain build step (use when build already ran)'
     required: false
     default: 'false'
+  master-only:
+    description: 'Only run on the master branch (no-op on other refs)'
+    required: false
+    default: 'true'
 
 runs:
   using: composite
   steps:
     - name: Build with go-toolchain
-      if: inputs.skip-build != 'true'
+      if: inputs.skip-build != 'true' && (inputs.master-only != 'true' || github.ref == 'refs/heads/master')
       uses: wow-look-at-my/go-toolchain@v1
       with:
         os: linux
         working-directory: ${{ inputs.working-directory }}
 
     - name: Setup Docker Buildx
+      if: inputs.master-only != 'true' || github.ref == 'refs/heads/master'
       uses: docker/setup-buildx-action@v3
 
-    - uses: wow-look-at-my/actions@ghcr#latest
+    - if: inputs.master-only != 'true' || github.ref == 'refs/heads/master'
+      uses: wow-look-at-my/actions@ghcr#latest
       with:
         build: 'false'
         push: 'false'
 
     - name: Build and push images
+      if: inputs.master-only != 'true' || github.ref == 'refs/heads/master'
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
@@ -153,7 +160,8 @@ runs:
           echo "==> Pushed $image"
         done
 
-    - uses: wow-look-at-my/actions@ghcr-prune#latest
+    - if: inputs.master-only != 'true' || github.ref == 'refs/heads/master'
+      uses: wow-look-at-my/actions@ghcr-prune#latest
       with:
         image: '${{ inputs.image }}:${{ inputs.tag }}'
         keep: ${{ inputs.keep }}
