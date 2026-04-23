@@ -42,31 +42,34 @@ runs:
   steps:
     - id: gate
       name: Check ref against deploy globs
-      shell: bash
+      uses: actions/github-script@v7
       env:
         INPUT_REFS: ${{ inputs.refs }}
-        GITHUB_REF: ${{ github.ref }}
-      run: |
-        set -euo pipefail
-        match=false
-        has_patterns=false
-        while IFS= read -r pattern; do
-          pattern="${pattern#"${pattern%%[![:space:]]*}"}"
-          pattern="${pattern%"${pattern##*[![:space:]]}"}"
-          [ -z "$pattern" ] && continue
-          has_patterns=true
-          # shellcheck disable=SC2254
-          case "$GITHUB_REF" in
-            $pattern) match=true; break ;;
-          esac
-        done <<< "$INPUT_REFS"
-        if [ "$has_patterns" = false ]; then
-          match=true
-        fi
-        echo "match=$match" >> "$GITHUB_OUTPUT"
-        if [ "$match" = false ]; then
-          echo "Skipping go-packages: ref '$GITHUB_REF' does not match any configured glob."
-        fi
+      with:
+        script: |
+          const patterns = process.env.INPUT_REFS
+            .split('\n')
+            .map(s => s.trim())
+            .filter(Boolean);
+          const ref = process.env.GITHUB_REF;
+
+          const globToRegex = (glob) => {
+            // fnmatch-style: ** matches anything; * matches within a segment; ? matches one char within a segment.
+            const DOUBLESTAR = '\x00';
+            const source = glob
+              .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+              .replace(/\*\*/g, DOUBLESTAR)
+              .replace(/\*/g, '[^/]*')
+              .replace(new RegExp(DOUBLESTAR, 'g'), '.*')
+              .replace(/\?/g, '[^/]');
+            return new RegExp(`^${source}$`);
+          };
+
+          const match = patterns.length === 0 || patterns.some(p => globToRegex(p).test(ref));
+          core.setOutput('match', match ? 'true' : 'false');
+          if (!match) {
+            core.info(`Skipping go-packages: ref '${ref}' does not match any configured glob.`);
+          }
 
     - name: Build with go-toolchain
       if: inputs.skip-build != 'true' && steps.gate.outputs.match == 'true'
