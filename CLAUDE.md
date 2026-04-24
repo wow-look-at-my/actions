@@ -18,6 +18,14 @@ Each action lives in its own directory with an `action.yml` file:
 - `cache-size/` - Node.js action (TypeScript compiled to JS)
 - `tag-runner/` - Node.js action (TypeScript compiled to JS)
 
+## Reusable Workflows
+
+### `pr-preview`
+
+The `pr-preview/` directory contains scripts for the reusable workflow at `.github/workflows/pr-preview.yml`. It is **not** a standard action (no `action.yml`) — callers use it via `uses: wow-look-at-my/actions/.github/workflows/pr-preview.yml@main`.
+
+Because the workflow self-checkouts `wow-look-at-my/actions` at `github.job_workflow_sha` to run its scripts, `pr-preview/dist/` must be committed (exempted from `.gitignore`). Run `just build` inside `pr-preview/` after editing TypeScript sources and commit the result.
+
 ## Action Types
 
 ### Node.js Actions
