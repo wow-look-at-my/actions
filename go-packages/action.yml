@@ -172,11 +172,14 @@ runs:
           ctx=$(mktemp -d)
           trap "rm -rf $ctx" EXIT
 
-          # Generate Dockerfile
-          cat > "$ctx/Dockerfile" <<'DOCKERFILE'
+          # LABEL must live in the Dockerfile, not --label on buildx: the
+          # latter doesn't propagate to the manifest index on multi-platform
+          # builds, so GHCR won't link the package to the repo.
+          cat > "$ctx/Dockerfile" <<DOCKERFILE
         FROM scratch
         ARG TARGETARCH
-        COPY ${TARGETARCH}/binary /app
+        COPY \${TARGETARCH}/binary /app
+        LABEL org.opencontainers.image.source="${INPUT_SOURCE}"
         ENTRYPOINT ["/app"]
         DOCKERFILE
 
@@ -197,7 +200,6 @@ runs:
           docker buildx build \
             --platform "$platforms" \
             --tag "$image" \
-            --label "org.opencontainers.image.source=${INPUT_SOURCE}" \
             "${push_args[@]}" \
             "$ctx"
 
