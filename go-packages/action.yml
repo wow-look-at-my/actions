@@ -172,11 +172,14 @@ runs:
           ctx=$(mktemp -d)
           trap "rm -rf $ctx" EXIT
 
-          # Generate Dockerfile
-          cat > "$ctx/Dockerfile" <<'DOCKERFILE'
+          # Set the GHCR source label both in the Dockerfile (below) and via
+          # --label on buildx: the --label alone doesn't propagate to the
+          # manifest index on multi-platform builds, so GHCR may miss it.
+          cat > "$ctx/Dockerfile" <<DOCKERFILE
         FROM scratch
         ARG TARGETARCH
-        COPY ${TARGETARCH}/binary /app
+        COPY \${TARGETARCH}/binary /app
+        LABEL org.opencontainers.image.source="${INPUT_SOURCE}"
         ENTRYPOINT ["/app"]
         DOCKERFILE
 
