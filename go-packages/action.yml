@@ -11,6 +11,10 @@ inputs:
     description: 'Image tag'
     required: false
     default: 'latest'
+  source:
+    description: 'Repository URL for the org.opencontainers.image.source label (defaults to the running repo)'
+    required: false
+    default: '${{ github.server_url }}/${{ github.repository }}'
   keep:
     description: 'Number of tagged versions to keep when pruning'
     required: false
@@ -93,6 +97,7 @@ runs:
         INPUT_IMAGE: ${{ inputs.image }}
         INPUT_TAG: ${{ inputs.tag }}
         INPUT_BINARY: ${{ inputs.binary }}
+        INPUT_SOURCE: ${{ inputs.source }}
         PUSH: ${{ steps.gate.outputs.match }}
       run: |
         set -euo pipefail
@@ -192,6 +197,7 @@ runs:
           docker buildx build \
             --platform "$platforms" \
             --tag "$image" \
+            --label "org.opencontainers.image.source=${INPUT_SOURCE}" \
             "${push_args[@]}" \
             "$ctx"
 
