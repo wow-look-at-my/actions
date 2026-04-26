@@ -183,10 +183,13 @@ runs:
         ENTRYPOINT ["/app"]
         DOCKERFILE
 
-          # Copy binaries into arch-specific dirs
+          # Copy binaries into arch-specific dirs. chmod +x because
+          # actions/upload-artifact strips the execute bit, so binaries
+          # arriving via skip-build=true would otherwise fail to exec.
           for arch in "${arch_list[@]}"; do
             mkdir -p "$ctx/$arch"
             cp "$build_dir/${name}_linux_${arch}" "$ctx/$arch/binary"
+            chmod +x "$ctx/$arch/binary"
           done
 
           # Multi-platform builds cannot --load into the local daemon; use --push
