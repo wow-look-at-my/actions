@@ -137,3 +137,13 @@ Reusable GitHub Actions.
   with:
     token: # GitHub token with packages:write and actions:write permissions
 ```
+
+### [TypeScript](typescript/)
+
+```yml
+# Run an inline TypeScript script, validated with tsc, with helpful globals pre-injected..
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/typescript/README.md
+- uses: wow-look-at-my/actions@typescript#latest
+  with:
+    script: # TypeScript source to execute. The body runs inside an async function with helpers like `core`, `context`, `octokit`, `fs`, `path` already in scope.
+```

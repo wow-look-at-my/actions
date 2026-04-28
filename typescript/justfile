@@ -1,0 +1,57 @@
+[private]
+help:
+	@just --list
+
+build:
+	#!/usr/bin/env bash
+	# Compiles src/, bundles via esbuild, then stages the type definitions and
+	# TypeScript lib files needed for tsc validation at runtime. Layout:
+	#   dist/index.js               (bundled action)
+	#   dist/lib.es*.d.ts           (TypeScript standard libs)
+	#   dist/types/node_modules/... (mirrored types for module resolution)
+	set -euo pipefail
+	pnpm install
+	pnpm tsc
+	pnpm esbuild dist/index.js --bundle --platform=node --target=node24 --outfile=dist/index.js --allow-overwrite
+
+	dist="dist"
+	types_root="$dist/types/node_modules"
+	rm -rf "$dist/types"
+	mkdir -p "$types_root/@types" "$types_root/@actions"
+
+	# TypeScript standard libs (skip DOM/webworker — Node-only target).
+	shopt -s extglob
+	cp node_modules/typescript/lib/!(lib.dom*|lib.webworker*).d.ts "$dist/"
+	shopt -u extglob
+
+	# @types/node + undici-types. pnpm keeps transitives under .pnpm/, so
+	# undici-types isn't at the top level — fish it out next to @types/node.
+	cp -rL node_modules/@types/node "$types_root/@types/"
+	undici_src=$(dirname "$(readlink -f node_modules/@types/node)")/../undici-types
+	if [ -d "$undici_src" ]; then
+		cp -rL "$undici_src" "$types_root/"
+	else
+		echo "warning: undici-types not found near @types/node" >&2
+	fi
+
+	# @actions toolkit types (.d.ts files have no external module imports).
+	cp -rL node_modules/@actions/core "$types_root/@actions/"
+	cp -rL node_modules/@actions/exec "$types_root/@actions/"
+	cp -rL node_modules/@actions/io "$types_root/@actions/"
+
+	# Stripped @actions/github: just Context + WebhookPayload. Skipping the
+	# rest avoids pulling in @octokit/* types (~7 MB); `octokit` is typed
+	# loosely via the embedded globals.d.ts in src/index.ts.
+	mkdir -p "$types_root/@actions/github/lib"
+	cp node_modules/@actions/github/lib/context.d.ts "$types_root/@actions/github/lib/"
+	cp node_modules/@actions/github/lib/interfaces.d.ts "$types_root/@actions/github/lib/"
+	cat > "$types_root/@actions/github/package.json" <<-'JSON'
+		{
+			"name": "@actions/github",
+			"version": "0.0.0-stub",
+			"types": "lib/context.d.ts"
+		}
+	JSON
+
+	# Strip JS / source-map bytes from copied types — only declarations matter.
+	find "$types_root" -type f \( -name '*.js' -o -name '*.js.map' -o -name '*.d.ts.map' \) -delete

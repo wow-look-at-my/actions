@@ -1,0 +1,60 @@
+name: TypeScript
+version: 1
+description: Run an inline TypeScript script, validated with tsc, with helpful globals pre-injected.
+
+inputs:
+  script:
+    description: TypeScript source to execute. The body runs inside an async function with helpers like `core`, `context`, `octokit`, `fs`, `path` already in scope.
+    required: true
+  github:
+    description: 'GitHub workflow context as JSON (typically: ${{ toJSON(github) }}). Available inside the script as the `github` variable.'
+    required: false
+    default: '{}'
+  env:
+    description: 'env workflow context as JSON. Available inside the script as the `env` variable.'
+    required: false
+    default: '{}'
+  runner:
+    description: 'runner workflow context as JSON. Available inside the script as the `runner` variable.'
+    required: false
+    default: '{}'
+  job:
+    description: 'job workflow context as JSON. Available inside the script as the `job` variable.'
+    required: false
+    default: '{}'
+  steps:
+    description: 'steps workflow context as JSON. Available inside the script as the `steps` variable.'
+    required: false
+    default: '{}'
+  needs:
+    description: 'needs workflow context as JSON. Available inside the script as the `needs` variable.'
+    required: false
+    default: '{}'
+  vars:
+    description: 'vars workflow context as JSON. Available inside the script as the `vars` variable.'
+    required: false
+    default: '{}'
+  secrets:
+    description: 'secrets workflow context as JSON. Available inside the script as the `secrets` variable.'
+    required: false
+    default: '{}'
+  inputs:
+    description: 'inputs workflow context as JSON. Available inside the script as the `inputs` variable.'
+    required: false
+    default: '{}'
+  strategy:
+    description: 'strategy workflow context as JSON. Available inside the script as the `strategy` variable.'
+    required: false
+    default: '{}'
+  matrix:
+    description: 'matrix workflow context as JSON. Available inside the script as the `matrix` variable.'
+    required: false
+    default: '{}'
+
+outputs:
+  result:
+    description: JSON-encoded value returned by the script (if any).
+
+runs:
+  using: node24
+  main: dist/index.js
