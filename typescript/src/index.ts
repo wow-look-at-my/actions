@@ -119,9 +119,10 @@ interface WorkflowContexts {
 	matrix: unknown;
 }
 
-function parseContextInput(name: string): unknown {
+// Returns parsed JSON, or undefined if the input was unset / blank.
+function maybeParseJson(name: string): unknown {
 	const raw = core.getInput(name);
-	if (!raw || !raw.trim()) return {};
+	if (!raw || !raw.trim()) return undefined;
 	try {
 		return JSON.parse(raw);
 	} catch (e) {
@@ -129,19 +130,112 @@ function parseContextInput(name: string): unknown {
 	}
 }
 
+// Like maybeParseJson, but defaults to {} when unset (for contexts the runner
+// never exposes — vars, secrets, steps, needs, inputs, strategy, matrix).
+function parseOptionalContext(name: string): unknown {
+	return maybeParseJson(name) ?? {};
+}
+
+function deriveGithubContext(): Record<string, unknown> {
+	const eventPath = process.env.GITHUB_EVENT_PATH;
+	let event: unknown = {};
+	if (eventPath) {
+		try {
+			event = JSON.parse(fs.readFileSync(eventPath, 'utf-8'));
+		} catch {
+			// fall through to empty event
+		}
+	}
+	// Mirror the shape of the workflow `github` context. Numeric fields are
+	// left as the strings the runner provides — converting silently could
+	// surprise a script comparing against ${{ github.run_id }} substitutions.
+	return {
+		event,
+		event_name: process.env.GITHUB_EVENT_NAME,
+		event_path: eventPath,
+		actor: process.env.GITHUB_ACTOR,
+		actor_id: process.env.GITHUB_ACTOR_ID,
+		triggering_actor: process.env.GITHUB_TRIGGERING_ACTOR,
+		repository: process.env.GITHUB_REPOSITORY,
+		repository_id: process.env.GITHUB_REPOSITORY_ID,
+		repository_owner: process.env.GITHUB_REPOSITORY_OWNER,
+		repository_owner_id: process.env.GITHUB_REPOSITORY_OWNER_ID,
+		run_id: process.env.GITHUB_RUN_ID,
+		run_number: process.env.GITHUB_RUN_NUMBER,
+		run_attempt: process.env.GITHUB_RUN_ATTEMPT,
+		retention_days: process.env.GITHUB_RETENTION_DAYS,
+		workflow: process.env.GITHUB_WORKFLOW,
+		workflow_ref: process.env.GITHUB_WORKFLOW_REF,
+		workflow_sha: process.env.GITHUB_WORKFLOW_SHA,
+		job: process.env.GITHUB_JOB,
+		job_workflow_sha: process.env.GITHUB_JOB_WORKFLOW_SHA,
+		sha: process.env.GITHUB_SHA,
+		ref: process.env.GITHUB_REF,
+		ref_name: process.env.GITHUB_REF_NAME,
+		ref_type: process.env.GITHUB_REF_TYPE,
+		ref_protected: process.env.GITHUB_REF_PROTECTED,
+		head_ref: process.env.GITHUB_HEAD_REF,
+		base_ref: process.env.GITHUB_BASE_REF,
+		workspace: process.env.GITHUB_WORKSPACE,
+		api_url: process.env.GITHUB_API_URL,
+		server_url: process.env.GITHUB_SERVER_URL,
+		graphql_url: process.env.GITHUB_GRAPHQL_URL,
+		action: process.env.GITHUB_ACTION,
+		action_path: process.env.GITHUB_ACTION_PATH,
+		action_ref: process.env.GITHUB_ACTION_REF,
+		action_repository: process.env.GITHUB_ACTION_REPOSITORY,
+		action_status: process.env.GITHUB_ACTION_STATUS,
+		secret_source: process.env.GITHUB_SECRET_SOURCE,
+		token: process.env.GITHUB_TOKEN,
+		path: process.env.GITHUB_PATH,
+		env: process.env.GITHUB_ENV,
+		output: process.env.GITHUB_OUTPUT,
+		state: process.env.GITHUB_STATE,
+		step_summary: process.env.GITHUB_STEP_SUMMARY,
+	};
+}
+
+function deriveRunnerContext(): Record<string, unknown> {
+	return {
+		os: process.env.RUNNER_OS,
+		arch: process.env.RUNNER_ARCH,
+		name: process.env.RUNNER_NAME,
+		environment: process.env.RUNNER_ENVIRONMENT,
+		temp: process.env.RUNNER_TEMP,
+		tool_cache: process.env.RUNNER_TOOL_CACHE,
+		debug: process.env.RUNNER_DEBUG,
+	};
+}
+
+function deriveJobContext(): Record<string, unknown> {
+	// `job.container` and `job.services` are only available via the runner's
+	// expression substitution, never to the action process. Surface what we
+	// can — the job id — and leave a placeholder status.
+	return {
+		status: process.env.GITHUB_ACTION_STATUS ?? 'success',
+	};
+}
+
 function readContexts(): WorkflowContexts {
 	return {
-		github: parseContextInput('github'),
-		env: parseContextInput('env'),
-		runner: parseContextInput('runner'),
-		job: parseContextInput('job'),
-		steps: parseContextInput('steps'),
-		needs: parseContextInput('needs'),
-		vars: parseContextInput('vars'),
-		secrets: parseContextInput('secrets'),
-		inputs: parseContextInput('inputs'),
-		strategy: parseContextInput('strategy'),
-		matrix: parseContextInput('matrix'),
+		// Auto-derived from env vars and the event-payload file. An explicit
+		// JSON input (when present) wins, mainly for tests / dry runs.
+		github: maybeParseJson('github') ?? deriveGithubContext(),
+		runner: maybeParseJson('runner') ?? deriveRunnerContext(),
+		job: maybeParseJson('job') ?? deriveJobContext(),
+		// Workflow `env:` context: GitHub doesn't distinguish those vars from
+		// system env in the action's process, so we default to all of process.env.
+		env: maybeParseJson('env') ?? { ...process.env },
+		// The runner never exposes these contexts to action processes — they
+		// only exist as workflow-expression substitutions. Default to {}; the
+		// caller passes JSON only when they actually need them.
+		steps: parseOptionalContext('steps'),
+		needs: parseOptionalContext('needs'),
+		vars: parseOptionalContext('vars'),
+		secrets: parseOptionalContext('secrets'),
+		inputs: parseOptionalContext('inputs'),
+		strategy: parseOptionalContext('strategy'),
+		matrix: parseOptionalContext('matrix'),
 	};
 }
 

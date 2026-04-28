@@ -1,29 +1,35 @@
 # TypeScript
 
-Run an inline TypeScript script with full `tsc` validation. Common helpers (`core`, `context`, `octokit`, `fs`, `path`, ...) and the workflow contexts (`github`, `env`, `runner`, ...) are pre-injected, so scripts stay short and stay typed.
+Run an inline TypeScript script with full `tsc` validation. Common helpers (`core`, `context`, `octokit`, `fs`, `path`, ...) and most workflow contexts (`github`, `runner`, `env`, `job`) are auto-injected with no configuration; the rest can be passed in when needed.
 
 ## Usage
+
+The minimal call — `github`, `runner`, `env`, and `job` are auto-derived from the runner's environment, no input plumbing required:
 
 ```yaml
 - uses: wow-look-at-my/actions@typescript#latest
   with:
     script: |
-      core.info(`Event: ${context.eventName} on ${context.ref}`);
+      core.info(`Event: ${github.event_name} on ${github.ref_name}`);
+      core.info(`Runner: ${runner.os} ${runner.arch}`);
       const data = fs.readFileSync('package.json', 'utf-8');
       core.setOutput('version', JSON.parse(data).version);
 ```
 
-To pass workflow contexts (so the script can read `github.event_name`, `vars.FOO`, etc.), forward them as JSON:
+If the script needs contexts the runner doesn't expose to action processes (`vars`, `secrets`, `steps`, `needs`, `inputs`, `strategy`, `matrix`), pass them explicitly:
 
 ```yaml
 - uses: wow-look-at-my/actions@typescript#latest
   with:
-    github: ${{ toJSON(github) }}
-    vars: ${{ toJSON(vars) }}
-    runner: ${{ toJSON(runner) }}
+    secrets: ${{ toJSON(secrets) }}
+    matrix: ${{ toJSON(matrix) }}
     script: |
-      core.info(`actor: ${github.actor}, runner: ${runner.os}`);
-      core.info(`var BAR: ${vars.BAR}`);
+      const oct = octokit(secrets.GITHUB_TOKEN);
+      const { data } = await oct.rest.repos.get({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+      });
+      core.info(`Stars: ${data.stargazers_count} (matrix.node=${matrix.node})`);
 ```
 
 ## How it works
@@ -38,17 +44,23 @@ To pass workflow contexts (so the script can read `github.event_name`, `vars.FOO
 | Name | Required | Default | Description |
 |------|----------|---------|-------------|
 | `script` | Yes | — | TypeScript source to execute. |
-| `github` | No | `{}` | GitHub workflow context as JSON (typically `${{ toJSON(github) }}`). |
-| `env` | No | `{}` | env workflow context as JSON. |
-| `runner` | No | `{}` | runner workflow context as JSON. |
-| `job` | No | `{}` | job workflow context as JSON. |
-| `steps` | No | `{}` | steps workflow context as JSON. |
-| `needs` | No | `{}` | needs workflow context as JSON. |
-| `vars` | No | `{}` | vars workflow context as JSON. |
-| `secrets` | No | `{}` | secrets workflow context as JSON. |
-| `inputs` | No | `{}` | inputs workflow context as JSON. |
-| `strategy` | No | `{}` | strategy workflow context as JSON. |
-| `matrix` | No | `{}` | matrix workflow context as JSON. |
+| `github` | No | auto | Override for the `github` context. By default derived from `$GITHUB_*` env vars + `$GITHUB_EVENT_PATH`. |
+| `runner` | No | auto | Override for the `runner` context. By default derived from `$RUNNER_*` env vars. |
+| `env` | No | `process.env` | Override for the `env` context. Defaults to the action process's full environment. |
+| `job` | No | `{ status }` | Override for the `job` context. `job.container` and `job.services` are never exposed to action processes. |
+| `vars` | No | `{}` | `vars` workflow context as JSON. Opt-in — the runner does not expose repo/org vars to action processes. |
+| `secrets` | No | `{}` | `secrets` workflow context as JSON. Opt-in. |
+| `inputs` | No | `{}` | `inputs` workflow context as JSON (reusable workflow / `workflow_dispatch`). |
+| `steps` | No | `{}` | `steps` workflow context as JSON. |
+| `needs` | No | `{}` | `needs` workflow context as JSON. |
+| `strategy` | No | `{}` | `strategy` workflow context as JSON. |
+| `matrix` | No | `{}` | `matrix` workflow context as JSON. |
+
+### Why are some contexts opt-in?
+
+`vars`, `secrets`, `steps`, `needs`, `inputs`, `strategy`, and `matrix` are runner-side only — they exist as `${{ ... }}` expression substitutions in your workflow YAML and never reach the action's child process as env vars or files. The action has no way to read them on its own. Pass `${{ toJSON(vars) }}` (or whichever) when the script needs them.
+
+`github`, `runner`, `env`, and `job` are reconstructed from the standard env vars and the event-payload file ([all documented by GitHub](https://docs.github.com/en/actions/learn-github-actions/variables#default-environment-variables)), so no plumbing is needed for those.
 
 ## Outputs
 
@@ -72,22 +84,6 @@ Always available inside the script:
 | `os` | `typeof import('os')` | Node built-in |
 | `child_process` | `typeof import('child_process')` | Node built-in |
 | `util` | `typeof import('util')` | Node built-in |
-
-Workflow contexts (each is parsed from the matching JSON input, defaulting to `{}`):
-
-| Name | Notes |
-|------|-------|
-| `github` | The full workflow `github` context. |
-| `env` | `Record<string, string>`. |
-| `runner` | Typed shape: `os`, `arch`, `name`, `environment`, `tool_cache`, `temp`, `debug`. |
-| `job` | Typed shape: `status`, optional `container` and `services`. |
-| `steps` | `Record<step_id, { conclusion, outcome, outputs }>`. |
-| `needs` | `Record<job_id, { result, outputs }>`. |
-| `vars` | `Record<string, string>`. |
-| `secrets` | `Record<string, string>`. |
-| `inputs` | `Record<string, any>`. |
-| `strategy` | Typed shape: `fail_fast`, `job_index`, `job_total`, `max_parallel`. |
-| `matrix` | `Record<string, any>`. |
 
 `require('module-name')` is also available — calls for `@actions/core|exec|io|github` and built-in Node modules return the same instance the action uses; everything else falls through to Node's regular resolver.
 

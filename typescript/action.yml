@@ -6,48 +6,55 @@ inputs:
   script:
     description: TypeScript source to execute. The body runs inside an async function with helpers like `core`, `context`, `octokit`, `fs`, `path` already in scope.
     required: true
+
+  # Auto-derived from environment variables / event payload by default. Pass
+  # JSON only to override (e.g. for testing or to forward a different shape).
   github:
-    description: 'GitHub workflow context as JSON (typically: ${{ toJSON(github) }}). Available inside the script as the `github` variable.'
+    description: 'Override for the `github` context. By default the action derives this from $GITHUB_* env vars and $GITHUB_EVENT_PATH.'
     required: false
-    default: '{}'
-  env:
-    description: 'env workflow context as JSON. Available inside the script as the `env` variable.'
-    required: false
-    default: '{}'
+    default: ''
   runner:
-    description: 'runner workflow context as JSON. Available inside the script as the `runner` variable.'
+    description: 'Override for the `runner` context. By default derived from $RUNNER_* env vars.'
     required: false
-    default: '{}'
+    default: ''
+  env:
+    description: 'Override for the `env` context. Defaults to process.env (the runner does not separate the workflow `env:` block from system env vars in the action process).'
+    required: false
+    default: ''
   job:
-    description: 'job workflow context as JSON. Available inside the script as the `job` variable.'
+    description: 'Override for the `job` context. Defaults to a minimal `{ status }` object — `job.container` and `job.services` are not exposed to action processes.'
     required: false
-    default: '{}'
-  steps:
-    description: 'steps workflow context as JSON. Available inside the script as the `steps` variable.'
-    required: false
-    default: '{}'
-  needs:
-    description: 'needs workflow context as JSON. Available inside the script as the `needs` variable.'
-    required: false
-    default: '{}'
+    default: ''
+
+  # Contexts the runner only exposes via workflow-expression substitution —
+  # never to action processes. Pass them through explicitly when needed:
+  #   vars: ${{ toJSON(vars) }}
   vars:
-    description: 'vars workflow context as JSON. Available inside the script as the `vars` variable.'
+    description: 'vars workflow context as JSON. Pass `${{ toJSON(vars) }}` when the script needs repo/org variables.'
     required: false
     default: '{}'
   secrets:
-    description: 'secrets workflow context as JSON. Available inside the script as the `secrets` variable.'
+    description: 'secrets workflow context as JSON. Pass `${{ toJSON(secrets) }}` when the script needs secrets.'
     required: false
     default: '{}'
   inputs:
-    description: 'inputs workflow context as JSON. Available inside the script as the `inputs` variable.'
+    description: 'inputs workflow context as JSON (reusable workflow / workflow_dispatch inputs).'
+    required: false
+    default: '{}'
+  steps:
+    description: 'steps workflow context as JSON. Pass `${{ toJSON(steps) }}` to read previous-step outcomes/outputs.'
+    required: false
+    default: '{}'
+  needs:
+    description: 'needs workflow context as JSON. Pass `${{ toJSON(needs) }}` to read upstream-job results.'
     required: false
     default: '{}'
   strategy:
-    description: 'strategy workflow context as JSON. Available inside the script as the `strategy` variable.'
+    description: 'strategy workflow context as JSON.'
     required: false
     default: '{}'
   matrix:
-    description: 'matrix workflow context as JSON. Available inside the script as the `matrix` variable.'
+    description: 'matrix workflow context as JSON. Pass `${{ toJSON(matrix) }}` from a matrix job.'
     required: false
     default: '{}'
 
