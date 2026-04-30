@@ -7,6 +7,7 @@ Node.js action (TypeScript) that runs a user-supplied TypeScript snippet, valida
 ## Structure
 
 - `action.yml` — Action definition
+- `globals.d.ts` — Ambient type declarations for injected helpers (`core`, `fs`, `octokit`, workflow contexts, etc.). Copied to `dist/` at build time and read at runtime.
 - `src/index.ts` — TypeScript source (wraps user code, runs tsc, transpiles, executes via `new Function(...)`)
 - `justfile` — Build recipe (`just build`); the recipe also stages `dist/lib.*.d.ts` and `dist/types/node_modules/*` so the bundled `tsc` can resolve declarations at runtime
 - `package.json` — Dependencies (no `scripts` section)
@@ -25,7 +26,7 @@ The recipe runs `pnpm install`, `pnpm tsc`, `pnpm esbuild`, and then stages a cu
 
 ### Key Details
 
-- User script is wrapped in `async function __runUserScript() { ... }`, prefixed with an embedded `globals.d.ts` that declares the injected names (`core`, `fs`, etc.).
+- User script is wrapped in `async function __runUserScript() { ... }`, prefixed with `globals.d.ts` (read from `dist/` at runtime) that declares the injected names (`core`, `fs`, etc.).
 - Type-checking is done with `ts.createProgram` plus a CompilerHost that serves the wrapped source from memory; everything else (lib files, type packages) is read from disk under `dist/`.
 - Diagnostics are remapped: line numbers are adjusted by the wrapper-prefix line count so errors point at the user's script line, not the wrapper.
 - Transpilation uses `ts.transpileModule` with `module: CommonJS`, then the JS body is executed via `new Function(...)` with all helpers passed as arguments. This avoids polluting the global scope.

@@ -19,6 +19,9 @@ build:
 	rm -rf "$dist/types"
 	mkdir -p "$types_root/@types" "$types_root/@actions"
 
+	# Ambient declarations read at runtime by the action.
+	cp globals.d.ts "$dist/"
+
 	# TypeScript standard libs (skip DOM/webworker — Node-only target).
 	shopt -s extglob
 	cp node_modules/typescript/lib/!(lib.dom*|lib.webworker*).d.ts "$dist/"
