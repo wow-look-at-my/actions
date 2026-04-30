@@ -1,0 +1,85 @@
+name: Download Executable Artifact
+version: 1
+description: Download an artifact, optionally select/rename files, and set +x
+
+inputs:
+  name:
+    description: 'Artifact name to download'
+    required: true
+  path:
+    description: 'Directory to download artifact into'
+    required: false
+    default: '.'
+  files:
+    description: |
+      Files to process (newline-separated). Two formats supported:
+        - Plain filename: keeps the file as-is
+        - source:dest mapping: renames source to dest
+      If empty, all files in the download directory are processed.
+    required: false
+    default: ''
+  executable:
+    description: 'Set +x on downloaded files'
+    required: false
+    default: 'true'
+  run-id:
+    description: 'Run ID to download artifact from (defaults to current run)'
+    required: false
+    default: ''
+  github-token:
+    description: 'GitHub token for artifact download'
+    required: false
+    default: ${{ github.token }}
+  pattern:
+    description: 'Glob pattern to match artifact names'
+    required: false
+    default: ''
+  merge-multiple:
+    description: 'Merge multiple artifacts into the same directory'
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Download artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.path }}
+        run-id: ${{ inputs.run-id || null }}
+        github-token: ${{ inputs.github-token }}
+        pattern: ${{ inputs.pattern || null }}
+        merge-multiple: ${{ inputs.merge-multiple }}
+
+    - name: Process files
+      shell: bash
+      env:
+        INPUT_FILES: ${{ inputs.files }}
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_EXECUTABLE: ${{ inputs.executable }}
+      run: |
+        set -euo pipefail
+        cd "$INPUT_PATH"
+
+        if [ -z "$INPUT_FILES" ]; then
+          if [ "$INPUT_EXECUTABLE" = "true" ]; then
+            echo "Setting +x on all files in $INPUT_PATH"
+            find . -maxdepth 1 -type f -exec chmod +x {} +
+          fi
+        else
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+
+            if [[ "$line" == *:* ]]; then
+              src="${line%%:*}"
+              dest="${line#*:}"
+              echo "Renaming: $src -> $dest"
+              mv "$src" "$dest"
+              [ "$INPUT_EXECUTABLE" = "true" ] && chmod +x "$dest"
+            else
+              [ "$INPUT_EXECUTABLE" = "true" ] && chmod +x "$line"
+              echo "Ready: $line"
+            fi
+          done <<< "$INPUT_FILES"
+        fi
