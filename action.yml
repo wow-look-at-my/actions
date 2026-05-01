@@ -1,0 +1,67 @@
+name: 'Multi-Command'
+version: 1
+description: 'Run OS-specific commands in a single step without boilerplate if-checks'
+inputs:
+  default:
+    description: 'Command to run if no OS-specific command is provided'
+    required: false
+    default: ''
+  windows:
+    description: 'Command to run on Windows (uses pwsh)'
+    required: false
+    default: ''
+  linux:
+    description: 'Command to run on Linux (uses bash)'
+    required: false
+    default: ''
+  macos:
+    description: 'Command to run on macOS (uses bash)'
+    required: false
+    default: ''
+  unix:
+    description: 'Command to run on Linux and macOS (uses bash)'
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    # Windows with specific command
+    - if: runner.os == 'Windows' && inputs.windows != ''
+      shell: pwsh
+      run: ${{ inputs.windows }}
+
+    # Windows fallback to default
+    - if: runner.os == 'Windows' && inputs.windows == '' && inputs.default != ''
+      shell: pwsh
+      run: ${{ inputs.default }}
+
+    # Linux with specific command
+    - if: runner.os == 'Linux' && inputs.linux != ''
+      shell: bash
+      run: ${{ inputs.linux }}
+
+    # Linux fallback to unix
+    - if: runner.os == 'Linux' && inputs.linux == '' && inputs.unix != ''
+      shell: bash
+      run: ${{ inputs.unix }}
+
+    # Linux fallback to default
+    - if: runner.os == 'Linux' && inputs.linux == '' && inputs.unix == '' && inputs.default != ''
+      shell: bash
+      run: ${{ inputs.default }}
+
+    # macOS with specific command
+    - if: runner.os == 'macOS' && inputs.macos != ''
+      shell: bash
+      run: ${{ inputs.macos }}
+
+    # macOS fallback to unix
+    - if: runner.os == 'macOS' && inputs.macos == '' && inputs.unix != ''
+      shell: bash
+      run: ${{ inputs.unix }}
+
+    # macOS fallback to default
+    - if: runner.os == 'macOS' && inputs.macos == '' && inputs.unix == '' && inputs.default != ''
+      shell: bash
+      run: ${{ inputs.default }}
