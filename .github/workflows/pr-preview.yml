@@ -117,7 +117,7 @@ jobs:
                   INPUT_PR_NUMBER: ${{ inputs.pr-number || github.event.number }}
                   INPUT_ACTION_REF: ${{ github.job_workflow_sha }}
                   GITHUB_SHA: ${{ github.sha }}
-              run: node .pr-preview-action/pr-preview/dist/setup.js
+              run: node .pr-preview-action/pr-preview/dist/index.js setup
               shell: bash
 
             - name: Download build artifact
@@ -135,7 +135,7 @@ jobs:
                   INPUT_TOKEN: ${{ github.token }}
                   INPUT_SHA: ${{ github.event.pull_request.head.sha }}
                   INPUT_CONTEXT: ${{ inputs.commit-status-context }}
-              run: node .pr-preview-action/pr-preview/dist/status.js pending "Deploying preview..." "${{ env.preview_url }}"
+              run: node .pr-preview-action/pr-preview/dist/index.js status pending "Deploying preview..." "${{ env.preview_url }}"
               shell: bash
 
             - name: Deploy preview to branch
@@ -147,7 +147,7 @@ jobs:
                   INPUT_TARGET_PATH: ${{ env.preview_file_path }}
                   INPUT_UMBRELLA_DIR: ${{ inputs.umbrella-dir }}
                   INPUT_COMMIT_MESSAGE: ${{ inputs.deploy-commit-message || (github.event_name == 'pull_request' && format('Deploy preview for PR {0} 🛫', github.event.number)) || format('Deploy from {0}', github.sha) }}
-              run: node .pr-preview-action/pr-preview/dist/git-update.js deploy
+              run: node .pr-preview-action/pr-preview/dist/index.js git-update deploy
               shell: bash
 
             - name: Upload Pages artifact
@@ -170,7 +170,7 @@ jobs:
                   INPUT_TOKEN: ${{ github.token }}
                   INPUT_SHA: ${{ github.event.pull_request.head.sha }}
                   INPUT_CONTEXT: ${{ inputs.commit-status-context }}
-              run: node .pr-preview-action/pr-preview/dist/status.js success "Preview is live!" "${{ env.preview_url }}"
+              run: node .pr-preview-action/pr-preview/dist/index.js status success "Preview is live!" "${{ env.preview_url }}"
               shell: bash
 
             - name: Post deploy comment
@@ -184,7 +184,7 @@ jobs:
                   INPUT_PR_NUMBER: ${{ inputs.pr-number || github.event.number }}
                   INPUT_PREVIEW_BRANCH: ${{ inputs.preview-branch }}
                   INPUT_COMMENT: "true"
-              run: node .pr-preview-action/pr-preview/dist/comment.js
+              run: node .pr-preview-action/pr-preview/dist/index.js comment
               shell: bash
 
             - name: Set failure commit status
@@ -196,7 +196,7 @@ jobs:
                   INPUT_TOKEN: ${{ github.token }}
                   INPUT_SHA: ${{ github.event.pull_request.head.sha }}
                   INPUT_CONTEXT: ${{ inputs.commit-status-context }}
-              run: node .pr-preview-action/pr-preview/dist/status.js failure "Preview deployment failed" "${{ env.preview_url }}"
+              run: node .pr-preview-action/pr-preview/dist/index.js status failure "Preview deployment failed" "${{ env.preview_url }}"
               shell: bash
 
             # REMOVAL
@@ -208,7 +208,7 @@ jobs:
                   INPUT_TOKEN: ${{ github.token }}
                   INPUT_TARGET_PATH: ${{ env.preview_file_path }}
                   INPUT_COMMIT_MESSAGE: ${{ inputs.remove-commit-message || (github.event_name == 'pull_request' && format('Remove preview for PR {0} 🛬', github.event.number)) || format('Remove deployment from {0}', github.sha) }}
-              run: node .pr-preview-action/pr-preview/dist/git-update.js remove
+              run: node .pr-preview-action/pr-preview/dist/index.js git-update remove
               shell: bash
 
             - name: Upload Pages artifact for removal
@@ -232,5 +232,5 @@ jobs:
                   INPUT_PR_NUMBER: ${{ inputs.pr-number || github.event.number }}
                   INPUT_PREVIEW_BRANCH: ${{ inputs.preview-branch }}
                   INPUT_COMMENT: "true"
-              run: node .pr-preview-action/pr-preview/dist/comment.js
+              run: node .pr-preview-action/pr-preview/dist/index.js comment
               shell: bash
