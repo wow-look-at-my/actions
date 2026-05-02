@@ -85,7 +85,7 @@ Always available inside the script:
 | `child_process` | `typeof import('child_process')` | Node built-in |
 | `util` | `typeof import('util')` | Node built-in |
 
-`require('module-name')` is also available — calls for `@actions/core|exec|io|github` and built-in Node modules return the same instance the action uses; everything else falls through to Node's regular resolver.
+`require('module-name')` is also available — calls for `@actions/core|exec|io|github` and built-in Node modules return the same instance the action uses; everything else falls through to Node's regular resolver, then to `$GITHUB_WORKSPACE/node_modules`, so packages installed by a prior `npm ci` / `npm install` step can be required directly.
 
 ## Notes
 

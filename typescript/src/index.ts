@@ -7,6 +7,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as child_process from 'child_process';
 import * as util from 'util';
+import { createRequire } from 'module';
 import * as ts from 'typescript';
 
 // dist/ layout produced by `just build`:
@@ -254,9 +255,18 @@ function makeRequire(): (name: string) => unknown {
 		child_process,
 		util,
 	};
+	const workspaceDir = process.env.GITHUB_WORKSPACE;
+	const workspaceRequire = workspaceDir
+		? createRequire(path.join(workspaceDir, 'noop.js'))
+		: null;
 	return (name: string): unknown => {
 		if (name in builtins) return builtins[name];
-		return require(name);
+		try {
+			return require(name);
+		} catch (e) {
+			if (workspaceRequire) return workspaceRequire(name);
+			throw e;
+		}
 	};
 }
 
