@@ -30,7 +30,7 @@ The recipe runs `pnpm install`, `pnpm tsc`, `pnpm esbuild`, and then stages a cu
 - Type-checking is done with `ts.createProgram` plus a CompilerHost that serves the wrapped source from memory; everything else (lib files, type packages) is read from disk under `dist/`.
 - Diagnostics are remapped: line numbers are adjusted by the wrapper-prefix line count so errors point at the user's script line, not the wrapper.
 - Transpilation uses `ts.transpileModule` with `module: CommonJS`, then the JS body is executed via `new Function(...)` with all helpers passed as arguments. This avoids polluting the global scope.
-- A custom `require` is supplied so the user can `require('@actions/core')` etc. and get the same instance the action uses; unknown modules fall through to Node's regular `require`.
+- A custom `require` is supplied so the user can `require('@actions/core')` etc. and get the same instance the action uses; unknown modules fall through to Node's regular `require`, then to `$GITHUB_WORKSPACE/node_modules` so packages installed by a prior `npm ci` step are also available.
 - `crypto` is NOT injected because `@types/node` declares `crypto` as a global (Web Crypto), and an ambient `declare const crypto: typeof import('crypto')` would clash. Users can `require('crypto')` for the Node module.
 - `@actions/github` is shipped as a stripped stub (`Context` + `WebhookPayload` only). Full Octokit types weigh in at ~7 MB; the `octokit` factory is typed loosely (`rest: any`, etc.) instead.
 
