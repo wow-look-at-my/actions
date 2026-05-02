@@ -30,11 +30,11 @@ inputs:
   # never to action processes. Pass them through explicitly when needed:
   #   vars: ${{ toJSON(vars) }}
   vars:
-    description: 'vars workflow context as JSON. Pass `${{ toJSON(vars) }}` when the script needs repo/org variables.'
+    description: 'vars workflow context as JSON. Callers must pass toJSON(vars) wrapped in an expression.'
     required: false
     default: '{}'
   secrets:
-    description: 'secrets workflow context as JSON. Pass `${{ toJSON(secrets) }}` when the script needs secrets.'
+    description: 'secrets workflow context as JSON. Callers must pass toJSON(secrets) wrapped in an expression.'
     required: false
     default: '{}'
   inputs:
@@ -42,11 +42,11 @@ inputs:
     required: false
     default: '{}'
   steps:
-    description: 'steps workflow context as JSON. Pass `${{ toJSON(steps) }}` to read previous-step outcomes/outputs.'
+    description: 'steps workflow context as JSON. Callers must pass toJSON(steps) wrapped in an expression.'
     required: false
     default: '{}'
   needs:
-    description: 'needs workflow context as JSON. Pass `${{ toJSON(needs) }}` to read upstream-job results.'
+    description: 'needs workflow context as JSON. Callers must pass toJSON(needs) wrapped in an expression.'
     required: false
     default: '{}'
   strategy:
@@ -54,7 +54,7 @@ inputs:
     required: false
     default: '{}'
   matrix:
-    description: 'matrix workflow context as JSON. Pass `${{ toJSON(matrix) }}` from a matrix job.'
+    description: 'matrix workflow context as JSON. Callers must pass toJSON(matrix) wrapped in an expression.'
     required: false
     default: '{}'
 
