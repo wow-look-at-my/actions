@@ -2,3 +2,5 @@ node_modules/
 package-lock.json
 build/
 dist/
+# pr-preview is a reusable workflow that self-checkouts; dist/ must be committed
+!pr-preview/dist/
