@@ -16,6 +16,16 @@ The minimal call — `github`, `runner`, `env`, and `job` are auto-derived from 
       core.setOutput('version', JSON.parse(data).version);
 ```
 
+Instead of inlining the script, you can point to a `.ts` file in the repo:
+
+```yaml
+- uses: wow-look-at-my/actions@typescript#latest
+  with:
+    file: .github/scripts/release.ts
+```
+
+The file path is resolved relative to `$GITHUB_WORKSPACE`. Its contents are treated exactly like an inline `script` — the body of an `async function` with the same injected helpers.
+
 If the script needs contexts the runner doesn't expose to action processes (`vars`, `secrets`, `steps`, `needs`, `inputs`, `strategy`, `matrix`), pass them explicitly:
 
 ```yaml
@@ -43,7 +53,8 @@ If the script needs contexts the runner doesn't expose to action processes (`var
 
 | Name | Required | Default | Description |
 |------|----------|---------|-------------|
-| `script` | Yes | — | TypeScript source to execute. |
+| `script` | No | — | TypeScript source to execute. Mutually exclusive with `file`. |
+| `file` | No | — | Path to a `.ts` file to execute (resolved relative to `$GITHUB_WORKSPACE`). Mutually exclusive with `script`. |
 | `github` | No | auto | Override for the `github` context. By default derived from `$GITHUB_*` env vars + `$GITHUB_EVENT_PATH`. |
 | `runner` | No | auto | Override for the `runner` context. By default derived from `$RUNNER_*` env vars. |
 | `env` | No | `process.env` | Override for the `env` context. Defaults to the action process's full environment. |

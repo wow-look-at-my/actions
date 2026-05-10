@@ -4,8 +4,13 @@ description: Run an inline TypeScript script, validated with tsc, with helpful g
 
 inputs:
   script:
-    description: TypeScript source to execute. The body runs inside an async function with helpers like `core`, `context`, `octokit`, `fs`, `path` already in scope.
-    required: true
+    description: TypeScript source to execute. The body runs inside an async function with helpers like `core`, `context`, `octokit`, `fs`, `path` already in scope. Mutually exclusive with `file`.
+    required: false
+    default: ''
+  file:
+    description: Path to a .ts file to execute (resolved relative to $GITHUB_WORKSPACE). The file contents are treated like an inline `script`. Mutually exclusive with `script`.
+    required: false
+    default: ''
 
   # Auto-derived from environment variables / event payload by default. Pass
   # JSON only to override (e.g. for testing or to forward a different shape).
