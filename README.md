@@ -147,3 +147,13 @@ Reusable GitHub Actions.
   with:
     script: # TypeScript source to execute. The body runs inside an async function with helpers like `core`, `context`, `octokit`, `fs`, `path` already in scope.
 ```
+
+## Reusable Workflows
+
+### PR Management
+
+```yml
+jobs:
+  pr-management:
+    uses: wow-look-at-my/actions/.github/workflows/pr-management.yml@master
+```

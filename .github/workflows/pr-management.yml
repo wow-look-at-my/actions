@@ -1,0 +1,162 @@
+# Reusable workflow: open PRs for branches missing one, update PRs behind
+# their base. Lives here because GitHub requires reusable workflows in
+# .github/workflows/ (actions/runner#2102).
+#
+# Calling repos need the repo setting enabled:
+#   Settings > Actions > General > Workflow permissions >
+#     "Allow GitHub Actions to create and approve pull requests"
+
+name: PR Management
+
+on:
+    workflow_call:
+        inputs:
+            skip-branches:
+                description: "Comma-separated list of additional branches to skip (default branch and gh-pages are always skipped)"
+                type: string
+                default: ""
+            target-base:
+                description: "Base branch for PRs (defaults to the repository's default branch)"
+                type: string
+                default: ""
+
+permissions:
+    contents: write
+    pull-requests: write
+
+concurrency:
+    group: pr-management
+    cancel-in-progress: false
+
+jobs:
+    manage:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: wow-look-at-my/actions@typescript#latest
+              env:
+                  GITHUB_TOKEN: ${{ github.token }}
+                  INPUT_SKIP_BRANCHES: ${{ inputs.skip-branches }}
+                  INPUT_TARGET_BASE: ${{ inputs.target-base }}
+              with:
+                  script: |
+                      const oct = octokit(env.GITHUB_TOKEN);
+                      const { owner, repo } = context.repo;
+
+                      let targetBase = env.INPUT_TARGET_BASE;
+                      if (!targetBase) {
+                        const { data } = await oct.rest.repos.get({ owner, repo });
+                        targetBase = data.default_branch;
+                      }
+
+                      const skip = new Set([targetBase, "gh-pages"]);
+                      for (const b of (env.INPUT_SKIP_BRANCHES || "").split(",")) {
+                        const trimmed = b.trim();
+                        if (trimmed) skip.add(trimmed);
+                      }
+
+                      core.startGroup("Open PRs for branches missing one");
+
+                      const branches: Array<{ name: string }> = await oct.paginate(
+                        oct.rest.repos.listBranches,
+                        { owner, repo, per_page: 100 },
+                      );
+
+                      for (const branch of branches) {
+                        if (skip.has(branch.name)) continue;
+
+                        let ahead: number;
+                        try {
+                          const { data } = await oct.rest.repos.compareCommitsWithBasehead({
+                            owner,
+                            repo,
+                            basehead: `${targetBase}...${branch.name}`,
+                          });
+                          ahead = data.ahead_by;
+                        } catch (e: any) {
+                          core.warning(`compare failed for '${branch.name}': ${e.message}`);
+                          continue;
+                        }
+
+                        if (ahead === 0) {
+                          core.info(`'${branch.name}' is not ahead of ${targetBase}`);
+                          continue;
+                        }
+
+                        const { data: prs } = await oct.rest.pulls.list({
+                          owner,
+                          repo,
+                          head: `${owner}:${branch.name}`,
+                          state: "open",
+                        });
+
+                        if (prs.length > 0) {
+                          core.info(`'${branch.name}' already has open PR #${prs[0].number}`);
+                          continue;
+                        }
+
+                        try {
+                          const { data: pr } = await oct.rest.pulls.create({
+                            owner,
+                            repo,
+                            head: branch.name,
+                            base: targetBase,
+                            title: branch.name,
+                            body: `Automated PR for branch \`${branch.name}\`.`,
+                          });
+                          core.info(`Created PR #${pr.number} for '${branch.name}': ${pr.html_url}`);
+                        } catch (e: any) {
+                          core.warning(`Failed to create PR for '${branch.name}': ${e.message}`);
+                        }
+                      }
+
+                      core.endGroup();
+
+                      core.startGroup("Update PRs behind their base");
+
+                      const openPRs: Array<any> = await oct.paginate(
+                        oct.rest.pulls.list,
+                        { owner, repo, state: "open", per_page: 100 },
+                      );
+
+                      const repoFullName = `${owner}/${repo}`;
+
+                      for (const pr of openPRs) {
+                        const head = pr.head.ref;
+                        const base = pr.base.ref;
+
+                        if (pr.head.repo?.full_name !== repoFullName) {
+                          core.info(`PR #${pr.number} is from a fork; skipping`);
+                          continue;
+                        }
+
+                        let behind: number;
+                        try {
+                          const { data } = await oct.rest.repos.compareCommitsWithBasehead({
+                            owner,
+                            repo,
+                            basehead: `${base}...${head}`,
+                          });
+                          behind = data.behind_by;
+                        } catch (e: any) {
+                          core.warning(`compare failed for PR #${pr.number}: ${e.message}`);
+                          continue;
+                        }
+
+                        if (behind === 0) {
+                          core.info(`PR #${pr.number} (${head} -> ${base}) is up to date`);
+                          continue;
+                        }
+
+                        core.info(`PR #${pr.number} (${head} -> ${base}) is behind by ${behind} -- updating`);
+                        try {
+                          await oct.rest.pulls.updateBranch({
+                            owner,
+                            repo,
+                            pull_number: pr.number,
+                          });
+                        } catch (e: any) {
+                          core.warning(`update-branch failed for PR #${pr.number}: ${e.message}`);
+                        }
+                      }
+
+                      core.endGroup();

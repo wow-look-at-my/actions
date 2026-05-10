@@ -18,6 +18,12 @@ Each action lives in its own directory with an `action.yml` file:
 - `cache-size/` - Node.js action (TypeScript compiled to JS)
 - `tag-runner/` - Node.js action (TypeScript compiled to JS)
 
+## Reusable Workflows
+
+GitHub requires reusable workflows (`on: workflow_call`) to live in `.github/workflows/` (not in subdirectories, not elsewhere -- see [actions/runner#2102](https://github.com/actions/runner/issues/2102)). These are distinct from the repo's own CI workflows but share the same directory.
+
+- `.github/workflows/pr-management.yml` - Opens PRs for branches missing one, updates PRs behind their base. Uses the `typescript` action internally.
+
 ## Action Types
 
 ### Node.js Actions

@@ -34,6 +34,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - uses: pnpm/action-setup@v4
         with:
           version: latest
@@ -110,6 +113,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - uses: pnpm/action-setup@v4
         with:
           version: latest
@@ -167,7 +174,7 @@ jobs:
           ./orphan-release/orphan-release.sh
           --source "${{ matrix.action }}"
           --version "${{ steps.version.outputs.version }}"
-          --exclude "src node_modules tsconfig.json justfile package.json pnpm-lock.yaml"
+          --exclude "src node_modules tsconfig.json justfile package.json pnpm-lock.yaml pnpm-workspace.yaml"
           --include-branch
 
   release-composite:
