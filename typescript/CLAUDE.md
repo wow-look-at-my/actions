@@ -2,7 +2,7 @@
 
 ## Overview
 
-Node.js action (TypeScript) that runs a user-supplied TypeScript snippet, validating it with `tsc` first and pre-injecting helpers like `core`, `context`, `octokit`, `fs`, `path`, etc. so scripts stay short.
+Node.js action (TypeScript) that runs a user-supplied TypeScript snippet (inline via `script` or from a file via `file`), validating it with `tsc` first and pre-injecting helpers like `core`, `context`, `octokit`, `fs`, `path`, etc. so scripts stay short.
 
 ## Structure
 
