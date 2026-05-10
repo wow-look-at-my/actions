@@ -16,23 +16,17 @@ import * as ts from 'typescript';
 //   dist/types/node_modules/...    (mirrored types for module resolution)
 const DIST_DIR = __dirname;
 const TYPES_DIR = path.join(DIST_DIR, 'types');
-// Virtual file the user's wrapped script lives at. Located under TYPES_DIR
-// so node module resolution finds dist/types/node_modules/* by walking up.
+// Virtual file for type-checking. Located under TYPES_DIR so node module
+// resolution finds dist/types/node_modules/* by walking up.
 const VIRTUAL_FILE = path.join(TYPES_DIR, '__user-script.ts');
 
 const GLOBALS_DTS = fs.readFileSync(path.join(DIST_DIR, 'globals.d.ts'), 'utf-8');
 
-// No explicit return type on the wrapper — under strict mode that would
-// reject scripts that don't have an explicit `return`. TypeScript infers
-// `Promise<T | undefined>` from the body, which is what we want.
-const WRAPPER_PREFIX = `${GLOBALS_DTS}\nasync function __runUserScript() {\n`;
-// Number of newlines preceding the user's first line — used to remap
-// diagnostic line numbers from the wrapped source back to user lines.
-const WRAPPER_PREFIX_LINES = WRAPPER_PREFIX.split('\n').length - 1;
-const WRAPPER_SUFFIX = '\n}\n';
+const SOURCE_PREFIX = `${GLOBALS_DTS}\n`;
+const PREFIX_LINES = SOURCE_PREFIX.split('\n').length - 1;
 
 function buildSource(userScript: string): string {
-	return WRAPPER_PREFIX + userScript + WRAPPER_SUFFIX;
+	return SOURCE_PREFIX + userScript;
 }
 
 interface WorkflowContexts {
@@ -172,7 +166,7 @@ function readContexts(): WorkflowContexts {
 function baseCompilerOptions(): ts.CompilerOptions {
 	return {
 		target: ts.ScriptTarget.ES2022,
-		module: ts.ModuleKind.CommonJS,
+		module: ts.ModuleKind.ES2022,
 		moduleResolution: ts.ModuleResolutionKind.Node10,
 		strict: true,
 		esModuleInterop: true,
@@ -223,7 +217,7 @@ function formatDiagnostic(d: ts.Diagnostic, label: string): string {
 	const message = ts.flattenDiagnosticMessageText(d.messageText, '\n');
 	if (d.file && d.start !== undefined) {
 		const { line, character } = d.file.getLineAndCharacterOfPosition(d.start);
-		const userLine = Math.max(1, line - WRAPPER_PREFIX_LINES + 1);
+		const userLine = Math.max(1, line - PREFIX_LINES + 1);
 		return `${label}:${userLine}:${character + 1}: error TS${d.code}: ${message}`;
 	}
 	return `error TS${d.code}: ${message}`;
@@ -243,61 +237,66 @@ function transpile(source: string): string {
 	return result.outputText;
 }
 
-function makeRequire(): (name: string) => unknown {
-	const builtins: Record<string, unknown> = {
+function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: string): unknown {
+	Object.assign(globalThis, {
+		core, exec, io,
+		octokit: github.getOctokit,
+		context: github.context,
+		github: ctx.github, env: ctx.env, runner: ctx.runner,
+		job: ctx.job, steps: ctx.steps, needs: ctx.needs,
+		vars: ctx.vars, secrets: ctx.secrets, inputs: ctx.inputs,
+		strategy: ctx.strategy, matrix: ctx.matrix,
+		fs, path, os, child_process, util,
+	});
+
+	const actionModules: Record<string, unknown> = {
 		'@actions/core': core,
 		'@actions/github': github,
 		'@actions/exec': exec,
 		'@actions/io': io,
-		fs,
-		path,
-		os,
-		child_process,
-		util,
 	};
+
+	const NodeModule = require('module');
+	const origResolve = NodeModule._resolveFilename;
 	const workspaceDir = process.env.GITHUB_WORKSPACE;
-	const workspaceRequire = workspaceDir
-		? createRequire(path.join(workspaceDir, 'noop.js'))
-		: null;
-	return (name: string): unknown => {
-		if (name in builtins) return builtins[name];
+
+	NodeModule._resolveFilename = function (request: string, parent: unknown, isMain: boolean, options: unknown) {
+		if (request in actionModules) return request;
 		try {
-			return require(name);
+			return origResolve.call(this, request, parent, isMain, options);
 		} catch (e) {
-			if (workspaceRequire) return workspaceRequire(name);
+			if (workspaceDir) {
+				return createRequire(path.join(workspaceDir, 'noop.js')).resolve(request);
+			}
 			throw e;
 		}
 	};
+
+	for (const [name, mod] of Object.entries(actionModules)) {
+		(require.cache as any)[name] = {
+			id: name, filename: name, loaded: true, exports: mod,
+			parent: null, children: [], paths: [],
+		};
+	}
+
+	const scriptPath = path.join(baseDir, `.user-script-${process.pid}-${Date.now()}.js`);
+	fs.writeFileSync(scriptPath, transpiledJs);
+
+	try {
+		const result = require(scriptPath);
+		if (typeof result === 'object' && result !== null && Object.keys(result).length === 0) {
+			return undefined;
+		}
+		return result;
+	} finally {
+		NodeModule._resolveFilename = origResolve;
+		for (const name of Object.keys(actionModules)) delete (require.cache as any)[name];
+		delete require.cache[scriptPath];
+		try { fs.unlinkSync(scriptPath); } catch {}
+	}
 }
 
-async function execute(transpiledJs: string, ctx: WorkflowContexts): Promise<unknown> {
-	const fakeRequire = makeRequire();
-	const fakeModule: { exports: unknown } = { exports: {} };
-
-	// User code is the body of an async function definition (`async function
-	// __runUserScript() { ... }`). After transpilation we call it and return
-	// the awaited value. The Function wrapper provides parameters for the
-	// helpers; their names exactly match those declared in GLOBALS_DTS so
-	// type-checking and execution agree.
-	const fn = new Function(
-		'core', 'exec', 'io', 'octokit', 'context',
-		'github', 'env', 'runner', 'job', 'steps', 'needs',
-		'vars', 'secrets', 'inputs', 'strategy', 'matrix',
-		'fs', 'path', 'os', 'child_process', 'util',
-		'require', 'module', 'exports', '__filename', '__dirname',
-		`${transpiledJs}\nreturn __runUserScript();`,
-	);
-
-	return await fn(
-		core, exec, io, github.getOctokit, github.context,
-		ctx.github, ctx.env, ctx.runner, ctx.job, ctx.steps, ctx.needs,
-		ctx.vars, ctx.secrets, ctx.inputs, ctx.strategy, ctx.matrix,
-		fs, path, os, child_process, util,
-		fakeRequire, fakeModule, fakeModule.exports, '<user-script>', process.cwd(),
-	);
-}
-
-function readUserScript(): { script: string; label: string } {
+function readUserScript(): { script: string; label: string; dir: string } {
 	const inline = core.getInput('script');
 	const file = core.getInput('file');
 
@@ -314,14 +313,14 @@ function readUserScript(): { script: string; label: string } {
 		if (!fs.existsSync(resolved)) {
 			throw new Error(`File not found: ${resolved}`);
 		}
-		return { script: fs.readFileSync(resolved, 'utf-8'), label: file };
+		return { script: fs.readFileSync(resolved, 'utf-8'), label: file, dir: path.dirname(resolved) };
 	}
 
-	return { script: inline, label: 'script' };
+	return { script: inline, label: 'script', dir: process.env.GITHUB_WORKSPACE ?? process.cwd() };
 }
 
-async function run(): Promise<void> {
-	const { script: userScript, label } = readUserScript();
+function run(): void {
+	const { script: userScript, label, dir } = readUserScript();
 	const ctx = readContexts();
 	const source = buildSource(userScript);
 
@@ -344,7 +343,7 @@ async function run(): Promise<void> {
 	core.endGroup();
 
 	core.startGroup('Executing script');
-	const result = await execute(js, ctx);
+	const result = execute(js, ctx, dir);
 	core.endGroup();
 
 	if (result !== undefined) {
@@ -352,6 +351,8 @@ async function run(): Promise<void> {
 	}
 }
 
-run().catch((err) => {
+try {
+	run();
+} catch (err) {
 	core.setFailed(err instanceof Error ? (err.stack ?? err.message) : String(err));
-});
+}
