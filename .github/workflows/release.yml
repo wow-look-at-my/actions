@@ -127,6 +127,13 @@ jobs:
         working-directory: ${{ matrix.action }}
         run: just build
 
+      - name: Test
+        working-directory: ${{ matrix.action }}
+        run: |
+          if compgen -G "src/*.test.ts" > /dev/null; then
+            pnpm tsx --test src/*.test.ts
+          fi
+
       - name: Validate action.yml
         run: |
           action="${{ matrix.action }}"

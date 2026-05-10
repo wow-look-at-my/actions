@@ -22,7 +22,7 @@ const VIRTUAL_FILE = path.join(TYPES_DIR, '__user-script.ts');
 
 const GLOBALS_DTS = fs.readFileSync(path.join(DIST_DIR, 'globals.d.ts'), 'utf-8');
 
-const SOURCE_PREFIX = `${GLOBALS_DTS}\n`;
+const SOURCE_PREFIX = `${GLOBALS_DTS}\nexport {};\n`;
 const PREFIX_LINES = SOURCE_PREFIX.split('\n').length - 1;
 
 function buildSource(userScript: string): string {
@@ -237,7 +237,7 @@ function transpile(source: string): string {
 	return result.outputText;
 }
 
-function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: string): unknown {
+async function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: string): Promise<unknown> {
 	Object.assign(globalThis, {
 		core, exec, io,
 		octokit: github.getOctokit,
@@ -279,20 +279,21 @@ function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: string): 
 		};
 	}
 
-	const scriptPath = path.join(baseDir, `.user-script-${process.pid}-${Date.now()}.js`);
-	fs.writeFileSync(scriptPath, transpiledJs);
+	const scriptFilename = path.join(baseDir, `.user-script-${process.pid}-${Date.now()}.js`);
+	const scriptRequire = createRequire(scriptFilename);
 
 	try {
-		const result = require(scriptPath);
-		if (typeof result === 'object' && result !== null && Object.keys(result).length === 0) {
+		const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+		const fn = new AsyncFunction('require', 'exports', 'module', '__filename', '__dirname', transpiledJs);
+		const mod = { exports: {} as Record<string, unknown> };
+		await fn(scriptRequire, mod.exports, mod, scriptFilename, baseDir);
+		if (typeof mod.exports === 'object' && mod.exports !== null && Object.keys(mod.exports).length === 0) {
 			return undefined;
 		}
-		return result;
+		return mod.exports;
 	} finally {
 		NodeModule._resolveFilename = origResolve;
 		for (const name of Object.keys(actionModules)) delete (require.cache as any)[name];
-		delete require.cache[scriptPath];
-		try { fs.unlinkSync(scriptPath); } catch {}
 	}
 }
 
@@ -319,7 +320,7 @@ function readUserScript(): { script: string; label: string; dir: string } {
 	return { script: inline, label: 'script', dir: process.env.GITHUB_WORKSPACE ?? process.cwd() };
 }
 
-function run(): void {
+async function run(): Promise<void> {
 	const { script: userScript, label, dir } = readUserScript();
 	const ctx = readContexts();
 	const source = buildSource(userScript);
@@ -343,7 +344,7 @@ function run(): void {
 	core.endGroup();
 
 	core.startGroup('Executing script');
-	const result = execute(js, ctx, dir);
+	const result = await execute(js, ctx, dir);
 	core.endGroup();
 
 	if (result !== undefined) {
@@ -351,8 +352,6 @@ function run(): void {
 	}
 }
 
-try {
-	run();
-} catch (err) {
+run().catch((err) => {
 	core.setFailed(err instanceof Error ? (err.stack ?? err.message) : String(err));
-}
+});
