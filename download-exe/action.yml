@@ -47,7 +47,7 @@ runs:
       with:
         name: ${{ inputs.name }}
         path: ${{ inputs.path }}
-        run-id: ${{ inputs.run-id }}
+        run-id: ${{ inputs.run-id || github.run_id }}
         github-token: ${{ inputs.github-token }}
         pattern: ${{ inputs.pattern || null }}
         merge-multiple: ${{ inputs.merge-multiple }}
