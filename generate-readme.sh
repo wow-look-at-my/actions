@@ -44,8 +44,7 @@ done < <(find . -name action.yml -not -path './.github/*' -not -path '*/test/*' 
 # Reusable workflows (workflow_call triggers in .github/workflows/)
 first_wf=true
 while IFS= read -r wf; do
-  has_call=$(yq -r '."on".workflow_call // empty' ".github/workflows/$wf")
-  [ -z "$has_call" ] && continue
+  grep -q 'workflow_call' ".github/workflows/$wf" || continue
 
   if $first_wf; then
     echo ""
