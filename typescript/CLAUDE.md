@@ -36,7 +36,15 @@ The recipe runs `pnpm install`, `pnpm tsc`, `pnpm esbuild`, and then stages a cu
 
 ### Testing
 
-No automated tests. Smoke-test by running locally:
+Run integration tests (requires `just build` first):
+
+```sh
+pnpm tsx --test src/index.test.ts
+```
+
+Tests cover: basic execution, top-level await, import + await, node built-in imports, error propagation, type errors, workflow contexts, and require of @actions modules.
+
+Smoke-test by running locally:
 
 ```sh
 INPUT_SCRIPT='core.info("hello")' node dist/index.js

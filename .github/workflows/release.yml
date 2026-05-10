@@ -46,6 +46,24 @@ jobs:
         run: just build
       - uses: ./no-scripts-action
 
+  test-typescript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      - uses: extractions/setup-just@v2
+      - name: Build
+        working-directory: typescript
+        run: just build
+      - name: Test
+        working-directory: typescript
+        run: pnpm tsx --test src/index.test.ts
+
   test-cache-rg:
     runs-on: ubuntu-latest
     steps:
