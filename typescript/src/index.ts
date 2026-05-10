@@ -219,12 +219,12 @@ function typeCheck(source: string): readonly ts.Diagnostic[] {
 	];
 }
 
-function formatDiagnostic(d: ts.Diagnostic): string {
+function formatDiagnostic(d: ts.Diagnostic, label: string): string {
 	const message = ts.flattenDiagnosticMessageText(d.messageText, '\n');
 	if (d.file && d.start !== undefined) {
 		const { line, character } = d.file.getLineAndCharacterOfPosition(d.start);
 		const userLine = Math.max(1, line - WRAPPER_PREFIX_LINES + 1);
-		return `script:${userLine}:${character + 1}: error TS${d.code}: ${message}`;
+		return `${label}:${userLine}:${character + 1}: error TS${d.code}: ${message}`;
 	}
 	return `error TS${d.code}: ${message}`;
 }
@@ -297,8 +297,31 @@ async function execute(transpiledJs: string, ctx: WorkflowContexts): Promise<unk
 	);
 }
 
+function readUserScript(): { script: string; label: string } {
+	const inline = core.getInput('script');
+	const file = core.getInput('file');
+
+	if (inline && file) {
+		throw new Error("Inputs 'script' and 'file' are mutually exclusive — provide one or the other.");
+	}
+	if (!inline && !file) {
+		throw new Error("Either 'script' or 'file' must be provided.");
+	}
+
+	if (file) {
+		const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
+		const resolved = path.resolve(workspace, file);
+		if (!fs.existsSync(resolved)) {
+			throw new Error(`File not found: ${resolved}`);
+		}
+		return { script: fs.readFileSync(resolved, 'utf-8'), label: file };
+	}
+
+	return { script: inline, label: 'script' };
+}
+
 async function run(): Promise<void> {
-	const userScript = core.getInput('script', { required: true });
+	const { script: userScript, label } = readUserScript();
 	const ctx = readContexts();
 	const source = buildSource(userScript);
 
@@ -306,7 +329,7 @@ async function run(): Promise<void> {
 	const diagnostics = typeCheck(source);
 	if (diagnostics.length > 0) {
 		for (const d of diagnostics) {
-			core.error(formatDiagnostic(d));
+			core.error(formatDiagnostic(d, label));
 		}
 		core.endGroup();
 		core.setFailed(`TypeScript validation failed with ${diagnostics.length} error(s).`);
