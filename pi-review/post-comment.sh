@@ -2,8 +2,8 @@
 set -euo pipefail
 
 if [ -z "${REVIEW:-}" ]; then
-	echo "::warning::Review output is empty; skipping comment."
-	exit 0
+	echo "::error::REVIEW output is empty; refusing to post an empty comment. The previous step should have failed - check why it did not."
+	exit 1
 fi
 
 comment_file=$(mktemp)
