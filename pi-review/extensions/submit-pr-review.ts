@@ -1,25 +1,31 @@
 /**
- * pi extension that registers two tools for incremental PR review:
+ * pi extension that registers two tools for incremental PR review.
  *
- *   1. `add_pr_comment(path, line, body, side?)`
- *      Posts a single inline review comment immediately. The agent is expected
- *      to call this as soon as a finding is identified rather than batching
- *      findings to the end of the conversation, where it would forget details.
+ * Intentionally avoids importing from `@earendil-works/pi-coding-agent`,
+ * `@earendil-works/pi-ai`, or `typebox`. shaftoe's bundled action embeds
+ * those packages in a single file, so the names are not resolvable as
+ * normal node modules from an external `.ts` extension. Using a plain
+ * object factory and JSON Schema for `parameters` sidesteps that.
  *
- *   2. `finish_review(event, body)`
- *      Submits the final PR review with a verdict (APPROVE / REQUEST_CHANGES /
- *      COMMENT) and an overall summary body. terminate: true so the agent
- *      stops after calling this.
+ * Tools registered:
+ *
+ *   add_pr_comment(path, line, body, side?, start_line?, start_side?)
+ *     Posts a single inline review comment immediately via
+ *     POST /repos/{owner}/{repo}/pulls/{N}/comments. The agent calls this
+ *     AS SOON AS each finding is identified, so it doesn't have to
+ *     remember every finding to write a single big review at the end.
+ *
+ *   finish_review(event, body)
+ *     Submits the final PR review with APPROVE / REQUEST_CHANGES /
+ *     COMMENT and a short overall summary via POST /pulls/{N}/reviews.
+ *     terminate: true so the agent stops cleanly after this call.
  *
  * Required env (set by the GitHub Actions runner):
- *   GITHUB_TOKEN       - permission: pull-requests: write
+ *   GITHUB_TOKEN       - workflow token with pull-requests: write
  *   GITHUB_REPOSITORY  - "owner/name"
  *   GITHUB_EVENT_PATH  - path to event payload JSON
  */
 
-import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { StringEnum } from "@earendil-works/pi-ai";
-import { Type } from "typebox";
 import * as fs from "node:fs";
 
 interface PullRequestContext {
@@ -91,46 +97,65 @@ async function ghApi<T>(
 	return (await response.json()) as T;
 }
 
-const addPrCommentTool = defineTool({
+interface AddPrCommentArgs {
+	path: string;
+	line: number;
+	body: string;
+	side?: "LEFT" | "RIGHT";
+	start_line?: number;
+	start_side?: "LEFT" | "RIGHT";
+}
+
+interface FinishReviewArgs {
+	event: "APPROVE" | "REQUEST_CHANGES" | "COMMENT";
+	body: string;
+}
+
+const addPrCommentTool = {
 	name: "add_pr_comment",
 	label: "Add PR Comment",
 	description:
-		"Post a single inline review comment on a specific line of the PR diff. Call this as soon as you identify a finding - do not save findings until the end of the review.",
+		"Post a single inline review comment on a specific line of the PR diff. Call this AS SOON AS you identify a finding - do not save findings until the end of the review.",
 	promptSnippet:
 		"Leave one inline review comment on a line in the PR diff. Use eagerly as findings are identified.",
 	promptGuidelines: [
 		"Use add_pr_comment immediately when you find a bug, concern, or nit - do not wait until the end of your analysis.",
-		"For add_pr_comment, prefix the body with the severity in bold: **blocker**, **concern**, or **nit**, then explain the issue.",
-		"For add_pr_comment, `line` is the line number in the new file (RIGHT side) or old file (LEFT side). It must be part of the diff hunk.",
+		"For add_pr_comment, prefix the body with the severity in bold: **blocker**, **concern**, or **nit**.",
+		"For add_pr_comment, `line` is the new-file line number (RIGHT side, default) or old-file line number (LEFT side). It must fall within a diff hunk.",
 	],
-	parameters: Type.Object({
-		path: Type.String({ description: "Path to the file, relative to the repo root." }),
-		line: Type.Integer({
-			description:
-				"Line number in the diff. New-file line number when side=RIGHT (default), old-file line number when side=LEFT.",
-		}),
-		body: Type.String({
-			description: "Comment body in GitHub markdown. Prefix with severity in bold.",
-		}),
-		side: Type.Optional(
-			StringEnum(["LEFT", "RIGHT"] as const, {
-				description: "Side of the diff. RIGHT (default) = new state, LEFT = previous state.",
-			}),
-		),
-		start_line: Type.Optional(
-			Type.Integer({
+	parameters: {
+		type: "object",
+		properties: {
+			path: { type: "string", description: "Path to the file, relative to the repo root." },
+			line: {
+				type: "integer",
+				description:
+					"Line number in the diff. New-file line when side=RIGHT (default); old-file line when side=LEFT.",
+			},
+			body: {
+				type: "string",
+				description: "Comment body in GitHub markdown. Prefix with severity in bold.",
+			},
+			side: {
+				type: "string",
+				enum: ["LEFT", "RIGHT"],
+				description: "Side of the diff. RIGHT (default) = new state; LEFT = previous state.",
+			},
+			start_line: {
+				type: "integer",
 				description:
 					"For multi-line comments, the first line of the range. Omit for single-line.",
-			}),
-		),
-		start_side: Type.Optional(
-			StringEnum(["LEFT", "RIGHT"] as const, {
+			},
+			start_side: {
+				type: "string",
+				enum: ["LEFT", "RIGHT"],
 				description: "Side for start_line. Required when start_line is set.",
-			}),
-		),
-	}),
+			},
+		},
+		required: ["path", "line", "body"],
+	},
 
-	async execute(_toolCallId, params) {
+	async execute(_toolCallId: string, params: AddPrCommentArgs) {
 		const ctx = getPullRequestContext();
 		const payload: Record<string, unknown> = {
 			commit_id: ctx.headSha,
@@ -160,32 +185,38 @@ const addPrCommentTool = defineTool({
 			details: { comment_id: comment.id, path: params.path, line: params.line },
 		};
 	},
-});
+};
 
-const finishReviewTool = defineTool({
+const finishReviewTool = {
 	name: "finish_review",
 	label: "Finish Review",
 	description:
-		"Submit the final PR review with a verdict (APPROVE / REQUEST_CHANGES / COMMENT) and an overall summary. Call this ONCE as your last action after you have posted any inline comments via add_pr_comment.",
+		"Submit the final PR review with a verdict (APPROVE / REQUEST_CHANGES / COMMENT) and a short overall summary. Call this ONCE as your last action after posting any inline comments via add_pr_comment.",
 	promptSnippet:
 		"Submit the final PR review verdict (approve / request_changes / comment) with a short overall summary.",
 	promptGuidelines: [
 		"Use finish_review as the very last action of the review. Do not write a text response after - the verdict is the review.",
-		"For finish_review, the body should be a short overall summary (one or two sentences). Per-line detail belongs in add_pr_comment, not here.",
-		"For finish_review, choose APPROVE for ship-it, REQUEST_CHANGES if there is at least one blocker-level finding, COMMENT for nits-only or neutral feedback.",
+		"For finish_review, the body is a short overall summary (one or two sentences). Per-line detail belongs in add_pr_comment, not here.",
+		"For finish_review, choose APPROVE for ship-it, REQUEST_CHANGES if at least one finding is a blocker, COMMENT for nits-only or neutral feedback.",
 	],
-	parameters: Type.Object({
-		event: StringEnum(["APPROVE", "REQUEST_CHANGES", "COMMENT"] as const, {
-			description:
-				"Review verdict. APPROVE = ship it. REQUEST_CHANGES = at least one blocker. COMMENT = nits / neutral.",
-		}),
-		body: Type.String({
-			description:
-				"Short overall summary in GitHub markdown - one or two sentences. Detailed per-line findings go in add_pr_comment.",
-		}),
-	}),
+	parameters: {
+		type: "object",
+		properties: {
+			event: {
+				type: "string",
+				enum: ["APPROVE", "REQUEST_CHANGES", "COMMENT"],
+				description:
+					"Review verdict. APPROVE = ship it. REQUEST_CHANGES = at least one blocker. COMMENT = nits / neutral.",
+			},
+			body: {
+				type: "string",
+				description: "Short overall summary in GitHub markdown.",
+			},
+		},
+		required: ["event", "body"],
+	},
 
-	async execute(_toolCallId, params) {
+	async execute(_toolCallId: string, params: FinishReviewArgs) {
 		const ctx = getPullRequestContext();
 		const review = await ghApi<{ id: number; html_url: string }>(
 			"POST",
@@ -204,9 +235,9 @@ const finishReviewTool = defineTool({
 			terminate: true,
 		};
 	},
-});
+};
 
-export default function (pi: ExtensionAPI) {
+export default function (pi: { registerTool: (tool: unknown) => void }) {
 	pi.registerTool(addPrCommentTool);
 	pi.registerTool(finishReviewTool);
 }
