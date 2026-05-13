@@ -1,0 +1,139 @@
+name: Pi Review
+version: 1
+description: Review a pull request using the pi coding agent. Defaults mirror the configured local pi setup (Gemma 4 26B via llama.pazer.ai).
+
+inputs:
+  model:
+    description: Model ID at the configured endpoint.
+    required: false
+    default: 'ggml-org/gemma-4-26B-A4B-it-GGUF:Q8_0'
+  model-name:
+    description: Human-readable model name used in pi's UI/logs.
+    required: false
+    default: 'Gemma 4 26B'
+  endpoint:
+    description: OpenAI-compatible base URL, including the /v1 suffix.
+    required: false
+    default: 'https://llama.pazer.ai/v1'
+  api-key:
+    description: API key value, env var name, or "!shell command" (per pi's resolution rules). Defaults to env var name LLAMA_API_KEY, which is populated by the secret-server step.
+    required: false
+    default: 'LLAMA_API_KEY'
+  provider:
+    description: Provider name registered in pi's models.json.
+    required: false
+    default: 'llama-server'
+  thinking:
+    description: Thinking level (off, minimal, low, medium, high, xhigh). Matches local pi defaultThinkingLevel.
+    required: false
+    default: 'high'
+  reasoning:
+    description: Whether the model supports extended thinking (true|false).
+    required: false
+    default: 'true'
+  tools:
+    description: Comma-separated pi tools to enable. Defaults to read-only.
+    required: false
+    default: 'read,grep,find,ls'
+  context-window:
+    description: Model context window size in tokens.
+    required: false
+    default: '262144'
+  max-tokens:
+    description: Max output tokens.
+    required: false
+    default: '16384'
+  pi-version:
+    description: Version of @earendil-works/pi-coding-agent to install (npm dist-tag or version).
+    required: false
+    default: 'latest'
+  pr-number:
+    description: PR number to review. Defaults to the triggering PR.
+    required: false
+    default: ${{ github.event.pull_request.number }}
+  post-comment:
+    description: Post the review as a PR comment when true.
+    required: false
+    default: 'true'
+  github-token:
+    description: GitHub token used for fetching the PR diff and posting the comment.
+    required: false
+    default: ${{ github.token }}
+  additional-instructions:
+    description: Extra instructions appended to the review prompt.
+    required: false
+    default: ''
+  fetch-secrets:
+    description: Run secret-server first to populate API key env vars via OIDC.
+    required: false
+    default: 'true'
+  node-version:
+    description: Node.js version to use. pi requires >= 20.6.0.
+    required: false
+    default: '24'
+
+outputs:
+  review:
+    description: Markdown review produced by pi.
+    value: ${{ steps.review.outputs.review }}
+
+runs:
+  using: composite
+  steps:
+    - name: Fetch secrets
+      if: inputs.fetch-secrets == 'true'
+      uses: wow-look-at-my/actions@secret-server#latest
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Install pi
+      shell: bash
+      env:
+        PI_VERSION: ${{ inputs.pi-version }}
+        PI_SKIP_VERSION_CHECK: '1'
+        PI_TELEMETRY: '0'
+      run: npm install -g "@earendil-works/pi-coding-agent@${PI_VERSION}"
+
+    - name: Configure pi
+      shell: bash
+      env:
+        PROVIDER: ${{ inputs.provider }}
+        ENDPOINT: ${{ inputs.endpoint }}
+        MODEL: ${{ inputs.model }}
+        MODEL_NAME: ${{ inputs.model-name }}
+        API_KEY: ${{ inputs.api-key }}
+        CONTEXT_WINDOW: ${{ inputs.context-window }}
+        MAX_TOKENS: ${{ inputs.max-tokens }}
+        REASONING: ${{ inputs.reasoning }}
+        DEFAULT_THINKING: ${{ inputs.thinking }}
+      run: "${{ github.action_path }}/configure.sh"
+
+    - name: Run review
+      id: review
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        PROVIDER: ${{ inputs.provider }}
+        MODEL: ${{ inputs.model }}
+        THINKING: ${{ inputs.thinking }}
+        TOOLS: ${{ inputs.tools }}
+        ADDITIONAL: ${{ inputs.additional-instructions }}
+        PROMPT_PATH: ${{ github.action_path }}/review-prompt.md
+        PI_SKIP_VERSION_CHECK: '1'
+        PI_TELEMETRY: '0'
+      run: "${{ github.action_path }}/run-review.sh"
+
+    - name: Post comment
+      if: inputs.post-comment == 'true' && inputs.pr-number != ''
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        REVIEW: ${{ steps.review.outputs.review }}
+        MODEL: ${{ inputs.model }}
+        ENDPOINT: ${{ inputs.endpoint }}
+      run: "${{ github.action_path }}/post-comment.sh"

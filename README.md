@@ -109,6 +109,14 @@ Reusable GitHub Actions.
 - uses: wow-look-at-my/actions@orphan-release#latest
 ```
 
+### [Pi Review](pi-review/)
+
+```yml
+# Review a pull request using the pi coding agent. Defaults mirror the configured local pi setup (Gemma 4 26B via llama.pazer.ai).
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/pi-review/README.md
+- uses: wow-look-at-my/actions@pi-review#latest
+```
+
 ### [Fetch Secrets](secret-server/)
 
 ```yml
