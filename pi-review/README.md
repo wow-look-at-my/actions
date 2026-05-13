@@ -45,13 +45,15 @@ The checkout step is recommended so pi can use `read`, `grep`, `find`, and `ls` 
 | `tools` | `read,grep,find,ls` | Comma-separated pi tools. Read-only by default. |
 | `context-window` | `262144` | Context window size in tokens. |
 | `max-tokens` | `16384` | Max output tokens. |
-| `pi-version` | `latest` | npm dist-tag or version of `@earendil-works/pi-coding-agent`. |
 | `pr-number` | `github.event.pull_request.number` | PR number to review. |
 | `post-comment` | `true` | Post the review as a PR comment when true. |
 | `github-token` | `github.token` | Token used for `gh pr diff` and `gh pr comment`. |
 | `additional-instructions` | `` | Extra instructions appended to the review prompt. |
 | `fetch-secrets` | `true` | Run `secret-server` first to populate API key env vars via OIDC. |
 | `node-version` | `24` | Node.js version (pi requires `>= 20.6.0`). |
+| `pnpm-version` | `10` | pnpm version used to install pi from the pinned lockfile. |
+
+The pi version is pinned in [`install/package.json`](install/package.json) and locked in [`install/pnpm-lock.yaml`](install/pnpm-lock.yaml). To bump it, edit the version in `install/package.json` and run `pnpm install --lockfile-only` in that directory.
 
 ## Outputs
 
@@ -79,8 +81,8 @@ Override any default to point at a different OpenAI-compatible server:
 ## How it works
 
 1. `secret-server` (optional, default on) fetches secrets via OIDC and exports them to the env.
-2. `actions/setup-node@v4` installs Node.js.
-3. `@earendil-works/pi-coding-agent` is installed globally via npm.
+2. `actions/setup-node@v4` installs Node.js, `pnpm/action-setup@v4` installs pnpm.
+3. `pnpm install --frozen-lockfile --prod` resolves pi and its transitive deps from `install/pnpm-lock.yaml`, then `node_modules/.bin` is added to `$GITHUB_PATH`.
 4. `~/.pi/agent/models.json` is generated to match the local pi setup, with the API key replaced by an env var reference.
 5. `~/.pi/agent/settings.json` is generated with the default thinking level.
 6. The PR diff and metadata are written to `/tmp/pr.diff` and `/tmp/pr.json`.

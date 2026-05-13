@@ -1,0 +1,8 @@
+{
+	"name": "pi-review-install",
+	"private": true,
+	"description": "Pinned dependency manifest for the pi-review action. Do not add scripts - install via `pnpm install --frozen-lockfile` from the action.",
+	"dependencies": {
+		"@earendil-works/pi-coding-agent": "0.74.0"
+	}
+}

@@ -43,10 +43,6 @@ inputs:
     description: Max output tokens.
     required: false
     default: '16384'
-  pi-version:
-    description: Version of @earendil-works/pi-coding-agent to install (npm dist-tag or version).
-    required: false
-    default: 'latest'
   pr-number:
     description: PR number to review. Defaults to the triggering PR.
     required: false
@@ -71,6 +67,10 @@ inputs:
     description: Node.js version to use. pi requires >= 20.6.0.
     required: false
     default: '24'
+  pnpm-version:
+    description: pnpm version to use for installing pi from the pinned lockfile.
+    required: false
+    default: '10'
 
 outputs:
   review:
@@ -89,13 +89,21 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
 
-    - name: Install pi
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: ${{ inputs.pnpm-version }}
+        run_install: false
+
+    - name: Install pi (pinned via lockfile)
       shell: bash
+      working-directory: ${{ github.action_path }}/install
       env:
-        PI_VERSION: ${{ inputs.pi-version }}
         PI_SKIP_VERSION_CHECK: '1'
         PI_TELEMETRY: '0'
-      run: npm install -g "@earendil-works/pi-coding-agent@${PI_VERSION}"
+      run: |
+        pnpm install --frozen-lockfile --prod
+        echo "${{ github.action_path }}/install/node_modules/.bin" >> "$GITHUB_PATH"
 
     - name: Configure pi
       shell: bash
