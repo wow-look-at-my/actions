@@ -27,8 +27,29 @@ fi
 events_file=$(mktemp)
 stderr_file=$(mktemp)
 
-echo "::group::Run pi (--mode json, this is silent until pi exits)"
+# Format a JSONL event stream as a human-readable progress feed. Each line
+# of stdin is one pi event; we emit text deltas as the model produces them,
+# plus markers for tool calls and turn boundaries. Thinking deltas are
+# suppressed (they would drown out the actual review). Using -j (no trailing
+# newlines per output) so text_delta concatenation reads naturally.
+STREAM_FILTER='
+(fromjson? // {}) |
+if .type == "agent_start" then "[pi] agent start\n"
+elif .type == "agent_end" then "\n[pi] agent end\n"
+elif .type == "turn_start" then "\n=== turn ===\n"
+elif .type == "tool_execution_start" then "\n[tool] " + (.toolName // "?") + "\n"
+elif .type == "tool_execution_end" then "[done] " + (.toolName // "?") + (if .isError then " ERROR" else "" end) + "\n"
+elif .type == "message_update" and .assistantMessageEvent.type == "text_delta" then .assistantMessageEvent.delta
+elif .type == "message_end" then "\n"
+elif .type == "auto_retry_start" then "\n[retry] attempt " + (.attempt|tostring) + "/" + (.maxAttempts|tostring) + ": " + (.errorMessage // "") + "\n"
+elif .type == "compaction_start" then "\n[compaction] start (" + (.reason // "?") + ")\n"
+elif .type == "compaction_end" then "\n[compaction] end" + (if .aborted then " (aborted)" else "" end) + "\n"
+else empty
+end'
+
+echo "::group::Run pi (--mode json, streaming)"
 echo "Provider: $PROVIDER  Model: $MODEL  Thinking: $THINKING  Tools: $TOOLS"
+echo
 set +e
 pi \
 	--no-session \
@@ -42,11 +63,14 @@ pi \
 	--thinking "$THINKING" \
 	--tools "$TOOLS" \
 	"$prompt" \
-	> "$events_file" \
-	2> "$stderr_file"
-pi_exit=$?
+	2> "$stderr_file" \
+	| tee "$events_file" \
+	| jq --unbuffered -jrR "$STREAM_FILTER"
+pi_exit=${PIPESTATUS[0]}
+jq_exit=${PIPESTATUS[2]}
 set -e
-echo "pi exited with status $pi_exit"
+echo
+echo "pi exited with status $pi_exit (formatter exit $jq_exit)"
 echo "stdout (event stream): $(wc -c < "$events_file") bytes / $(wc -l < "$events_file") lines"
 echo "stderr:                $(wc -c < "$stderr_file") bytes"
 echo "::endgroup::"
@@ -89,10 +113,6 @@ if [ -z "$review" ]; then
 	cat "$events_file"
 	exit 1
 fi
-
-echo "::group::Review"
-printf '%s\n' "$review"
-echo "::endgroup::"
 
 delim="ghadelimiter_$(openssl rand -hex 16)"
 {
