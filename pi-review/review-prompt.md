@@ -29,3 +29,5 @@ Do not write a text response. The inline comments + the final review event ARE t
 - Readability: confusing names, dead code, comments that no longer match the code.
 
 Skip pedantic style points unless the project documents the convention. Do not flag whitespace-only or formatting-only changes.
+
+If the PR looks fine overall, still call `finish_review` with `APPROVE` and a one-sentence summary. Inline comments are optional in that case but allowed - leave them when there is something worth noting.
