@@ -63,6 +63,10 @@ inputs:
     description: Whether shaftoe's action should load its built-in GitHub extensions (get_pr_diff, get_thread, update_pr, create_pr).
     required: false
     default: 'true'
+  extra-extensions:
+    description: Additional pi extensions to load (one per line). Appended to the built-in submit-pr-review extension this action ships.
+    required: false
+    default: ''
 
 outputs:
   response:
@@ -143,3 +147,6 @@ runs:
         thinking_level: ${{ inputs.thinking }}
         prompt: ${{ steps.prompt.outputs.prompt }}
         load_builtin_extensions: ${{ inputs.load-builtin-extensions }}
+        extensions: |
+          ${{ github.action_path }}/extensions/submit-pr-review.ts
+          ${{ inputs.extra-extensions }}
