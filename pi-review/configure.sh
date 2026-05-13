@@ -15,7 +15,7 @@ settings_file="$HOME/.pi/agent/settings.json"
 jq -n \
 	--arg provider "$PROVIDER" \
 	--arg url "$ENDPOINT" \
-	--arg key "$API_KEY" \
+	--arg key "$API_KEY_ENV" \
 	--arg model "$MODEL" \
 	--arg name "$MODEL_NAME" \
 	--argjson cw "$CONTEXT_WINDOW" \
