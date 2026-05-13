@@ -1,6 +1,6 @@
 name: Pi Review
-version: 1
-description: Review a pull request using the pi coding agent. Defaults mirror the configured local pi setup (Gemma 4 26B via llama.pazer.ai).
+version: 2
+description: Review a pull request using the pi coding agent SDK (via shaftoe/pi-coding-agent-action). Defaults mirror the configured local pi setup (Gemma 4 26B via llama.pazer.ai).
 
 inputs:
   model:
@@ -8,15 +8,15 @@ inputs:
     required: false
     default: 'ggml-org/gemma-4-26B-A4B-it-GGUF:Q8_0'
   model-name:
-    description: Human-readable model name used in pi's UI/logs.
+    description: Human-readable model name registered in models.json.
     required: false
     default: 'Gemma 4 26B'
   endpoint:
     description: OpenAI-compatible base URL, including the /v1 suffix.
     required: false
     default: 'https://llama.pazer.ai/v1'
-  api-key:
-    description: API key value, env var name, or "!shell command" (per pi's resolution rules). Defaults to env var name LLAMA_API_KEY, which is populated by the secret-server step.
+  api-key-env:
+    description: Name of the env var holding the API key (populated by secret-server). The value is passed to shaftoe's action as `token`.
     required: false
     default: 'LLAMA_API_KEY'
   provider:
@@ -31,10 +31,6 @@ inputs:
     description: Whether the model supports extended thinking (true|false).
     required: false
     default: 'true'
-  tools:
-    description: Comma-separated pi tools to enable. Defaults to read-only.
-    required: false
-    default: 'read,grep,find,ls'
   context-window:
     description: Model context window size in tokens.
     required: false
@@ -43,18 +39,10 @@ inputs:
     description: Max output tokens.
     required: false
     default: '16384'
-  pr-number:
-    description: PR number to review. Defaults to the triggering PR.
+  prompt:
+    description: Review instructions sent to the agent. Defaults to the prompt in review-prompt.md.
     required: false
-    default: ${{ github.event.pull_request.number }}
-  post-comment:
-    description: Post the review as a PR comment when true.
-    required: false
-    default: 'true'
-  github-token:
-    description: GitHub token used for fetching the PR diff and posting the comment.
-    required: false
-    default: ${{ github.token }}
+    default: ''
   additional-instructions:
     description: Extra instructions appended to the review prompt.
     required: false
@@ -67,15 +55,31 @@ inputs:
     description: Node.js version to use. pi requires >= 20.6.0.
     required: false
     default: '24'
-  pnpm-version:
-    description: pnpm version to use for installing pi from the pinned lockfile.
+  github-token:
+    description: GitHub token passed through to shaftoe/pi-coding-agent-action for PR comment and diff access.
     required: false
-    default: '10'
+    default: ${{ github.token }}
+  load-builtin-extensions:
+    description: Whether shaftoe's action should load its built-in GitHub extensions (get_pr_diff, get_thread, update_pr, create_pr).
+    required: false
+    default: 'true'
 
 outputs:
-  review:
-    description: Markdown review produced by pi.
-    value: ${{ steps.review.outputs.review }}
+  response:
+    description: Markdown review produced by pi (forwarded from shaftoe's action).
+    value: ${{ steps.review.outputs.response }}
+  success:
+    description: Whether pi completed successfully.
+    value: ${{ steps.review.outputs.success }}
+  input-tokens:
+    description: Input tokens consumed.
+    value: ${{ steps.review.outputs.input_tokens }}
+  output-tokens:
+    description: Output tokens generated.
+    value: ${{ steps.review.outputs.output_tokens }}
+  duration-seconds:
+    description: Wall-clock duration of pi execution.
+    value: ${{ steps.review.outputs.duration_seconds }}
 
 runs:
   using: composite
@@ -89,59 +93,53 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
 
-    - name: Setup pnpm
-      uses: pnpm/action-setup@v4
-      with:
-        version: ${{ inputs.pnpm-version }}
-        run_install: false
-
-    - name: Install pi (pinned via lockfile)
-      shell: bash
-      working-directory: ${{ github.action_path }}/install
-      env:
-        PI_SKIP_VERSION_CHECK: '1'
-        PI_TELEMETRY: '0'
-      run: |
-        pnpm install --frozen-lockfile --prod
-        echo "${{ github.action_path }}/install/node_modules/.bin" >> "$GITHUB_PATH"
-
-    - name: Configure pi
+    - name: Configure pi (write models.json)
       shell: bash
       env:
         PROVIDER: ${{ inputs.provider }}
         ENDPOINT: ${{ inputs.endpoint }}
         MODEL: ${{ inputs.model }}
         MODEL_NAME: ${{ inputs.model-name }}
-        API_KEY: ${{ inputs.api-key }}
+        API_KEY_ENV: ${{ inputs.api-key-env }}
         CONTEXT_WINDOW: ${{ inputs.context-window }}
         MAX_TOKENS: ${{ inputs.max-tokens }}
         REASONING: ${{ inputs.reasoning }}
         DEFAULT_THINKING: ${{ inputs.thinking }}
       run: "${{ github.action_path }}/configure.sh"
 
-    - name: Run review
-      id: review
+    - name: Resolve review prompt
+      id: prompt
       shell: bash
       env:
-        GH_TOKEN: ${{ inputs.github-token }}
-        PR_NUMBER: ${{ inputs.pr-number }}
-        PROVIDER: ${{ inputs.provider }}
-        MODEL: ${{ inputs.model }}
-        THINKING: ${{ inputs.thinking }}
-        TOOLS: ${{ inputs.tools }}
+        PROMPT_OVERRIDE: ${{ inputs.prompt }}
         ADDITIONAL: ${{ inputs.additional-instructions }}
         PROMPT_PATH: ${{ github.action_path }}/review-prompt.md
-        PI_SKIP_VERSION_CHECK: '1'
-        PI_TELEMETRY: '0'
-      run: "${{ github.action_path }}/run-review.sh"
+      run: |
+        set -euo pipefail
+        if [ -n "$PROMPT_OVERRIDE" ]; then
+          prompt="$PROMPT_OVERRIDE"
+        else
+          prompt=$(cat "$PROMPT_PATH")
+        fi
+        if [ -n "$ADDITIONAL" ]; then
+          prompt+=$'\n\n## Additional Instructions\n\n'
+          prompt+="$ADDITIONAL"
+        fi
+        delim="ghadelimiter_$(openssl rand -hex 16)"
+        {
+          printf 'prompt<<%s\n' "$delim"
+          printf '%s\n' "$prompt"
+          printf '%s\n' "$delim"
+        } >> "$GITHUB_OUTPUT"
 
-    - name: Post comment
-      if: inputs.post-comment == 'true' && inputs.pr-number != ''
-      shell: bash
-      env:
-        GH_TOKEN: ${{ inputs.github-token }}
-        PR_NUMBER: ${{ inputs.pr-number }}
-        REVIEW: ${{ steps.review.outputs.review }}
-        MODEL: ${{ inputs.model }}
-        ENDPOINT: ${{ inputs.endpoint }}
-      run: "${{ github.action_path }}/post-comment.sh"
+    - name: Run review
+      id: review
+      uses: shaftoe/pi-coding-agent-action@v2
+      with:
+        github_token: ${{ inputs.github-token }}
+        provider: ${{ inputs.provider }}
+        model: ${{ inputs.model }}
+        base_url: ${{ inputs.endpoint }}
+        thinking_level: ${{ inputs.thinking }}
+        prompt: ${{ steps.prompt.outputs.prompt }}
+        load_builtin_extensions: ${{ inputs.load-builtin-extensions }}

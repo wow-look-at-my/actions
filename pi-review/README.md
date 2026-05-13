@@ -2,6 +2,8 @@
 
 Review a pull request using the [pi coding agent](https://pi.dev). Defaults mirror the local `~/.pi/agent/` config: Gemma 4 26B served by `llama.pazer.ai` with thinking level `high`. The API key is fetched at runtime via the `secret-server` action over OIDC, so it never lands in the repo.
 
+This action is a thin composite wrapper around [`shaftoe/pi-coding-agent-action`](https://github.com/shaftoe/pi-coding-agent-action). The wrapper writes a `~/.pi/agent/models.json` matching the configured local pi setup, then hands off to shaftoe's action, which runs pi via the SDK (not the CLI) so streaming output works correctly in CI. shaftoe's action also handles posting the response as a PR comment automatically.
+
 ## Usage
 
 ```yml
@@ -29,37 +31,39 @@ jobs:
 
 Zero required inputs - the defaults match the configured pi setup. Pass overrides if you want a different model, endpoint, or thinking level.
 
-The checkout step is recommended so pi can use `read`, `grep`, `find`, and `ls` to explore the codebase. Without it, pi only has the diff at `/tmp/pr.diff` to work from.
-
 ## Inputs
 
 | Input | Default | Description |
 |-------|---------|-------------|
 | `model` | `ggml-org/gemma-4-26B-A4B-it-GGUF:Q8_0` | Model ID at the configured endpoint. |
-| `model-name` | `Gemma 4 26B` | Human-readable model name. |
-| `endpoint` | `https://llama.pazer.ai/v1` | OpenAI-compatible base URL (include `/v1`). |
-| `api-key` | `LLAMA_API_KEY` | API key value, env var name, or `!shell command`. Env var names are resolved at request time. |
+| `model-name` | `Gemma 4 26B` | Human-readable model name registered in `models.json`. |
+| `endpoint` | `https://llama.pazer.ai/v1` | OpenAI-compatible base URL (include `/v1`). Passed to shaftoe's action as `base_url`. |
+| `api-key-env` | `LLAMA_API_KEY` | Name of the env var holding the API key; the models.json `apiKey` field references this name and pi resolves it at request time. |
 | `provider` | `llama-server` | Provider name registered in pi's `models.json`. |
-| `thinking` | `high` | Thinking level. |
+| `thinking` | `high` | Thinking level (off, minimal, low, medium, high, xhigh). |
 | `reasoning` | `true` | Whether the model supports extended thinking. |
-| `tools` | `read,grep,find,ls` | Comma-separated pi tools. Read-only by default. |
 | `context-window` | `262144` | Context window size in tokens. |
 | `max-tokens` | `16384` | Max output tokens. |
-| `pr-number` | `github.event.pull_request.number` | PR number to review. |
-| `post-comment` | `true` | Post the review as a PR comment when true. |
-| `github-token` | `github.token` | Token used for `gh pr diff` and `gh pr comment`. |
+| `prompt` | (uses `review-prompt.md`) | Override the review instructions sent to the agent. |
 | `additional-instructions` | `` | Extra instructions appended to the review prompt. |
 | `fetch-secrets` | `true` | Run `secret-server` first to populate API key env vars via OIDC. |
 | `node-version` | `24` | Node.js version (pi requires `>= 20.6.0`). |
-| `pnpm-version` | `10` | pnpm version used to install pi from the pinned lockfile. |
-
-The pi version is pinned in [`install/package.json`](install/package.json) and locked in [`install/pnpm-lock.yaml`](install/pnpm-lock.yaml). To bump it, edit the version in `install/package.json` and run `pnpm install --lockfile-only` in that directory.
+| `github-token` | `github.token` | Token forwarded to shaftoe's action for PR access and comment posting. |
+| `load-builtin-extensions` | `true` | Whether shaftoe's action loads its built-in GitHub extensions (`get_pr_diff`, `get_thread`, `update_pr`, `create_pr`). |
 
 ## Outputs
 
+Forwarded from shaftoe's action:
+
 | Output | Description |
 |--------|-------------|
-| `review` | Markdown review produced by pi. |
+| `response` | The agent's response text. |
+| `success` | `true` if pi completed successfully. |
+| `input-tokens` | Input tokens consumed. |
+| `output-tokens` | Output tokens generated. |
+| `duration-seconds` | Wall-clock duration of pi execution. |
+
+shaftoe's action posts the response as a PR comment automatically when running on a `pull_request` event; the output is also available for downstream steps.
 
 ## Bringing your own endpoint
 
@@ -73,18 +77,19 @@ Override any default to point at a different OpenAI-compatible server:
     model: gpt-oss-120b
     model-name: GPT-OSS 120B
     endpoint: https://my-llm.example.com/v1
-    api-key: MY_API_KEY
+    api-key-env: MY_API_KEY
     provider: my-llm
     fetch-secrets: 'false'
 ```
 
 ## How it works
 
-1. `secret-server` (optional, default on) fetches secrets via OIDC and exports them to the env.
-2. `actions/setup-node@v4` installs Node.js, `pnpm/action-setup@v4` installs pnpm.
-3. `pnpm install --frozen-lockfile --prod` resolves pi and its transitive deps from `install/pnpm-lock.yaml`, then `node_modules/.bin` is added to `$GITHUB_PATH`.
-4. `~/.pi/agent/models.json` is generated to match the local pi setup, with the API key replaced by an env var reference.
-5. `~/.pi/agent/settings.json` is generated with the default thinking level.
-6. The PR diff and metadata are written to `/tmp/pr.diff` and `/tmp/pr.json`.
-7. `pi -p` runs with the review prompt and read-only tools. Output goes to `$GITHUB_OUTPUT` as `review`.
-8. The review markdown is posted as a PR comment (unless `post-comment: false`).
+1. `secret-server` (optional, default on) fetches secrets via OIDC and exports them to the env. Specifically, the env var named by `api-key-env` is set.
+2. `actions/setup-node@v4` installs Node.js.
+3. `configure.sh` writes `~/.pi/agent/models.json` (mirroring the local pi setup) and `~/.pi/agent/settings.json` (`defaultThinkingLevel`). The `apiKey` field in `models.json` is the env var name, not the literal key - pi resolves it at request time so the key never lands on disk.
+4. A shell step composes the final prompt from `review-prompt.md` plus any `additional-instructions`.
+5. `shaftoe/pi-coding-agent-action@v2` runs pi via the pi SDK. It streams thinking deltas to the runner log, accumulates the assistant response, and posts the response as a PR comment with metadata.
+
+## Why this wraps shaftoe's action
+
+Earlier iterations of this action invoked `pi -p` directly via the CLI from a shell script. That approach was silent in CI because Node.js block-buffers stdout when it is not a TTY; pi's text output sat in the OS buffer until pi exited or the job was cancelled, leaving the action looking dead. Shaftoe's action uses the pi SDK programmatically (`createAgentSession`, `session.subscribe(event => ...)`) and streams text/thinking deltas to the log as they arrive, the same way opencode does. Rather than re-implement that machinery, this action mirrors the local pi config into `~/.pi/agent/` and delegates the heavy lifting.

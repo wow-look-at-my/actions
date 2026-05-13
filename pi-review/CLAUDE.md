@@ -2,91 +2,45 @@
 
 ## Overview
 
-Composite GitHub Action that runs the [`@earendil-works/pi-coding-agent`](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) CLI in print mode (`pi -p`) to review a pull request.
+Composite GitHub Action that:
 
-Defaults mirror the local pi setup in `~/.pi/agent/`:
+1. Writes `~/.pi/agent/models.json` and `~/.pi/agent/settings.json` to mirror the local pi setup.
+2. Hands off to [`shaftoe/pi-coding-agent-action@v2`](https://github.com/shaftoe/pi-coding-agent-action), which uses the pi SDK programmatically.
 
-- Provider `llama-server` at `https://llama.pazer.ai/v1`
-- Model `ggml-org/gemma-4-26B-A4B-it-GGUF:Q8_0` ("Gemma 4 26B"), reasoning enabled
-- Thinking level `high`
-- Context window `262144`, max tokens `16384`
-- `compat.supportsDeveloperRole: false`, `compat.supportsReasoningEffort: false`
+Defaults: provider `llama-server` at `https://llama.pazer.ai/v1`, model `ggml-org/gemma-4-26B-A4B-it-GGUF:Q8_0` (Gemma 4 26B), reasoning enabled, thinking level `high`, context window `262144`, max tokens `16384`, compat flags `supportsDeveloperRole: false` and `supportsReasoningEffort: false` for the OpenAI-compatible llama-server endpoint.
 
-The API key in the local `models.json` is a literal value. The action replaces it with an env var reference (default `LLAMA_API_KEY`) populated by the `secret-server` step, so the key never lands in the repo.
+The API key in the local `models.json` is a literal value. The action replaces it with an env var reference (default `LLAMA_API_KEY`) populated by `secret-server` over OIDC, so the literal key never lands in the repo.
+
+## Why wrap shaftoe's action
+
+Earlier iterations of this action invoked `pi -p` from a shell script. That approach was silent in CI because Node.js block-buffers `process.stdout` when it is not a TTY; pi's writes queued in the OS buffer until pi exited or the workflow was cancelled, so the action looked dead. Switching to `pi --mode json | jq` did not fix it - the buffering happens before the pipe.
+
+`shaftoe/pi-coding-agent-action` uses the pi SDK directly (`createAgentSession` + `session.subscribe`), the same way opencode does. Thinking deltas are written to stdout as they arrive (visible in the CI log), text deltas are accumulated, and the response is posted as a PR comment via shaftoe's built-in GitHub extensions. Re-implementing that machinery in-tree would be hundreds of lines of TypeScript with its own bundle/build pipeline; delegating to a maintained external action is much cheaper.
 
 ## Structure
 
 - `action.yml` - Action definition
-- `install/package.json` - Pinned dependency manifest (`@earendil-works/pi-coding-agent` exact version)
-- `install/pnpm-lock.yaml` - Full transitive-dep lockfile, installed with `pnpm install --frozen-lockfile --prod`
-- `install/.gitignore` - Ignores generated `node_modules/`
-- `configure.sh` - Generates `~/.pi/agent/models.json` and `~/.pi/agent/settings.json`
-- `run-review.sh` - Fetches PR diff/metadata into `/tmp/pr.{diff,json}` and runs `pi -p`
-- `post-comment.sh` - Posts the review markdown as a PR comment via `gh`
-- `review-prompt.md` - Static review prompt template
-
-## Bumping pi
-
-1. Edit the version in `install/package.json`.
-2. Run `pnpm install --lockfile-only` from `install/` to regenerate `pnpm-lock.yaml`.
-3. Commit both files.
-
-`pnpm install --frozen-lockfile` will refuse to run if the lockfile drifts from the manifest, so the version bump cannot land without an updated lockfile.
+- `configure.sh` - Generates `~/.pi/agent/models.json` and `~/.pi/agent/settings.json` mirroring the local config
+- `review-prompt.md` - Default review prompt sent to the agent (overridable via the `prompt` input)
 
 ## How It Works
 
-1. `secret-server` (optional, default on) sets env vars from the OIDC secret server. The user is expected to have a secret keyed `LLAMA_API_KEY` (configurable).
-2. `actions/setup-node@v4` installs Node.js (default 24); `pnpm/action-setup@v4` installs pnpm (default 10).
-3. `pnpm install --frozen-lockfile --prod` runs in `install/`, resolving every dep from `pnpm-lock.yaml`. The resulting `install/node_modules/.bin` is appended to `$GITHUB_PATH` so the `pi` binary is on PATH for later steps.
-4. `configure.sh` writes both `models.json` (provider/model config) and `settings.json` (default thinking level). The `apiKey` field is passed through verbatim - pi resolves env var names, `!shell command` values, and literal keys at request time.
-5. `run-review.sh` calls `gh pr view`/`gh pr diff` to capture metadata and the unified diff, then invokes pi with `--no-session --no-extensions --no-skills --no-prompt-templates --offline` and a read-only `--tools` allowlist.
-6. `post-comment.sh` posts the review as a `gh pr comment`.
+1. `secret-server` (optional, default on) sets env vars from the OIDC secret server. The user is expected to have a secret keyed `LLAMA_API_KEY` (or whatever `api-key-env` points to).
+2. `actions/setup-node@v4` installs Node.js (default 24).
+3. `configure.sh` writes `models.json` (provider/model config, with `apiKey` set to the env var name so pi resolves it at request time) and `settings.json` (default thinking level).
+4. A shell step composes the review prompt from `review-prompt.md` and optional `additional-instructions`, writing it to `$GITHUB_OUTPUT`.
+5. `shaftoe/pi-coding-agent-action@v2` runs the agent. It reads our `models.json`, finds the `llama-server` provider, streams the run to the log, and posts the response as a PR comment.
 
-## Why a lockfile in a subdir?
+## Things this action does NOT do
 
-The release workflow detects node vs composite actions by checking whether `<action>/package.json` exists. Putting `package.json` at the root of `pi-review/` would flip the action into the node release path (expects `dist/index.js`, builds via `just`, etc.). Keeping the manifest under `install/` keeps the detection accurate while still letting pnpm install pinned deps at action runtime.
-
-## Tools Allowlist
-
-Default is `read,grep,find,ls` - pi can read files and search but cannot write, edit, or shell out. Override via the `tools` input if richer analysis is needed.
-
-## Diverging from local config
-
-Anything in the local pi config that the action does NOT mirror:
-
-- `~/.pi/agent/auth.json` - OAuth credentials for built-in providers (unused since we're using a custom provider with an API key)
-- `~/.pi/agent/mcp.json`, `mcp-cache.json`, `mcp-onboarding.json` - MCP config (pi disables MCP and we pass `--no-extensions`)
-- `~/.pi/agent/sessions/`, `run-history.jsonl` - session state (we pass `--no-session`)
-- `settings.json` packages array - installed pi packages (we pass `--no-extensions --no-skills --no-prompt-templates` so installed packages have no effect)
-
-If a future task needs any of these, extend `configure.sh`.
+- Pin the pi version. shaftoe's action bundles its own pi and tracks it via their release process.
+- Pass `token` to shaftoe's action. The pi SDK reads `apiKey` from `models.json`, which is the env var name; pi resolves it from `process.env` at request time. Passing `token` explicitly would override that lookup with a literal.
+- Restrict the tool allowlist. shaftoe's action does not expose `--tools` filtering. We instruct the model to stay read-only in the prompt.
 
 ## Development
 
-Composite action with shell scripts - no build step. Edit `action.yml` or the `.sh` / `.md` files directly. Make sure shell scripts have the executable bit set (`chmod +x *.sh`); git preserves it.
+Composite action with one shell script - no build step. Edit `action.yml`, `configure.sh`, or `review-prompt.md` directly. Ensure shell scripts have the executable bit set (`chmod +x *.sh`); git preserves it.
 
 ### Testing
 
-There are no automated tests. To smoke-test locally:
-
-```sh
-export GH_TOKEN=...
-export PR_NUMBER=123
-export PROVIDER=llama-server
-export ENDPOINT=https://llama.pazer.ai/v1
-export MODEL='ggml-org/gemma-4-26B-A4B-it-GGUF:Q8_0'
-export MODEL_NAME='Gemma 4 26B'
-export API_KEY=LLAMA_API_KEY
-export LLAMA_API_KEY=...    # actual key
-export CONTEXT_WINDOW=262144
-export MAX_TOKENS=16384
-export REASONING=true
-export DEFAULT_THINKING=high
-export THINKING=high
-export TOOLS=read,grep,find,ls
-export PROMPT_PATH=$(pwd)/pi-review/review-prompt.md
-(cd pi-review/install && pnpm install --frozen-lockfile --prod)
-export PATH="$(pwd)/pi-review/install/node_modules/.bin:$PATH"
-./pi-review/configure.sh
-./pi-review/run-review.sh
-```
+No automated tests. Smoke-test by opening a PR on this repo with the `.github/workflows/pi-review.yml` workflow enabled.
