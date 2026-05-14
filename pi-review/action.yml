@@ -147,11 +147,12 @@ runs:
       run: |
         set -euo pipefail
         pi --print \
+          --verbose \
           --provider "${{ inputs.provider }}" \
           --model "${{ inputs.model }}" \
           --thinking "${{ inputs.thinking }}" \
           --extension "${{ github.action_path }}/extension.ts" \
-          --tools read,grep,find,ls \
+          --tools read,grep,find,ls,get_pr_diff,add_review_comment,submit_review \
           --no-session \
           --no-skills \
           --no-prompt-templates \
