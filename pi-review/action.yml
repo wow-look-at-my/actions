@@ -68,8 +68,7 @@ runs:
       shell: bash
       run: npm install -g opencode-ai
 
-    - name: Resolve review prompt
-      id: prompt
+    - name: Write reviewer agent
       shell: bash
       env:
         PROMPT_OVERRIDE: ${{ inputs.prompt }}
@@ -77,21 +76,15 @@ runs:
         PROMPT_PATH: ${{ github.action_path }}/review-prompt.md
       run: |
         set -euo pipefail
+        mkdir -p .opencode/agent
         if [ -n "$PROMPT_OVERRIDE" ]; then
-          prompt="$PROMPT_OVERRIDE"
+          printf '%s\n' "$PROMPT_OVERRIDE" > .opencode/agent/reviewer.md
         else
-          prompt=$(cat "$PROMPT_PATH")
+          cp "$PROMPT_PATH" .opencode/agent/reviewer.md
         fi
         if [ -n "$ADDITIONAL" ]; then
-          prompt+=$'\n\n## Additional Instructions\n\n'
-          prompt+="$ADDITIONAL"
+          printf '\n\n## Additional Instructions\n\n%s\n' "$ADDITIONAL" >> .opencode/agent/reviewer.md
         fi
-        delim="ghadelimiter_$(openssl rand -hex 16)"
-        {
-          printf 'prompt<<%s\n' "$delim"
-          printf '%s\n' "$prompt"
-          printf '%s\n' "$delim"
-        } >> "$GITHUB_OUTPUT"
 
     - name: Build opencode config
       id: config
@@ -152,11 +145,11 @@ runs:
         GITHUB_REPOSITORY: ${{ github.repository }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
         PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        REVIEW_PROMPT: ${{ steps.prompt.outputs.prompt }}
         OPENCODE_CONFIG_CONTENT: ${{ steps.config.outputs.config }}
         OPENCODE_PERMISSION: '{"bash":"deny","edit":"deny","write":"deny"}'
       run: |
         set -euo pipefail
         opencode run --dangerously-skip-permissions \
+          --agent reviewer \
           --model "${{ inputs.provider }}/${{ inputs.model }}" \
-          "$REVIEW_PROMPT"
+          "Review this pull request."
