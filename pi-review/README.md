@@ -1,8 +1,8 @@
 # Pi Review
 
-Review a pull request using [opencode](https://opencode.ai) with a local LLM. Defaults to Gemma 4 26B served by `llama.pazer.ai`. The API key is fetched at runtime via the `secret-server` action over OIDC.
+Review a pull request using the [pi coding agent](https://github.com/earendil-works/pi-mono) with a local LLM. Defaults to Gemma 4 26B served by `llama.pazer.ai`. The API key is fetched at runtime via the `secret-server` action over OIDC.
 
-The model gets read-only file access (read, grep, find, ls) plus three scoped MCP tools for GitHub PR reviews. Bash, edit, and write are denied.
+The model gets read-only file access (read, grep, find, ls) plus three extension tools for GitHub PR reviews. Bash, edit, and write are denied.
 
 ## Usage
 
@@ -39,9 +39,10 @@ Zero required inputs - the defaults match the configured setup.
 | `model-name` | `Gemma 4 26B` | Human-readable model name. |
 | `endpoint` | `https://llama.pazer.ai/v1` | OpenAI-compatible base URL (include `/v1`). |
 | `api-key-env` | `LLAMA_API_KEY` | Name of the env var holding the API key. |
-| `provider` | `llama-server` | Provider identifier in `opencode.json`. |
+| `provider` | `llama-server` | Provider identifier in pi's `models.json`. |
 | `context-window` | `262144` | Context window size in tokens. |
 | `max-tokens` | `16384` | Max output tokens. |
+| `thinking` | `off` | Thinking level (off, minimal, low, medium, high, xhigh). |
 | `prompt` | (uses `review-prompt.md`) | Override the review instructions. |
 | `additional-instructions` | `` | Extra instructions appended to the review prompt. |
 | `fetch-secrets` | `true` | Run `secret-server` first to populate API key env vars via OIDC. |
@@ -52,13 +53,13 @@ Zero required inputs - the defaults match the configured setup.
 
 1. `secret-server` (optional) fetches secrets via OIDC and exports them to env.
 2. `actions/setup-node` installs Node.js.
-3. `opencode-ai` is installed globally via npm.
-4. `configure.sh` writes `opencode.json` with provider config and an MCP server reference.
-5. `opencode run` executes the review with bash/edit/write denied. The model can only read code and use three MCP tools: `get_pr_diff`, `add_review_comment`, `submit_review`.
+3. `@earendil-works/pi-coding-agent` is installed globally via npm.
+4. `models.json` is written to `~/.pi/agent/` with provider config.
+5. `pi --print` runs the review with built-in tools restricted to read-only. The extension (`extension.ts`) registers three tools: `get_pr_diff`, `add_review_comment`, `submit_review`.
 
-## MCP Tools
+## Extension Tools
 
-The MCP server (`mcp-server.mjs`) exposes exactly three tools:
+The pi extension (`extension.ts`) registers exactly three tools:
 
 | Tool | Description |
 |------|-------------|

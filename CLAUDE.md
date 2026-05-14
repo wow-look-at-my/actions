@@ -14,6 +14,7 @@ Each action lives in its own directory with an `action.yml` file:
 - `go-packages/` - Composite action (builds Go binaries and publishes multi-arch scratch container images to GHCR)
 - `multicmd/` - Composite action (YAML only)
 - `orphan-release/` - Composite action (shell script)
+- `pi-review/` - Composite action (PR review via pi coding agent with native extension)
 - `smart-cache/` - Node.js action (TypeScript compiled to JS)
 - `cache-size/` - Node.js action (TypeScript compiled to JS)
 - `tag-runner/` - Node.js action (TypeScript compiled to JS)
