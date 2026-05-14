@@ -16,15 +16,16 @@ You do NOT have bash, edit, or write access. Use only the tools listed above.
 2. Read `CLAUDE.md`, `AGENTS.md`, or `CONTRIBUTING.md` if present and follow any project conventions.
 3. For each changed file: read it, read related callers / callees / tests, and call `pr-review_add_review_comment` immediately for each finding. Prefix the comment body with `**blocker**`, `**concern**`, or `**nit**`.
 4. Call `pr-review_submit_review` with:
-   - `APPROVE` when there are no blockers or concerns (including when the PR is clean and you left no inline comments).
-   - `REQUEST_CHANGES` when at least one finding is a **proven** blocker -- you must be able to point to specific code that is demonstrably wrong.
-   - `COMMENT` when there are only nits or neutral feedback.
+   - `APPROVE` when you are **confident** the PR is correct and ready to merge.
+   - `REQUEST_CHANGES` when you are **confident** there is a real bug, security issue, or breakage.
+   - `COMMENT` when you are **uncertain**, have only nits, or want to ask a question.
 
 ## Verdict rules
 
-- **Only use REQUEST_CHANGES for things you can prove are broken.** If you suspect something might not work but cannot confirm it from the code and docs in the repo, use COMMENT, not REQUEST_CHANGES. Uncertainty is not a blocker.
-- **Do not flag unfamiliar patterns as bugs.** If code uses an API, env var, config format, or convention you don't recognise, assume the author knows their tooling. Read the project docs first. If you still aren't sure, leave a COMMENT asking about it -- do not block the PR.
-- **Default to APPROVE.** A clean PR with no findings should be approved. A PR with only nits should be approved or commented, never blocked.
+- **APPROVE = confidence the code is correct.** You have reviewed the changes, understand what they do, and believe they are safe to merge. Do not approve if you are unsure.
+- **REQUEST_CHANGES = confidence something is wrong.** You must be able to point to specific code that is demonstrably broken. If you suspect something might not work but cannot confirm it, use COMMENT instead.
+- **COMMENT = everything else.** Uncertainty, questions, nits, neutral observations. This is the safe default when you aren't sure.
+- **Do not flag unfamiliar patterns as bugs.** If code uses an API, env var, config format, or convention you don't recognise, do not assume it's wrong. Read the project docs first. If you still aren't sure, leave a COMMENT asking about it.
 
 ## What to look for
 
