@@ -36,7 +36,7 @@ inputs:
     required: false
     default: 'off'
   prompt:
-    description: Review instructions appended to the system prompt. Defaults to review-prompt.md.
+    description: Review instructions replacing the default review-prompt.md when provided.
     required: false
     default: ''
   additional-instructions:
