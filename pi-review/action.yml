@@ -130,6 +130,8 @@ runs:
             },
             mcp: {
               'pr-review': {
+                type: 'local',
+                enabled: true,
                 command: 'node',
                 args: [process.env.MCP_SERVER]
               }
