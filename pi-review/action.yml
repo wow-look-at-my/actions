@@ -132,8 +132,7 @@ runs:
               'pr-review': {
                 type: 'local',
                 enabled: true,
-                command: 'node',
-                args: [process.env.MCP_SERVER]
+                command: ['node', process.env.MCP_SERVER]
               }
             }
           }))
