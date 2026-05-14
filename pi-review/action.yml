@@ -1,6 +1,6 @@
 name: Pi Review
-version: 2
-description: Review a pull request using the pi coding agent SDK (via shaftoe/pi-coding-agent-action). Defaults mirror the configured local pi setup (Gemma 4 26B via llama.pazer.ai).
+version: 3
+description: Review a pull request using opencode with a local LLM. Defaults to Gemma 4 26B via llama.pazer.ai.
 
 inputs:
   model:
@@ -8,7 +8,7 @@ inputs:
     required: false
     default: 'ggml-org/gemma-4-26B-A4B-it-GGUF:Q8_0'
   model-name:
-    description: Human-readable model name registered in models.json.
+    description: Human-readable model name for display.
     required: false
     default: 'Gemma 4 26B'
   endpoint:
@@ -16,21 +16,13 @@ inputs:
     required: false
     default: 'https://llama.pazer.ai/v1'
   api-key-env:
-    description: Name of the env var holding the API key (populated by secret-server). The value is passed to shaftoe's action as `token`.
+    description: Name of the env var holding the API key (populated by secret-server).
     required: false
     default: 'LLAMA_API_KEY'
   provider:
-    description: Provider name registered in pi's models.json.
+    description: Provider identifier used in opencode config.
     required: false
     default: 'llama-server'
-  thinking:
-    description: Thinking level (off, minimal, low, medium, high, xhigh). Matches local pi defaultThinkingLevel.
-    required: false
-    default: 'high'
-  reasoning:
-    description: Whether the model supports extended thinking (true|false).
-    required: false
-    default: 'true'
   context-window:
     description: Model context window size in tokens.
     required: false
@@ -52,38 +44,13 @@ inputs:
     required: false
     default: 'true'
   node-version:
-    description: Node.js version to use. pi requires >= 20.6.0.
+    description: Node.js version to use.
     required: false
     default: '24'
   github-token:
-    description: GitHub token passed through to shaftoe/pi-coding-agent-action for PR comment and diff access.
+    description: GitHub token for PR access (review comments, diff, approvals).
     required: false
     default: ${{ github.token }}
-  load-builtin-extensions:
-    description: Whether shaftoe's action should load its built-in GitHub extensions (get_pr_diff, get_thread, update_pr, create_pr).
-    required: false
-    default: 'true'
-  extra-extensions:
-    description: Additional pi extensions to load (one per line). Appended to the built-in submit-pr-review extension this action ships.
-    required: false
-    default: ''
-
-outputs:
-  response:
-    description: Markdown review produced by pi (forwarded from shaftoe's action).
-    value: ${{ steps.review.outputs.response }}
-  success:
-    description: Whether pi completed successfully.
-    value: ${{ steps.review.outputs.success }}
-  input-tokens:
-    description: Input tokens consumed.
-    value: ${{ steps.review.outputs.input_tokens }}
-  output-tokens:
-    description: Output tokens generated.
-    value: ${{ steps.review.outputs.output_tokens }}
-  duration-seconds:
-    description: Wall-clock duration of pi execution.
-    value: ${{ steps.review.outputs.duration_seconds }}
 
 runs:
   using: composite
@@ -97,19 +64,9 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
 
-    - name: Configure pi (write models.json)
+    - name: Install opencode
       shell: bash
-      env:
-        PROVIDER: ${{ inputs.provider }}
-        ENDPOINT: ${{ inputs.endpoint }}
-        MODEL: ${{ inputs.model }}
-        MODEL_NAME: ${{ inputs.model-name }}
-        API_KEY_ENV: ${{ inputs.api-key-env }}
-        CONTEXT_WINDOW: ${{ inputs.context-window }}
-        MAX_TOKENS: ${{ inputs.max-tokens }}
-        REASONING: ${{ inputs.reasoning }}
-        DEFAULT_THINKING: ${{ inputs.thinking }}
-      run: "${{ github.action_path }}/configure.sh"
+      run: npm install -g opencode-ai
 
     - name: Resolve review prompt
       id: prompt
@@ -136,17 +93,69 @@ runs:
           printf '%s\n' "$delim"
         } >> "$GITHUB_OUTPUT"
 
+    - name: Build opencode config
+      id: config
+      shell: bash
+      env:
+        PROVIDER: ${{ inputs.provider }}
+        ENDPOINT: ${{ inputs.endpoint }}
+        MODEL: ${{ inputs.model }}
+        MODEL_NAME: ${{ inputs.model-name }}
+        API_KEY_ENV: ${{ inputs.api-key-env }}
+        CONTEXT_WINDOW: ${{ inputs.context-window }}
+        MAX_TOKENS: ${{ inputs.max-tokens }}
+        MCP_SERVER: ${{ github.action_path }}/mcp-server.mjs
+      run: |
+        set -euo pipefail
+        config=$(node -e "
+          process.stdout.write(JSON.stringify({
+            provider: {
+              [process.env.PROVIDER]: {
+                npm: '@ai-sdk/openai-compatible',
+                name: process.env.MODEL_NAME,
+                options: {
+                  baseURL: process.env.ENDPOINT,
+                  apiKey: '{env:' + process.env.API_KEY_ENV + '}'
+                },
+                models: {
+                  [process.env.MODEL]: {
+                    name: process.env.MODEL_NAME,
+                    limit: {
+                      context: Number(process.env.CONTEXT_WINDOW),
+                      output: Number(process.env.MAX_TOKENS)
+                    }
+                  }
+                }
+              }
+            },
+            mcp: {
+              'pr-review': {
+                command: 'node',
+                args: [process.env.MCP_SERVER]
+              }
+            }
+          }))
+        ")
+        delim="ghadelimiter_$(openssl rand -hex 16)"
+        {
+          printf 'config<<%s\n' "$delim"
+          printf '%s\n' "$config"
+          printf '%s\n' "$delim"
+        } >> "$GITHUB_OUTPUT"
+        echo "$config" | jq .
+
     - name: Run review
-      id: review
-      uses: shaftoe/pi-coding-agent-action@v2
-      with:
-        github_token: ${{ inputs.github-token }}
-        provider: ${{ inputs.provider }}
-        model: ${{ inputs.model }}
-        base_url: ${{ inputs.endpoint }}
-        thinking_level: ${{ inputs.thinking }}
-        prompt: ${{ steps.prompt.outputs.prompt }}
-        load_builtin_extensions: ${{ inputs.load-builtin-extensions }}
-        extensions: |
-          ${{ github.action_path }}/extensions/submit-pr-review.ts
-          ${{ inputs.extra-extensions }}
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        REVIEW_PROMPT: ${{ steps.prompt.outputs.prompt }}
+        OPENCODE_CONFIG_CONTENT: ${{ steps.config.outputs.config }}
+        OPENCODE_PERMISSION: '{"bash":"deny","edit":"deny","write":"deny"}'
+      run: |
+        set -euo pipefail
+        opencode run --dangerously-skip-permissions \
+          --model "${{ inputs.provider }}/${{ inputs.model }}" \
+          "$REVIEW_PROMPT"
