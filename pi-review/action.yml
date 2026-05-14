@@ -1,6 +1,6 @@
 name: Pi Review
-version: 3
-description: Review a pull request using opencode with a local LLM. Defaults to Gemma 4 26B via llama.pazer.ai.
+version: 4
+description: Review a pull request using the pi coding agent with a local LLM. Defaults to Gemma 4 26B via llama.pazer.ai.
 
 inputs:
   model:
@@ -20,7 +20,7 @@ inputs:
     required: false
     default: 'LLAMA_API_KEY'
   provider:
-    description: Provider identifier used in opencode config.
+    description: Provider identifier used in pi's models.json.
     required: false
     default: 'llama-server'
   context-window:
@@ -31,8 +31,12 @@ inputs:
     description: Max output tokens.
     required: false
     default: '16384'
+  thinking:
+    description: Thinking level (off, minimal, low, medium, high, xhigh).
+    required: false
+    default: 'off'
   prompt:
-    description: Review instructions sent to the agent. Defaults to the prompt in review-prompt.md.
+    description: Review instructions replacing the default review-prompt.md when provided.
     required: false
     default: ''
   additional-instructions:
@@ -64,30 +68,11 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
 
-    - name: Install opencode
+    - name: Install pi
       shell: bash
-      run: npm install -g opencode-ai
+      run: npm install -g @earendil-works/pi-coding-agent
 
-    - name: Write reviewer agent
-      shell: bash
-      env:
-        PROMPT_OVERRIDE: ${{ inputs.prompt }}
-        ADDITIONAL: ${{ inputs.additional-instructions }}
-        PROMPT_PATH: ${{ github.action_path }}/review-prompt.md
-      run: |
-        set -euo pipefail
-        mkdir -p .opencode/agent
-        if [ -n "$PROMPT_OVERRIDE" ]; then
-          printf '%s\n' "$PROMPT_OVERRIDE" > .opencode/agent/reviewer.md
-        else
-          cp "$PROMPT_PATH" .opencode/agent/reviewer.md
-        fi
-        if [ -n "$ADDITIONAL" ]; then
-          printf '\n\n## Additional Instructions\n\n%s\n' "$ADDITIONAL" >> .opencode/agent/reviewer.md
-        fi
-
-    - name: Build opencode config
-      id: config
+    - name: Configure pi
       shell: bash
       env:
         PROVIDER: ${{ inputs.provider }}
@@ -97,46 +82,60 @@ runs:
         API_KEY_ENV: ${{ inputs.api-key-env }}
         CONTEXT_WINDOW: ${{ inputs.context-window }}
         MAX_TOKENS: ${{ inputs.max-tokens }}
-        MCP_SERVER: ${{ github.action_path }}/mcp-server.mjs
       run: |
         set -euo pipefail
-        config=$(node -e "
-          process.stdout.write(JSON.stringify({
-            provider: {
-              [process.env.PROVIDER]: {
-                npm: '@ai-sdk/openai-compatible',
-                name: process.env.MODEL_NAME,
-                options: {
-                  baseURL: process.env.ENDPOINT,
-                  apiKey: '{env:' + process.env.API_KEY_ENV + '}'
+        mkdir -p "$HOME/.pi/agent"
+        jq -n \
+          --arg provider "$PROVIDER" \
+          --arg url "$ENDPOINT" \
+          --arg key "$API_KEY_ENV" \
+          --arg model "$MODEL" \
+          --arg name "$MODEL_NAME" \
+          --argjson cw "$CONTEXT_WINDOW" \
+          --argjson mt "$MAX_TOKENS" \
+          '{
+            providers: {
+              ($provider): {
+                baseUrl: $url,
+                api: "openai-completions",
+                apiKey: $key,
+                compat: {
+                  supportsDeveloperRole: false,
+                  supportsReasoningEffort: false
                 },
-                models: {
-                  [process.env.MODEL]: {
-                    name: process.env.MODEL_NAME,
-                    limit: {
-                      context: Number(process.env.CONTEXT_WINDOW),
-                      output: Number(process.env.MAX_TOKENS)
-                    }
+                models: [
+                  {
+                    id: $model,
+                    name: $name,
+                    input: ["text"],
+                    contextWindow: $cw,
+                    maxTokens: $mt,
+                    cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}
                   }
-                }
-              }
-            },
-            mcp: {
-              'pr-review': {
-                type: 'local',
-                enabled: true,
-                command: ['node', process.env.MCP_SERVER]
+                ]
               }
             }
-          }))
-        ")
-        delim="ghadelimiter_$(openssl rand -hex 16)"
-        {
-          printf 'config<<%s\n' "$delim"
-          printf '%s\n' "$config"
-          printf '%s\n' "$delim"
-        } >> "$GITHUB_OUTPUT"
-        echo "$config" | jq .
+          }' > "$HOME/.pi/agent/models.json"
+        echo "Wrote models.json:"
+        cat "$HOME/.pi/agent/models.json" | jq .
+
+    - name: Resolve review prompt
+      id: prompt
+      shell: bash
+      env:
+        PROMPT_OVERRIDE: ${{ inputs.prompt }}
+        ADDITIONAL: ${{ inputs.additional-instructions }}
+        PROMPT_PATH: ${{ github.action_path }}/review-prompt.md
+      run: |
+        set -euo pipefail
+        if [ -n "$PROMPT_OVERRIDE" ]; then
+          printf '%s\n' "$PROMPT_OVERRIDE" > /tmp/pi-review-prompt.md
+        else
+          cp "$PROMPT_PATH" /tmp/pi-review-prompt.md
+        fi
+        if [ -n "$ADDITIONAL" ]; then
+          printf '\n\n## Additional Instructions\n\n%s\n' "$ADDITIONAL" >> /tmp/pi-review-prompt.md
+        fi
 
     - name: Run review
       shell: bash
@@ -145,11 +144,18 @@ runs:
         GITHUB_REPOSITORY: ${{ github.repository }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
         PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        OPENCODE_CONFIG_CONTENT: ${{ steps.config.outputs.config }}
-        OPENCODE_PERMISSION: '{"bash":"deny","edit":"deny","write":"deny"}'
       run: |
         set -euo pipefail
-        opencode run --dangerously-skip-permissions \
-          --agent reviewer \
-          --model "${{ inputs.provider }}/${{ inputs.model }}" \
+        pi --print \
+          --verbose \
+          --provider "${{ inputs.provider }}" \
+          --model "${{ inputs.model }}" \
+          --thinking "${{ inputs.thinking }}" \
+          --extension "${{ github.action_path }}/extension.ts" \
+          --tools read,grep,find,ls,get_pr_diff,add_review_comment,submit_review \
+          --no-session \
+          --no-skills \
+          --no-prompt-templates \
+          --no-themes \
+          --append-system-prompt "$(cat /tmp/pi-review-prompt.md)" \
           "Review this pull request."
