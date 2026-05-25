@@ -198,32 +198,13 @@ function deriveJobContext(): Record<string, unknown> {
 	};
 }
 
-const OWN_INPUTS = new Set([
-	'SCRIPT', 'FILE', 'GITHUB', 'RUNNER', 'ENV', 'JOB',
-	'VARS', 'SECRETS', 'INPUTS', 'STEPS', 'NEEDS', 'STRATEGY', 'MATRIX',
-]);
-
-function deriveInputsFromEnv(): Record<string, string> {
-	const inputs: Record<string, string> = {};
-	for (const [key, val] of Object.entries(process.env)) {
-		if (!key.startsWith('INPUT_') || val === undefined) continue;
-		const name = key.slice(6);
-		if (OWN_INPUTS.has(name)) continue;
-		inputs[name.toLowerCase()] = val;
-	}
-	return inputs;
-}
-
 function readContexts(): WorkflowContexts {
 	return {
-		// Auto-derived from env vars and the event-payload file. An explicit
-		// JSON input (when present) wins, mainly for tests / dry runs.
-		github: maybeParseJson('github') ?? deriveGithubContext(),
-		runner: maybeParseJson('runner') ?? deriveRunnerContext(),
-		job: maybeParseJson('job') ?? deriveJobContext(),
-		// Workflow `env:` context: GitHub doesn't distinguish those vars from
-		// system env in the action's process, so we default to all of process.env.
-		env: maybeParseJson('env') ?? { ...process.env },
+		// Auto-derived from env vars and the event-payload file.
+		github: deriveGithubContext(),
+		runner: deriveRunnerContext(),
+		job: deriveJobContext(),
+		env: { ...process.env },
 		// The runner never exposes these contexts to action processes — they
 		// only exist as workflow-expression substitutions. Default to {}; the
 		// caller passes JSON only when they actually need them.
@@ -231,9 +212,7 @@ function readContexts(): WorkflowContexts {
 		needs: parseOptionalContext('needs'),
 		vars: parseOptionalContext('vars'),
 		secrets: parseOptionalContext('secrets'),
-		// Auto-detect parent composite action inputs from INPUT_* env vars
-		// when no explicit JSON is provided.
-		inputs: maybeParseJson('inputs') ?? deriveInputsFromEnv(),
+		inputs: parseOptionalContext('inputs'),
 		strategy: parseOptionalContext('strategy'),
 		matrix: parseOptionalContext('matrix'),
 	};
