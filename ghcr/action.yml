@@ -42,11 +42,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - shell: bash
-      env:
-        _JSON: ${{ toJSON(inputs) }}
-      run: printf '_INPUTS<<__DELIM__\n%s\n__DELIM__\n' "$_JSON" >> "$GITHUB_ENV"
-
     - uses: wow-look-at-my/actions@secret-server#latest
       if: inputs.login == 'true' && inputs.token == ''
 
@@ -56,6 +51,7 @@ runs:
       env:
         LOGIN_TOKEN: ${{ inputs.token || env.GHCR_WRITE_TOKEN }}
       with:
+        context: ${{ toJSON(inputs) }}
         script: |
           await $`docker login ghcr.io -u x-access-token --password-stdin`
             .input(env.LOGIN_TOKEN);
@@ -64,6 +60,7 @@ runs:
       if: inputs.build == 'true'
       uses: wow-look-at-my/actions@typescript#latest
       with:
+        context: ${{ toJSON(inputs) }}
         script: |
           const buildArgs = (inputs.build_args || '').split('\n')
             .filter(Boolean)
@@ -79,6 +76,7 @@ runs:
       if: inputs.build != 'true' && inputs.push == 'true'
       uses: wow-look-at-my/actions@typescript#latest
       with:
+        context: ${{ toJSON(inputs) }}
         script: await $`docker push ${inputs.push_image}`;
 
     - uses: wow-look-at-my/actions@ghcr-prune#latest
