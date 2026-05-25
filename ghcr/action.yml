@@ -58,23 +58,31 @@ runs:
     - name: Build
       if: inputs.build == 'true'
       uses: wow-look-at-my/actions@typescript#latest
+      env:
+        DOCKERFILE: ${{ inputs.build_dockerfile }}
+        IMAGE: ${{ inputs.push_image }}
+        BUILD_ARGS: ${{ inputs.build_args }}
+        PUSH: ${{ inputs.push }}
+        CONTEXT: ${{ inputs.build_context }}
       with:
         script: |
-          const buildArgs = (inputs.build_args || '').split('\n')
+          const buildArgs = (env.BUILD_ARGS || '').split('\n')
             .filter(Boolean)
             .flatMap((a: string) => ['--build-arg', a]);
           await $`docker buildx build
-            -f ${inputs.build_dockerfile}
-            -t ${inputs.push_image}
+            -f ${env.DOCKERFILE}
+            -t ${env.IMAGE}
             ${buildArgs}
-            ${inputs.push === 'true' && '--push'}
-            ${inputs.build_context}`;
+            ${env.PUSH === 'true' && '--push'}
+            ${env.CONTEXT}`;
 
     - name: Push
       if: inputs.build != 'true' && inputs.push == 'true'
       uses: wow-look-at-my/actions@typescript#latest
+      env:
+        IMAGE: ${{ inputs.push_image }}
       with:
-        script: await $`docker push ${inputs.push_image}`;
+        script: await $`docker push ${env.IMAGE}`;
 
     - uses: wow-look-at-my/actions@ghcr-prune#latest
       if: inputs.push == 'true' && inputs.push_keep != '0'
