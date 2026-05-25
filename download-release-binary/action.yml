@@ -1,20 +1,20 @@
 name: Download Release Binary
 version: 1
-description: Download a platform-specific binary, trying buildhost (pazer.build) first with GitHub Releases as fallback
+description: Download a platform-specific binary from a GitHub release
 
 inputs:
   repo:
     description: 'Repository (owner/name) to download from'
     required: true
   name:
-    description: 'Binary name — used as the project name for buildhost and filters the asset ({name}_{os}_{arch}) on GitHub. If omitted, derived from the repo name.'
+    description: 'Binary name — filters the asset ({name}_{os}_{arch}) and names the result. If omitted, matches any asset and derives name by stripping the platform suffix.'
     required: false
   version:
     description: 'Release tag to download (omit or set to "latest" for the most recent release)'
     required: false
     default: 'latest'
   token:
-    description: 'GitHub token for API authentication (used only as fallback when buildhost is unavailable)'
+    description: 'GitHub token for API authentication (e.g. github.token)'
     required: false
 
 outputs:

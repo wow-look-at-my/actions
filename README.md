@@ -53,7 +53,7 @@ Reusable GitHub Actions.
 ### [Download Release Binary](download-release-binary/)
 
 ```yml
-# Download a platform-specific binary, trying buildhost (pazer.build) first with GitHub Releases as fallback.
+# Download a platform-specific binary from a GitHub release.
 # Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/download-release-binary/README.md
 - uses: wow-look-at-my/actions@download-release-binary#latest
   with:
