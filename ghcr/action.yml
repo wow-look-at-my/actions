@@ -42,6 +42,14 @@ inputs:
 runs:
   using: composite
   steps:
+    - uses: wow-look-at-my/actions@typescript#latest
+      env:
+        _INPUTS: ${{ toJSON(inputs) }}
+      with:
+        script: |
+          for (const [key, val] of Object.entries(JSON.parse(env._INPUTS)))
+            core.exportVariable(`INPUT_${key.toUpperCase()}`, String(val));
+
     - uses: wow-look-at-my/actions@secret-server#latest
       if: inputs.login == 'true' && inputs.token == ''
 
@@ -58,31 +66,23 @@ runs:
     - name: Build
       if: inputs.build == 'true'
       uses: wow-look-at-my/actions@typescript#latest
-      env:
-        DOCKERFILE: ${{ inputs.build_dockerfile }}
-        IMAGE: ${{ inputs.push_image }}
-        BUILD_ARGS: ${{ inputs.build_args }}
-        PUSH: ${{ inputs.push }}
-        CONTEXT: ${{ inputs.build_context }}
       with:
         script: |
-          const buildArgs = (env.BUILD_ARGS || '').split('\n')
+          const buildArgs = (inputs.build_args || '').split('\n')
             .filter(Boolean)
             .flatMap((a: string) => ['--build-arg', a]);
           await $`docker buildx build
-            -f ${env.DOCKERFILE}
-            -t ${env.IMAGE}
+            -f ${inputs.build_dockerfile}
+            -t ${inputs.push_image}
             ${buildArgs}
-            ${env.PUSH === 'true' && '--push'}
-            ${env.CONTEXT}`;
+            ${inputs.push === 'true' && '--push'}
+            ${inputs.build_context}`;
 
     - name: Push
       if: inputs.build != 'true' && inputs.push == 'true'
       uses: wow-look-at-my/actions@typescript#latest
-      env:
-        IMAGE: ${{ inputs.push_image }}
       with:
-        script: await $`docker push ${env.IMAGE}`;
+        script: await $`docker push ${inputs.push_image}`;
 
     - uses: wow-look-at-my/actions@ghcr-prune#latest
       if: inputs.push == 'true' && inputs.push_keep != '0'
