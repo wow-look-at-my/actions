@@ -58,7 +58,7 @@ jobs:
             core.setOutput('image', image);
             core.setOutput('push', String(push));
 
-      - uses: wow-look-at-my/actions/ghcr@claude/fix-ghcr-inputs
+      - uses: wow-look-at-my/actions@ghcr#latest
         with:
           token: ${{ github.token }}
           push_image: ${{ steps.meta.outputs.image }}
