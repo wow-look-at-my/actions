@@ -1,0 +1,83 @@
+name: Publish to GHCR
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: 'Build artifact to download'
+        required: false
+        default: 'go-build'
+        type: string
+      artifact-path:
+        description: 'Path to place downloaded artifact'
+        required: false
+        default: 'build'
+        type: string
+      dockerfile:
+        description: 'Path to Dockerfile'
+        required: false
+        default: 'Dockerfile'
+        type: string
+      context:
+        description: 'Docker build context'
+        required: false
+        default: '.'
+        type: string
+      push-branch:
+        description: 'Branch that triggers push (empty string to always push)'
+        required: false
+        default: 'master'
+        type: string
+      prune-keep:
+        description: 'Tagged versions to keep when pruning (0 to disable)'
+        required: false
+        default: '10'
+        type: string
+
+jobs:
+  publish-ghcr:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ inputs.artifact-path }}
+
+      - name: Resolve image name and push gate
+        id: meta
+        run: |
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}:latest" >> "$GITHUB_OUTPUT"
+          if [ -z "$PUSH_BRANCH" ] || [ "$GITHUB_REF" = "refs/heads/$PUSH_BRANCH" ]; then
+            echo "push=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "push=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          PUSH_BRANCH: ${{ inputs.push-branch }}
+
+      - name: Log in to ghcr.io
+        if: steps.meta.outputs.push == 'true'
+        run: echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Build and push
+        run: |
+          docker buildx build \
+            -f "${{ inputs.dockerfile }}" \
+            --build-arg "VERSION=${GITHUB_SHA}" \
+            ${{ steps.meta.outputs.push == 'true' && '--push' || '' }} \
+            -t "${{ steps.meta.outputs.image }}" \
+            "${{ inputs.context }}"
+
+      - uses: wow-look-at-my/actions@ghcr-prune#latest
+        if: steps.meta.outputs.push == 'true' && inputs.prune-keep != '0'
+        with:
+          image: ${{ steps.meta.outputs.image }}
+          keep: ${{ inputs.prune-keep }}
+        env:
+          GHCR_WRITE_TOKEN: ${{ github.token }}

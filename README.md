@@ -155,3 +155,11 @@ jobs:
   pr-management:
     uses: wow-look-at-my/actions/.github/workflows/pr-management.yml@master
 ```
+
+### Publish to GHCR
+
+```yml
+jobs:
+  publish-ghcr:
+    uses: wow-look-at-my/actions/.github/workflows/publish-ghcr.yml@master
+```
