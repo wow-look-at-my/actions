@@ -10,6 +10,64 @@ import * as util from 'util';
 import { createRequire } from 'module';
 import * as ts from 'typescript';
 
+type ShellArg = string | number | boolean | null | undefined | string[];
+
+class ExecBuilder implements PromiseLike<number> {
+	private cmd: string;
+	private args: string[];
+	private opts: exec.ExecOptions;
+
+	constructor(cmd: string, args: string[], opts: exec.ExecOptions = {}) {
+		this.cmd = cmd;
+		this.args = args;
+		this.opts = opts;
+	}
+
+	input(data: Buffer | string): ExecBuilder {
+		return new ExecBuilder(this.cmd, this.args, {
+			...this.opts,
+			input: Buffer.isBuffer(data) ? data : Buffer.from(data),
+		});
+	}
+
+	cwd(dir: string): ExecBuilder {
+		return new ExecBuilder(this.cmd, this.args, { ...this.opts, cwd: dir });
+	}
+
+	silent(): ExecBuilder {
+		return new ExecBuilder(this.cmd, this.args, { ...this.opts, silent: true });
+	}
+
+	then<T = number, R = never>(
+		onfulfilled?: ((v: number) => T | PromiseLike<T>) | null,
+		onrejected?: ((e: any) => R | PromiseLike<R>) | null,
+	): Promise<T | R> {
+		return exec.exec(this.cmd, this.args, this.opts).then(onfulfilled, onrejected);
+	}
+}
+
+function $(strings: TemplateStringsArray, ...values: ShellArg[]): ExecBuilder {
+	const args: string[] = [];
+	for (let i = 0; i < strings.length; i++) {
+		for (const token of strings[i].split(/\s+/)) {
+			if (token) args.push(token);
+		}
+		if (i < values.length) {
+			const val = values[i];
+			if (val === null || val === undefined || val === false || val === '') continue;
+			if (val === true) continue;
+			if (Array.isArray(val)) {
+				for (const v of val) { if (v) args.push(v); }
+			} else {
+				args.push(String(val));
+			}
+		}
+	}
+	if (args.length === 0) throw new Error('$`...` template produced no arguments');
+	const [cmd, ...cmdArgs] = args;
+	return new ExecBuilder(cmd, cmdArgs);
+}
+
 // dist/ layout produced by `just build`:
 //   dist/index.js                  (bundled action)
 //   dist/lib.es*.d.ts              (TypeScript standard libs)
@@ -140,16 +198,30 @@ function deriveJobContext(): Record<string, unknown> {
 	};
 }
 
+const OWN_INPUTS = new Set([
+	'SCRIPT', 'FILE',
+	'VARS', 'SECRETS', 'STEPS', 'NEEDS', 'STRATEGY', 'MATRIX',
+]);
+
+function deriveInputsFromEnv(): Record<string, string> {
+	const inputs: Record<string, string> = {};
+	for (const [key, val] of Object.entries(process.env)) {
+		if (!key.startsWith('INPUT_') || val === undefined) continue;
+		const name = key.slice(6);
+		if (OWN_INPUTS.has(name)) continue;
+		inputs[name.toLowerCase()] = val;
+	}
+	return inputs;
+}
+
 function readContexts(): WorkflowContexts {
 	return {
-		// Auto-derived from env vars and the event-payload file. An explicit
-		// JSON input (when present) wins, mainly for tests / dry runs.
-		github: maybeParseJson('github') ?? deriveGithubContext(),
-		runner: maybeParseJson('runner') ?? deriveRunnerContext(),
-		job: maybeParseJson('job') ?? deriveJobContext(),
-		// Workflow `env:` context: GitHub doesn't distinguish those vars from
-		// system env in the action's process, so we default to all of process.env.
-		env: maybeParseJson('env') ?? { ...process.env },
+		// Auto-derived from env vars.
+		github: deriveGithubContext(),
+		runner: deriveRunnerContext(),
+		job: deriveJobContext(),
+		env: { ...process.env },
+		inputs: deriveInputsFromEnv(),
 		// The runner never exposes these contexts to action processes — they
 		// only exist as workflow-expression substitutions. Default to {}; the
 		// caller passes JSON only when they actually need them.
@@ -157,7 +229,6 @@ function readContexts(): WorkflowContexts {
 		needs: parseOptionalContext('needs'),
 		vars: parseOptionalContext('vars'),
 		secrets: parseOptionalContext('secrets'),
-		inputs: parseOptionalContext('inputs'),
 		strategy: parseOptionalContext('strategy'),
 		matrix: parseOptionalContext('matrix'),
 	};
@@ -239,7 +310,7 @@ function transpile(source: string): string {
 
 async function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: string): Promise<unknown> {
 	Object.assign(globalThis, {
-		core, exec, io,
+		$, core, exec, io,
 		octokit: github.getOctokit,
 		context: github.context,
 		github: ctx.github, env: ctx.env, runner: ctx.runner,
