@@ -109,13 +109,6 @@ Reusable GitHub Actions.
 - uses: wow-look-at-my/actions@orphan-release#latest
 ```
 
-### [Propagate Inputs](propagate-inputs/)
-
-```yml
-# Export parent composite action INPUT_* env vars to GITHUB_ENV so child uses steps can read them..
-- uses: wow-look-at-my/actions@propagate-inputs#latest
-```
-
 ### [Fetch Secrets](secret-server/)
 
 ```yml

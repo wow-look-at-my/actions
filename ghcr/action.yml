@@ -42,13 +42,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - shell: bash
-      run: |
-        env -0 | while IFS= read -r -d '' entry; do
-          key="${entry%%=*}"; val="${entry#*=}"
-          [[ $key == INPUT_* ]] && printf '%s<<__DELIM__\n%s\n__DELIM__\n' "$key" "$val" >> "$GITHUB_ENV"
-        done
-
     - uses: wow-look-at-my/actions@secret-server#latest
       if: inputs.login == 'true' && inputs.token == ''
 
@@ -56,6 +49,7 @@ runs:
       if: inputs.login == 'true'
       uses: wow-look-at-my/actions@typescript#latest
       env:
+        _INPUTS: ${{ toJSON(inputs) }}
         LOGIN_TOKEN: ${{ inputs.token || env.GHCR_WRITE_TOKEN }}
       with:
         script: |
@@ -65,6 +59,8 @@ runs:
     - name: Build
       if: inputs.build == 'true'
       uses: wow-look-at-my/actions@typescript#latest
+      env:
+        _INPUTS: ${{ toJSON(inputs) }}
       with:
         script: |
           const buildArgs = (inputs.build_args || '').split('\n')
@@ -80,6 +76,8 @@ runs:
     - name: Push
       if: inputs.build != 'true' && inputs.push == 'true'
       uses: wow-look-at-my/actions@typescript#latest
+      env:
+        _INPUTS: ${{ toJSON(inputs) }}
       with:
         script: await $`docker push ${inputs.push_image}`;
 
