@@ -59,8 +59,6 @@ runs:
     - name: Build
       if: inputs.build == 'true'
       uses: wow-look-at-my/actions@typescript#latest
-      env:
-        _INPUTS: ${{ toJSON(inputs) }}
       with:
         script: |
           const buildArgs = (inputs.build_args || '').split('\n')
@@ -76,8 +74,6 @@ runs:
     - name: Push
       if: inputs.build != 'true' && inputs.push == 'true'
       uses: wow-look-at-my/actions@typescript#latest
-      env:
-        _INPUTS: ${{ toJSON(inputs) }}
       with:
         script: await $`docker push ${inputs.push_image}`;
 

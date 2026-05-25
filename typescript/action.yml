@@ -43,7 +43,21 @@ inputs:
 outputs:
   result:
     description: JSON-encoded value returned by the script (if any).
+    value: ${{ steps.run.outputs.result }}
 
 runs:
-  using: node24
-  main: dist/index.js
+  using: composite
+  steps:
+    - uses: ./node
+      id: run
+      env:
+        _INPUTS: ${{ toJSON(inputs) }}
+      with:
+        script: ${{ inputs.script }}
+        file: ${{ inputs.file }}
+        vars: ${{ inputs.vars }}
+        secrets: ${{ inputs.secrets }}
+        steps: ${{ inputs.steps }}
+        needs: ${{ inputs.needs }}
+        strategy: ${{ inputs.strategy }}
+        matrix: ${{ inputs.matrix }}
