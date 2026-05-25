@@ -59,25 +59,12 @@ jobs:
         env:
           PUSH_BRANCH: ${{ inputs.push-branch }}
 
-      - name: Log in to ghcr.io
-        if: steps.meta.outputs.push == 'true'
-        run: echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-
-      - name: Build and push
-        run: |
-          docker buildx build \
-            -f "${{ inputs.dockerfile }}" \
-            --build-arg "VERSION=${GITHUB_SHA}" \
-            ${{ steps.meta.outputs.push == 'true' && '--push' || '' }} \
-            -t "${{ steps.meta.outputs.image }}" \
-            "${{ inputs.context }}"
-
-      - uses: wow-look-at-my/actions@ghcr-prune#latest
-        if: steps.meta.outputs.push == 'true' && inputs.prune-keep != '0'
+      - uses: wow-look-at-my/actions@ghcr#latest
         with:
-          image: ${{ steps.meta.outputs.image }}
-          keep: ${{ inputs.prune-keep }}
-        env:
-          GHCR_WRITE_TOKEN: ${{ github.token }}
+          token: ${{ github.token }}
+          push_image: ${{ steps.meta.outputs.image }}
+          push: ${{ steps.meta.outputs.push }}
+          push_keep: ${{ inputs.prune-keep }}
+          build_dockerfile: ${{ inputs.dockerfile }}
+          build_context: ${{ inputs.context }}
+          build_args: VERSION=${{ github.sha }}

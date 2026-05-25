@@ -3,8 +3,12 @@ version: 1
 description: Build, push, and prune container images on GHCR.
 
 inputs:
+  token:
+    description: 'GHCR token for login and pruning (skips secret-server OIDC when set)'
+    required: false
+    default: ''
   login:
-    description: 'Log in to GHCR via secret-server OIDC'
+    description: 'Log in to GHCR'
     required: false
     default: 'true'
   build:
@@ -19,6 +23,10 @@ inputs:
     description: 'Docker build context'
     required: false
     default: '.'
+  build_args:
+    description: 'Additional docker buildx --build-arg flags (newline-separated KEY=VALUE)'
+    required: false
+    default: ''
   push:
     description: 'Push the image to GHCR and prune old versions'
     required: false
@@ -27,7 +35,7 @@ inputs:
     description: 'Full image reference (e.g., ghcr.io/owner/package:tag)'
     required: false
   push_keep:
-    description: 'Number of tagged versions to keep when pruning'
+    description: 'Number of tagged versions to keep when pruning (0 to disable)'
     required: false
     default: '10'
 
@@ -35,22 +43,31 @@ runs:
   using: composite
   steps:
     - uses: wow-look-at-my/actions@secret-server#latest
-      if: inputs.login == 'true'
+      if: inputs.login == 'true' && inputs.token == ''
 
     - name: Login to GHCR
       if: inputs.login == 'true'
       shell: bash
-      run: echo "$GHCR_WRITE_TOKEN" | docker login ghcr.io -u x-access-token --password-stdin
+      run: echo "$LOGIN_TOKEN" | docker login ghcr.io -u x-access-token --password-stdin
+      env:
+        LOGIN_TOKEN: ${{ inputs.token || env.GHCR_WRITE_TOKEN }}
 
     - name: Build
       if: inputs.build == 'true'
       shell: bash
       run: |
+        build_args=()
+        while IFS= read -r arg; do
+          [ -n "$arg" ] && build_args+=(--build-arg "$arg")
+        done <<< "$BUILD_ARGS"
         docker buildx build \
           -f "${{ inputs.build_dockerfile }}" \
           -t "${{ inputs.push_image }}" \
+          "${build_args[@]}" \
           ${{ inputs.push == 'true' && '--push' || '' }} \
           "${{ inputs.build_context }}"
+      env:
+        BUILD_ARGS: ${{ inputs.build_args }}
 
     - name: Push
       if: inputs.build != 'true' && inputs.push == 'true'
@@ -58,7 +75,9 @@ runs:
       run: docker push "${{ inputs.push_image }}"
 
     - uses: wow-look-at-my/actions@ghcr-prune#latest
-      if: inputs.push == 'true'
+      if: inputs.push == 'true' && inputs.push_keep != '0'
       with:
         image: ${{ inputs.push_image }}
         keep: ${{ inputs.push_keep }}
+      env:
+        GHCR_WRITE_TOKEN: ${{ inputs.token || env.GHCR_WRITE_TOKEN }}
