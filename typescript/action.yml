@@ -11,6 +11,10 @@ inputs:
     description: Path to a .ts file to execute (resolved relative to $GITHUB_WORKSPACE). The file contents are treated like an inline `script`. Mutually exclusive with `script`.
     required: false
     default: ''
+  context:
+    description: 'Parent composite action inputs as JSON. Pass ${{ toJSON(inputs) }} to make parent inputs available as inputs.X in scripts.'
+    required: false
+    default: '{}'
 
   # Contexts the runner only exposes via workflow-expression substitution —
   # never to action processes. Pass them through explicitly when needed:
@@ -43,7 +47,21 @@ inputs:
 outputs:
   result:
     description: JSON-encoded value returned by the script (if any).
+    value: ${{ steps.run.outputs.result }}
 
 runs:
-  using: node24
-  main: dist/index.js
+  using: composite
+  steps:
+    - uses: ./node
+      id: run
+      env:
+        _INPUTS: ${{ inputs.context }}
+      with:
+        script: ${{ inputs.script }}
+        file: ${{ inputs.file }}
+        vars: ${{ inputs.vars }}
+        secrets: ${{ inputs.secrets }}
+        steps: ${{ inputs.steps }}
+        needs: ${{ inputs.needs }}
+        strategy: ${{ inputs.strategy }}
+        matrix: ${{ inputs.matrix }}
