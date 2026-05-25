@@ -12,7 +12,41 @@ import * as ts from 'typescript';
 
 type ShellArg = string | number | boolean | null | undefined | string[];
 
-async function $(strings: TemplateStringsArray, ...values: ShellArg[]): Promise<number> {
+class ExecBuilder implements PromiseLike<number> {
+	private cmd: string;
+	private args: string[];
+	private opts: exec.ExecOptions;
+
+	constructor(cmd: string, args: string[], opts: exec.ExecOptions = {}) {
+		this.cmd = cmd;
+		this.args = args;
+		this.opts = opts;
+	}
+
+	input(data: Buffer | string): ExecBuilder {
+		return new ExecBuilder(this.cmd, this.args, {
+			...this.opts,
+			input: Buffer.isBuffer(data) ? data : Buffer.from(data),
+		});
+	}
+
+	cwd(dir: string): ExecBuilder {
+		return new ExecBuilder(this.cmd, this.args, { ...this.opts, cwd: dir });
+	}
+
+	silent(): ExecBuilder {
+		return new ExecBuilder(this.cmd, this.args, { ...this.opts, silent: true });
+	}
+
+	then<T = number, R = never>(
+		onfulfilled?: ((v: number) => T | PromiseLike<T>) | null,
+		onrejected?: ((e: any) => R | PromiseLike<R>) | null,
+	): Promise<T | R> {
+		return exec.exec(this.cmd, this.args, this.opts).then(onfulfilled, onrejected);
+	}
+}
+
+function $(strings: TemplateStringsArray, ...values: ShellArg[]): ExecBuilder {
 	const args: string[] = [];
 	for (let i = 0; i < strings.length; i++) {
 		for (const token of strings[i].split(/\s+/)) {
@@ -31,7 +65,7 @@ async function $(strings: TemplateStringsArray, ...values: ShellArg[]): Promise<
 	}
 	if (args.length === 0) throw new Error('$`...` template produced no arguments');
 	const [cmd, ...cmdArgs] = args;
-	return exec.exec(cmd, cmdArgs);
+	return new ExecBuilder(cmd, cmdArgs);
 }
 
 // dist/ layout produced by `just build`:

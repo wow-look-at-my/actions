@@ -5,17 +5,31 @@ declare const exec: typeof import('@actions/exec');
 declare const io: typeof import('@actions/io');
 
 type ShellArg = string | number | boolean | null | undefined | string[];
+
+/**
+ * Thenable command builder returned by `$`. Awaiting executes the command.
+ * Chain methods to set options before awaiting.
+ */
+interface ExecBuilder extends PromiseLike<number> {
+	/** Pipe data to the command's stdin. */
+	input(data: Buffer | string): ExecBuilder;
+	/** Set the working directory. */
+	cwd(dir: string): ExecBuilder;
+	/** Suppress stdout/stderr. */
+	silent(): ExecBuilder;
+}
+
 /**
  * Execute a command via tagged template. Static parts are split by whitespace;
  * interpolated values are passed as individual arguments (never shell-split).
  *
- * - string/number → single argument
- * - string[] → expanded as multiple arguments
- * - falsy (false, null, undefined, '') → skipped
+ * - string/number -> single argument
+ * - string[] -> expanded as multiple arguments
+ * - falsy (false, null, undefined, '') -> skipped
  *
- * Throws on non-zero exit. Returns the exit code (always 0).
+ * Throws on non-zero exit. Chain .input()/.cwd()/.silent() before awaiting.
  */
-declare function $(strings: TemplateStringsArray, ...values: ShellArg[]): Promise<number>;
+declare function $(strings: TemplateStringsArray, ...values: ShellArg[]): ExecBuilder;
 declare const fs: typeof import('fs');
 declare const path: typeof import('path');
 declare const os: typeof import('os');
