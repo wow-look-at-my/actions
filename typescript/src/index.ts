@@ -10,6 +10,30 @@ import * as util from 'util';
 import { createRequire } from 'module';
 import * as ts from 'typescript';
 
+type ShellArg = string | number | boolean | null | undefined | string[];
+
+async function $(strings: TemplateStringsArray, ...values: ShellArg[]): Promise<number> {
+	const args: string[] = [];
+	for (let i = 0; i < strings.length; i++) {
+		for (const token of strings[i].split(/\s+/)) {
+			if (token) args.push(token);
+		}
+		if (i < values.length) {
+			const val = values[i];
+			if (val === null || val === undefined || val === false || val === '') continue;
+			if (val === true) continue;
+			if (Array.isArray(val)) {
+				for (const v of val) { if (v) args.push(v); }
+			} else {
+				args.push(String(val));
+			}
+		}
+	}
+	if (args.length === 0) throw new Error('$`...` template produced no arguments');
+	const [cmd, ...cmdArgs] = args;
+	return exec.exec(cmd, cmdArgs);
+}
+
 // dist/ layout produced by `just build`:
 //   dist/index.js                  (bundled action)
 //   dist/lib.es*.d.ts              (TypeScript standard libs)
@@ -239,7 +263,7 @@ function transpile(source: string): string {
 
 async function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: string): Promise<unknown> {
 	Object.assign(globalThis, {
-		core, exec, io,
+		$, core, exec, io,
 		octokit: github.getOctokit,
 		context: github.context,
 		github: ctx.github, env: ctx.env, runner: ctx.runner,

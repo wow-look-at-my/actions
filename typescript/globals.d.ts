@@ -3,6 +3,19 @@
 declare const core: typeof import('@actions/core');
 declare const exec: typeof import('@actions/exec');
 declare const io: typeof import('@actions/io');
+
+type ShellArg = string | number | boolean | null | undefined | string[];
+/**
+ * Execute a command via tagged template. Static parts are split by whitespace;
+ * interpolated values are passed as individual arguments (never shell-split).
+ *
+ * - string/number → single argument
+ * - string[] → expanded as multiple arguments
+ * - falsy (false, null, undefined, '') → skipped
+ *
+ * Throws on non-zero exit. Returns the exit code (always 0).
+ */
+declare function $(strings: TemplateStringsArray, ...values: ShellArg[]): Promise<number>;
 declare const fs: typeof import('fs');
 declare const path: typeof import('path');
 declare const os: typeof import('os');

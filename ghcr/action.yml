@@ -47,32 +47,43 @@ runs:
 
     - name: Login to GHCR
       if: inputs.login == 'true'
-      shell: bash
-      run: echo "$LOGIN_TOKEN" | docker login ghcr.io -u x-access-token --password-stdin
+      uses: wow-look-at-my/actions@typescript#latest
       env:
         LOGIN_TOKEN: ${{ inputs.token || env.GHCR_WRITE_TOKEN }}
+      with:
+        script: |
+          await exec.exec('docker', ['login', 'ghcr.io', '-u', 'x-access-token', '--password-stdin'], {
+            input: Buffer.from(env.LOGIN_TOKEN),
+          });
 
     - name: Build
       if: inputs.build == 'true'
-      shell: bash
-      run: |
-        build_args=()
-        while IFS= read -r arg; do
-          [ -n "$arg" ] && build_args+=(--build-arg "$arg")
-        done <<< "$BUILD_ARGS"
-        docker buildx build \
-          -f "${{ inputs.build_dockerfile }}" \
-          -t "${{ inputs.push_image }}" \
-          "${build_args[@]}" \
-          ${{ inputs.push == 'true' && '--push' || '' }} \
-          "${{ inputs.build_context }}"
+      uses: wow-look-at-my/actions@typescript#latest
       env:
-        BUILD_ARGS: ${{ inputs.build_args }}
+        INPUT_DOCKERFILE: ${{ inputs.build_dockerfile }}
+        INPUT_IMAGE: ${{ inputs.push_image }}
+        INPUT_BUILD_ARGS: ${{ inputs.build_args }}
+        INPUT_PUSH: ${{ inputs.push }}
+        INPUT_CONTEXT: ${{ inputs.build_context }}
+      with:
+        script: |
+          const buildArgs = (env.INPUT_BUILD_ARGS || '').split('\n')
+            .filter(Boolean)
+            .flatMap(a => ['--build-arg', a]);
+          await $`docker buildx build
+            -f ${env.INPUT_DOCKERFILE}
+            -t ${env.INPUT_IMAGE}
+            ${buildArgs}
+            ${env.INPUT_PUSH === 'true' && '--push'}
+            ${env.INPUT_CONTEXT}`;
 
     - name: Push
       if: inputs.build != 'true' && inputs.push == 'true'
-      shell: bash
-      run: docker push "${{ inputs.push_image }}"
+      uses: wow-look-at-my/actions@typescript#latest
+      env:
+        INPUT_IMAGE: ${{ inputs.push_image }}
+      with:
+        script: await $`docker push ${env.INPUT_IMAGE}`;
 
     - uses: wow-look-at-my/actions@ghcr-prune#latest
       if: inputs.push == 'true' && inputs.push_keep != '0'
