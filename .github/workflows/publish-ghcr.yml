@@ -49,12 +49,12 @@ jobs:
 
       - uses: wow-look-at-my/actions@typescript#latest
         id: meta
+        env:
+          PUSH_BRANCH: ${{ inputs.push-branch }}
         with:
-          inputs: ${{ toJSON(inputs) }}
           script: |
             const image = `ghcr.io/${github.repository.toLowerCase()}:latest`;
-            const branch = inputs['push-branch'];
-            const push = !branch || github.ref === `refs/heads/${branch}`;
+            const push = !env.PUSH_BRANCH || github.ref === `refs/heads/${env.PUSH_BRANCH}`;
             core.setOutput('image', image);
             core.setOutput('push', String(push));
 

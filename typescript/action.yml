@@ -23,10 +23,6 @@ inputs:
     description: 'secrets workflow context as JSON. Callers must pass toJSON(secrets) wrapped in an expression.'
     required: false
     default: '{}'
-  inputs:
-    description: 'inputs workflow context as JSON (reusable workflow / workflow_dispatch inputs).'
-    required: false
-    default: '{}'
   steps:
     description: 'steps workflow context as JSON. Callers must pass toJSON(steps) wrapped in an expression.'
     required: false

@@ -59,7 +59,6 @@ runs:
       if: inputs.build == 'true'
       uses: wow-look-at-my/actions@typescript#latest
       with:
-        inputs: ${{ toJSON(inputs) }}
         script: |
           const buildArgs = (inputs.build_args || '').split('\n')
             .filter(Boolean)
@@ -75,7 +74,6 @@ runs:
       if: inputs.build != 'true' && inputs.push == 'true'
       uses: wow-look-at-my/actions@typescript#latest
       with:
-        inputs: ${{ toJSON(inputs) }}
         script: await $`docker push ${inputs.push_image}`;
 
     - uses: wow-look-at-my/actions@ghcr-prune#latest
