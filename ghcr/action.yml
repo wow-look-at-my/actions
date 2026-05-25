@@ -48,33 +48,31 @@ runs:
     - name: Login to GHCR
       if: inputs.login == 'true'
       uses: wow-look-at-my/actions@typescript#latest
-      env:
-        LOGIN_TOKEN: ${{ inputs.token || env.GHCR_WRITE_TOKEN }}
       with:
         script: |
           await $`docker login ghcr.io -u x-access-token --password-stdin`
-            .input(env.LOGIN_TOKEN);
+            .input('${{ inputs.token || env.GHCR_WRITE_TOKEN }}');
 
     - name: Build
       if: inputs.build == 'true'
       uses: wow-look-at-my/actions@typescript#latest
       with:
         script: |
-          const buildArgs = (inputs.build_args || '').split('\n')
+          const buildArgs = '${{ inputs.build_args }}'.split('\n')
             .filter(Boolean)
             .flatMap((a: string) => ['--build-arg', a]);
           await $`docker buildx build
-            -f ${inputs.build_dockerfile}
-            -t ${inputs.push_image}
+            -f ${{ inputs.build_dockerfile }}
+            -t ${{ inputs.push_image }}
             ${buildArgs}
-            ${inputs.push === 'true' && '--push'}
-            ${inputs.build_context}`;
+            ${{ inputs.push == 'true' && '''--push''' || '' }}
+            ${{ inputs.build_context }}`;
 
     - name: Push
       if: inputs.build != 'true' && inputs.push == 'true'
       uses: wow-look-at-my/actions@typescript#latest
       with:
-        script: await $`docker push ${inputs.push_image}`;
+        script: await $`docker push ${{ inputs.push_image }}`;
 
     - uses: wow-look-at-my/actions@ghcr-prune#latest
       if: inputs.push == 'true' && inputs.push_keep != '0'
