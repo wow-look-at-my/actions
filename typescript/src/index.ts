@@ -203,8 +203,28 @@ const OWN_INPUTS = new Set([
 	'VARS', 'SECRETS', 'STEPS', 'NEEDS', 'STRATEGY', 'MATRIX',
 ]);
 
-function deriveInputsFromEnv(): Record<string, string> {
+function deriveInputs(): Record<string, string> {
 	const inputs: Record<string, string> = {};
+
+	// _INPUTS env var: JSON blob from composite action's toJSON(inputs).
+	// Parse it, use it as the inputs context, and export as INPUT_* to
+	// GITHUB_ENV so subsequent steps auto-detect them.
+	const raw = process.env._INPUTS;
+	if (raw && raw.trim()) {
+		try {
+			const parsed = JSON.parse(raw);
+			for (const [key, val] of Object.entries(parsed)) {
+				const k = key.toLowerCase();
+				inputs[k] = String(val);
+				core.exportVariable(`INPUT_${key.toUpperCase()}`, String(val));
+			}
+			return inputs;
+		} catch {
+			// fall through to INPUT_* scan
+		}
+	}
+
+	// Fallback: scan INPUT_* env vars (e.g. from a prior propagation step).
 	for (const [key, val] of Object.entries(process.env)) {
 		if (!key.startsWith('INPUT_') || val === undefined) continue;
 		const name = key.slice(6);
@@ -221,7 +241,7 @@ function readContexts(): WorkflowContexts {
 		runner: deriveRunnerContext(),
 		job: deriveJobContext(),
 		env: { ...process.env },
-		inputs: deriveInputsFromEnv(),
+		inputs: deriveInputs(),
 		// The runner never exposes these contexts to action processes — they
 		// only exist as workflow-expression substitutions. Default to {}; the
 		// caller passes JSON only when they actually need them.
