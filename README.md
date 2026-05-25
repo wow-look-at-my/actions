@@ -53,12 +53,11 @@ Reusable GitHub Actions.
 ### [Download Release Binary](download-release-binary/)
 
 ```yml
-# Download a platform-specific binary from a GitHub release.
+# Download a platform-specific binary, trying buildhost (pazer.build) first with GitHub Releases as fallback.
 # Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/download-release-binary/README.md
 - uses: wow-look-at-my/actions@download-release-binary#latest
   with:
     repo: # Repository (owner/name) to download from
-    token: # GitHub token for API authentication (e.g. github.token)
 ```
 
 ### [GHCR Prune](ghcr-prune/)
