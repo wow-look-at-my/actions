@@ -1,0 +1,69 @@
+name: Publish to GHCR
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: 'Build artifact to download'
+        required: false
+        default: 'go-build'
+        type: string
+      artifact-path:
+        description: 'Path to place downloaded artifact'
+        required: false
+        default: 'build'
+        type: string
+      dockerfile:
+        description: 'Path to Dockerfile'
+        required: false
+        default: 'Dockerfile'
+        type: string
+      context:
+        description: 'Docker build context'
+        required: false
+        default: '.'
+        type: string
+      push-branch:
+        description: 'Branch that triggers push (empty string to always push)'
+        required: false
+        default: 'master'
+        type: string
+      prune-keep:
+        description: 'Tagged versions to keep when pruning (0 to disable)'
+        required: false
+        default: '10'
+        type: string
+
+jobs:
+  publish-ghcr:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ inputs.artifact-path }}
+
+      - uses: wow-look-at-my/actions@typescript#latest
+        id: meta
+        env:
+          PUSH_BRANCH: ${{ inputs.push-branch }}
+        with:
+          script: |
+            const image = `ghcr.io/${github.repository.toLowerCase()}:latest`;
+            const push = !env.PUSH_BRANCH || github.ref === `refs/heads/${env.PUSH_BRANCH}`;
+            core.setOutput('image', image);
+            core.setOutput('push', String(push));
+
+      - uses: wow-look-at-my/actions@ghcr#latest
+        with:
+          token: ${{ github.token }}
+          push_image: ${{ steps.meta.outputs.image }}
+          push: ${{ steps.meta.outputs.push }}
+          push_keep: ${{ inputs.prune-keep }}
+          build_dockerfile: ${{ inputs.dockerfile }}
+          build_context: ${{ inputs.context }}
+          build_args: VERSION=${{ github.sha }}

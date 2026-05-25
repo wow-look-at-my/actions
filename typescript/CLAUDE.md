@@ -2,7 +2,7 @@
 
 ## Overview
 
-Node.js action (TypeScript) that runs a user-supplied TypeScript snippet (inline via `script` or from a file via `file`), validating it with `tsc` first and pre-injecting helpers like `core`, `context`, `octokit`, `fs`, `path`, etc. so scripts stay short.
+Node.js action (TypeScript) that runs a user-supplied TypeScript snippet (inline via `script` or from a file via `file`), validating it with `tsc` first and pre-injecting helpers like `core`, `exec`, `$`, `context`, `octokit`, `fs`, `path`, etc. so scripts stay short.
 
 ## Structure
 
@@ -49,6 +49,14 @@ Smoke-test by running locally:
 ```sh
 INPUT_SCRIPT='core.info("hello")' node dist/index.js
 ```
+
+To exercise the `$` tagged template (safe command execution):
+
+```sh
+INPUT_SCRIPT='await $`echo ${"hello world"}`' node dist/index.js
+```
+
+`$` splits static template parts by whitespace. Interpolated values are passed as individual arguments (never shell-split). Arrays expand to multiple args; falsy values are skipped.
 
 To exercise contexts:
 
