@@ -47,17 +47,16 @@ jobs:
           name: ${{ inputs.artifact-name }}
           path: ${{ inputs.artifact-path }}
 
-      - name: Resolve image name and push gate
+      - uses: wow-look-at-my/actions@typescript#latest
         id: meta
-        run: |
-          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}:latest" >> "$GITHUB_OUTPUT"
-          if [ -z "$PUSH_BRANCH" ] || [ "$GITHUB_REF" = "refs/heads/$PUSH_BRANCH" ]; then
-            echo "push=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "push=false" >> "$GITHUB_OUTPUT"
-          fi
-        env:
-          PUSH_BRANCH: ${{ inputs.push-branch }}
+        with:
+          inputs: ${{ toJSON(inputs) }}
+          script: |
+            const image = `ghcr.io/${github.repository.toLowerCase()}:latest`;
+            const branch = inputs['push-branch'];
+            const push = !branch || github.ref === `refs/heads/${branch}`;
+            core.setOutput('image', image);
+            core.setOutput('push', String(push));
 
       - uses: wow-look-at-my/actions@ghcr#latest
         with:
