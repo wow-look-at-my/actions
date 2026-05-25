@@ -50,8 +50,6 @@ runs:
   steps:
     - uses: ./node
       id: run
-      env:
-        _INPUTS: ${{ toJSON(inputs) }}
       with:
         script: ${{ inputs.script }}
         file: ${{ inputs.file }}

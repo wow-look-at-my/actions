@@ -42,6 +42,11 @@ inputs:
 runs:
   using: composite
   steps:
+    - shell: bash
+      env:
+        _JSON: ${{ toJSON(inputs) }}
+      run: printf '_INPUTS<<__DELIM__\n%s\n__DELIM__\n' "$_JSON" >> "$GITHUB_ENV"
+
     - uses: wow-look-at-my/actions@secret-server#latest
       if: inputs.login == 'true' && inputs.token == ''
 
@@ -49,7 +54,6 @@ runs:
       if: inputs.login == 'true'
       uses: wow-look-at-my/actions@typescript#latest
       env:
-        _INPUTS: ${{ toJSON(inputs) }}
         LOGIN_TOKEN: ${{ inputs.token || env.GHCR_WRITE_TOKEN }}
       with:
         script: |
