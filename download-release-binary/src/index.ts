@@ -1,10 +1,8 @@
 import * as core from "@actions/core";
 import * as exec from "@actions/exec";
-import { mkdirSync, chmodSync, renameSync, readdirSync, createWriteStream } from "fs";
+import { mkdirSync, chmodSync, renameSync, readdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
-import { get as httpsGet } from "https";
-import { IncomingMessage } from "http";
 
 const BUILDHOST_BASE = "https://pazer.build";
 
@@ -12,64 +10,6 @@ const archMap: Record<string, string> = {
 	X64: "amd64",
 	ARM64: "arm64",
 };
-
-function followRedirects(url: string): Promise<IncomingMessage> {
-	return new Promise((resolve, reject) => {
-		httpsGet(url, (res) => {
-			if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-				followRedirects(res.headers.location).then(resolve, reject);
-			} else {
-				resolve(res);
-			}
-		}).on("error", reject);
-	});
-}
-
-async function tryBuildhost(project: string, version: string, os: string, arch: string, destPath: string): Promise<boolean> {
-	const url = `${BUILDHOST_BASE}/dl/${project}/${version}/${os}/${arch}`;
-	core.info(`Trying buildhost: ${url}`);
-
-	try {
-		const res = await followRedirects(url);
-		if (res.statusCode !== 200) {
-			core.info(`Buildhost returned ${res.statusCode}, falling back to GitHub Releases`);
-			res.resume();
-			return false;
-		}
-
-		await new Promise<void>((resolve, reject) => {
-			const file = createWriteStream(destPath);
-			res.pipe(file);
-			file.on("finish", () => { file.close(); resolve(); });
-			file.on("error", reject);
-			res.on("error", reject);
-		});
-
-		return true;
-	} catch (err) {
-		core.info(`Buildhost failed: ${err instanceof Error ? err.message : String(err)}, falling back to GitHub Releases`);
-		return false;
-	}
-}
-
-async function downloadFromGitHub(repo: string, version: string, pattern: string, bindir: string, suffix: string, ext: string): Promise<string> {
-	const ghArgs = ["release", "download"];
-	if (version !== "latest") ghArgs.push(version);
-	ghArgs.push("--repo", repo, "--pattern", pattern, "--dir", bindir, "--clobber");
-
-	await exec.exec("gh", ghArgs);
-
-	const downloaded = readdirSync(bindir).filter((f) => f.endsWith(suffix));
-	if (downloaded.length === 0) throw new Error(`No files matching ${pattern} after download`);
-	if (downloaded.length > 1) throw new Error(`Multiple files matching ${pattern}: ${downloaded.join(", ")}`);
-
-	const asset = downloaded[0];
-	const binaryName = asset.slice(0, -suffix.length) + ext;
-	const destPath = join(bindir, binaryName);
-
-	renameSync(join(bindir, asset), destPath);
-	return destPath;
-}
 
 async function run(): Promise<void> {
 	const repo = core.getInput("repo", { required: true });
@@ -84,37 +24,63 @@ async function run(): Promise<void> {
 	if (!arch) throw new Error(`Unsupported arch: ${runnerArch}`);
 
 	const ext = runnerOS === "Windows" ? ".exe" : "";
+	const project = name || repo.split("/").pop()!;
+	const binaryName = project + ext;
 
 	const bindir = join(homedir(), ".local", "bin");
 	mkdirSync(bindir, { recursive: true });
-
-	const project = name || repo.split("/").pop()!;
-	const binaryName = project + ext;
 	const destPath = join(bindir, binaryName);
 
-	const got = await tryBuildhost(project, version, os, arch, destPath);
+	const url = `${BUILDHOST_BASE}/dl/${project}/${version}/${os}/${arch}`;
+	core.info(`Trying buildhost: ${url}`);
+
+	let got = false;
+	try {
+		const res = await fetch(url);
+		if (res.ok) {
+			writeFileSync(destPath, Buffer.from(await res.arrayBuffer()));
+			got = true;
+		} else {
+			core.info(`Buildhost returned ${res.status}, falling back to GitHub Releases`);
+		}
+	} catch (err) {
+		core.info(`Buildhost unreachable, falling back to GitHub Releases`);
+	}
 
 	if (!got) {
 		const token = core.getInput("token", { required: true });
 		if (!token) {
-			throw new Error("A GitHub token is required. Pass `token:` (e.g. github.token or a PAT with repo scope).");
+			throw new Error("A GitHub token is required for the GitHub Releases fallback.");
 		}
 		process.env.GH_TOKEN = token;
 
 		const suffix = `_${os}_${arch}${ext}`;
 		const pattern = `${name || "*"}${suffix}`;
-		const ghDest = await downloadFromGitHub(repo, version, pattern, bindir, suffix, ext);
-		chmodSync(ghDest, 0o755);
+		const ghArgs = ["release", "download"];
+		if (version !== "latest") ghArgs.push(version);
+		ghArgs.push("--repo", repo, "--pattern", pattern, "--dir", bindir, "--clobber");
+
+		await exec.exec("gh", ghArgs);
+
+		const downloaded = readdirSync(bindir).filter((f) => f.endsWith(suffix));
+		if (downloaded.length === 0) throw new Error(`No files matching ${pattern} after download`);
+		if (downloaded.length > 1) throw new Error(`Multiple files matching ${pattern}: ${downloaded.join(", ")}`);
+
+		const asset = downloaded[0];
+		const finalName = asset.slice(0, -suffix.length) + ext;
+		const finalPath = join(bindir, finalName);
+		renameSync(join(bindir, asset), finalPath);
+		chmodSync(finalPath, 0o755);
 		core.addPath(bindir);
-		core.setOutput("path", ghDest);
-		core.info(`Installed ${binaryName} from GitHub Releases to ${bindir}`);
+		core.setOutput("path", finalPath);
+		core.info(`Installed ${finalName} from GitHub Releases`);
 		return;
 	}
 
 	chmodSync(destPath, 0o755);
 	core.addPath(bindir);
 	core.setOutput("path", destPath);
-	core.info(`Installed ${binaryName} from buildhost to ${bindir}`);
+	core.info(`Installed ${binaryName} from buildhost`);
 }
 
 run().catch((error) => {
