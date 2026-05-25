@@ -42,7 +42,12 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: wow-look-at-my/actions@propagate-inputs#latest
+    - shell: bash
+      run: |
+        env -0 | while IFS= read -r -d '' entry; do
+          key="${entry%%=*}"; val="${entry#*=}"
+          [[ $key == INPUT_* ]] && printf '%s<<__DELIM__\n%s\n__DELIM__\n' "$key" "$val" >> "$GITHUB_ENV"
+        done
 
     - uses: wow-look-at-my/actions@secret-server#latest
       if: inputs.login == 'true' && inputs.token == ''
