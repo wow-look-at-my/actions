@@ -2,7 +2,7 @@
 
 ## Overview
 
-Node.js action (TypeScript) that downloads platform-specific binaries from GitHub releases.
+Node.js action (TypeScript) that downloads platform-specific binaries. Tries buildhost (https://pazer.build) first, falls back to GitHub Releases.
 
 ## Structure
 
@@ -26,10 +26,11 @@ Runs `pnpm install`, `pnpm tsc`, and `pnpm esbuild`.
 ### Key Details
 
 - Detects runner OS (`linux`, `darwin`, `windows`) and arch (`amd64`, `arm64`)
-- Expects assets named `{name}_{os}_{arch}` (with `.exe` suffix on Windows)
-- Uses `gh release download` for the actual download
-- Strips platform suffix when renaming (e.g., `mytool_linux_amd64` becomes `mytool`)
+- Tries `https://pazer.build/dl/{project}/{version}/{os}/{arch}` first (no auth needed for public projects)
+- Falls back to `gh release download` if buildhost is unavailable or returns non-200
+- GitHub fallback expects assets named `{name}_{os}_{arch}` (with `.exe` suffix on Windows)
 - Installs to `~/.local/bin` and adds it to `PATH`
+- `token` input is only required for the GitHub Releases fallback path
 
 ### Testing
 
