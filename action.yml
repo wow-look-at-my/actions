@@ -1,0 +1,28 @@
+name: Branch Block
+version: 1
+description: Add merged branches to a ruleset that blocks re-creation
+
+inputs:
+  branch:
+    description: 'Branch name to block'
+    required: true
+  ruleset:
+    description: 'Ruleset name (defaults to merged-branches)'
+    required: false
+    default: 'merged-branches'
+
+runs:
+  using: composite
+  steps:
+    - name: Fetch secrets
+      uses: wow-look-at-my/actions@secret-server#latest
+      id: secrets
+
+    - name: Block branch creation
+      shell: bash
+      env:
+        GH_TOKEN: ${{ env.BRANCH_BLOCK_PAT }}
+      run: |
+        "${{ github.action_path }}/branch-block.sh" \
+          --branch "${{ inputs.branch }}" \
+          --ruleset "${{ inputs.ruleset }}"
