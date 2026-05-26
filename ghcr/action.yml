@@ -65,7 +65,7 @@ runs:
             -f ${{ inputs.build_dockerfile }}
             -t ${{ inputs.push_image }}
             ${buildArgs}
-            ${{ inputs.push == 'true' && '''--push''' || '' }}
+            ${{ inputs.push == 'true' && '--push' || '' }}
             ${{ inputs.build_context }}`;
 
     - name: Push
