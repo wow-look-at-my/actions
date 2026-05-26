@@ -58,7 +58,6 @@ Reusable GitHub Actions.
 - uses: wow-look-at-my/actions@download-release-binary#latest
   with:
     repo: # Repository (owner/name) to download from
-    token: # GitHub token for API authentication (e.g. github.token)
 ```
 
 ### [GHCR Prune](ghcr-prune/)
