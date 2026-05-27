@@ -296,9 +296,23 @@ function transpile(source: string): string {
 }
 
 async function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: string): Promise<unknown> {
+	let _preAuth: ReturnType<typeof github.getOctokit> | null = null;
+	const octokitProxy = new Proxy(
+		function deprecatedOctokit(token: string, options?: Record<string, unknown>) {
+			core.warning('octokit(token) is deprecated; use the pre-authenticated octokit instance directly, or getOctokit(token) for a custom token');
+			return github.getOctokit(token, options as any);
+		},
+		{
+			get(_target, prop) {
+				if (!_preAuth) _preAuth = github.getOctokit(process.env.GITHUB_TOKEN ?? '');
+				return (_preAuth as any)[prop];
+			},
+		}
+	);
 	Object.assign(globalThis, {
 		$, core, exec, io,
-		octokit: github.getOctokit,
+		octokit: octokitProxy,
+		getOctokit: github.getOctokit,
 		context: github.context,
 		github: ctx.github, env: ctx.env, runner: ctx.runner,
 		job: ctx.job, steps: ctx.steps, needs: ctx.needs,

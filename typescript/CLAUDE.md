@@ -32,7 +32,8 @@ The recipe runs `pnpm install`, `pnpm tsc`, `pnpm esbuild`, and then stages a cu
 - Transpilation uses `ts.transpileModule` with `module: CommonJS` (converting `import` to `require()`), then the JS is executed via `AsyncFunction` with all helpers passed as arguments.
 - A custom `require` is supplied so the user can `require('@actions/core')` etc. and get the same instance the action uses; unknown modules fall through to Node's regular `require`, then to `$GITHUB_WORKSPACE/node_modules` so packages installed by a prior `npm ci` step are also available.
 - `crypto` is NOT injected because `@types/node` declares `crypto` as a global (Web Crypto), and an ambient `declare const crypto: typeof import('crypto')` would clash. Users can `require('crypto')` for the Node module.
-- `@actions/github` is shipped as a stripped stub (`Context` + `WebhookPayload` only). Full Octokit types weigh in at ~7 MB; the `octokit` factory is typed loosely (`rest: any`, etc.) instead.
+- `@actions/github` is shipped as a stripped stub (`Context` + `WebhookPayload` only). Full Octokit types weigh in at ~7 MB; the `octokit` instance and `getOctokit` factory are typed loosely (`rest: any`, etc.) instead.
+- `octokit` is a pre-authenticated `OctokitInstance` using `GITHUB_TOKEN`. It is also callable as `octokit(token)` for backward compatibility (emits a `core.warning` deprecation notice). Use `getOctokit(token, options?)` as the clean factory for custom tokens.
 
 ### Testing
 

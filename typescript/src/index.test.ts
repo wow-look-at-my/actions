@@ -115,4 +115,22 @@ describe('typescript action', () => {
 		assert.equal(exitCode, 0);
 		assert.ok(stdout.includes('req:required'));
 	});
+
+	it('provides pre-authenticated octokit instance', async () => {
+		const { stdout, exitCode } = await runAction(
+			'core.info("octokit-rest:" + typeof octokit.rest)',
+			{ GITHUB_TOKEN: 'fake-token-for-test' }
+		);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('octokit-rest:object'));
+	});
+
+	it('octokit(token) emits deprecation warning and still works', async () => {
+		const { stdout, exitCode } = await runAction(
+			'const c = octokit("fake"); core.info("type:" + typeof c.rest)'
+		);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('type:object'));
+		assert.ok(stdout.toLowerCase().includes('deprecated'));
+	});
 });
