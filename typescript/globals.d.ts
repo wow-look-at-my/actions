@@ -47,7 +47,12 @@ interface OctokitInstance {
 	auth: any;
 	log: { debug: (...args: any[]) => any; info: (...args: any[]) => any; warn: (...args: any[]) => any; error: (...args: any[]) => any };
 }
-declare function octokit(token: string, options?: Record<string, any>): OctokitInstance;
+interface OctokitCallable extends OctokitInstance {
+	/** @deprecated Use the pre-authenticated `octokit` instance directly, or `getOctokit(token)` for a custom token. */
+	(token: string, options?: Record<string, any>): OctokitInstance;
+}
+declare const octokit: OctokitCallable;
+declare function getOctokit(token: string, options?: Record<string, any>): OctokitInstance;
 
 interface RunnerContext {
 	os: 'Linux' | 'macOS' | 'Windows' | string;
