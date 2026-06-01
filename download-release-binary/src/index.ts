@@ -31,7 +31,11 @@ async function run(): Promise<void> {
 	mkdirSync(bindir, { recursive: true });
 	const destPath = join(bindir, binaryName);
 
-	const url = `${BUILDHOST_BASE}/dl/${project}/${version}/${os}/${arch}`;
+	// dl service lives at dl.{domain}/{project}?os=...&arch=...[&v=...]
+	const base = new URL(BUILDHOST_BASE);
+	const params = new URLSearchParams({ os, arch });
+	if (version !== "latest") params.set("v", version);
+	const url = `${base.protocol}//dl.${base.host}/${project}?${params}`;
 	core.info(`Trying buildhost: ${url}`);
 
 	let got = false;
