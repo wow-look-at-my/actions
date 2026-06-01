@@ -39,8 +39,21 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       packages: write
+      actions: read
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify actions:read permission
+        uses: wow-look-at-my/actions@typescript#latest
+        with:
+          script: |
+            const res = await fetch(
+              `https://api.github.com/repos/${github.repository}/actions/runs/${github.run_id}/artifacts`,
+              { headers: { Authorization: `Bearer ${github.token}`, Accept: "application/vnd.github+json" } },
+            );
+            if (res.status === 403) {
+              core.setFailed("Missing 'actions: read' permission — add it to your calling workflow's permissions block.");
+            }
 
       - uses: actions/download-artifact@v4
         with:
