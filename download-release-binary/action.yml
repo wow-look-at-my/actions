@@ -13,9 +13,6 @@ inputs:
     description: 'Release tag to download (omit or set to "latest" for the most recent release)'
     required: false
     default: 'latest'
-  token:
-    description: 'GitHub token for API authentication (e.g. github.token)'
-    required: false
 
 outputs:
   path:

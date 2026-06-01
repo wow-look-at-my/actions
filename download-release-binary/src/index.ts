@@ -1,6 +1,5 @@
 import * as core from "@actions/core";
-import * as exec from "@actions/exec";
-import { mkdirSync, chmodSync, renameSync, readdirSync, writeFileSync } from "fs";
+import { mkdirSync, chmodSync, writeFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 
@@ -36,51 +35,12 @@ async function run(): Promise<void> {
 	const params = new URLSearchParams({ os, arch });
 	if (version !== "latest") params.set("v", version);
 	const url = `${base.protocol}//dl.${base.host}/${project}?${params}`;
-	core.info(`Trying buildhost: ${url}`);
+	core.info(`Downloading from buildhost: ${url}`);
 
-	let got = false;
-	try {
-		const res = await fetch(url);
-		if (res.ok) {
-			writeFileSync(destPath, Buffer.from(await res.arrayBuffer()));
-			got = true;
-		} else {
-			core.info(`Buildhost returned ${res.status}, falling back to GitHub Releases`);
-		}
-	} catch (err) {
-		core.info(`Buildhost unreachable, falling back to GitHub Releases`);
-	}
+	const res = await fetch(url);
+	if (!res.ok) throw new Error(`Buildhost returned ${res.status} for ${url}`);
 
-	if (!got) {
-		const token = core.getInput("token", { required: true });
-		if (!token) {
-			throw new Error("A GitHub token is required for the GitHub Releases fallback.");
-		}
-		process.env.GH_TOKEN = token;
-
-		const suffix = `_${os}_${arch}${ext}`;
-		const pattern = `${name || "*"}${suffix}`;
-		const ghArgs = ["release", "download"];
-		if (version !== "latest") ghArgs.push(version);
-		ghArgs.push("--repo", repo, "--pattern", pattern, "--dir", bindir, "--clobber");
-
-		await exec.exec("gh", ghArgs);
-
-		const downloaded = readdirSync(bindir).filter((f) => f.endsWith(suffix));
-		if (downloaded.length === 0) throw new Error(`No files matching ${pattern} after download`);
-		if (downloaded.length > 1) throw new Error(`Multiple files matching ${pattern}: ${downloaded.join(", ")}`);
-
-		const asset = downloaded[0];
-		const finalName = asset.slice(0, -suffix.length) + ext;
-		const finalPath = join(bindir, finalName);
-		renameSync(join(bindir, asset), finalPath);
-		chmodSync(finalPath, 0o755);
-		core.addPath(bindir);
-		core.setOutput("path", finalPath);
-		core.info(`Installed ${finalName} from GitHub Releases`);
-		return;
-	}
-
+	writeFileSync(destPath, Buffer.from(await res.arrayBuffer()));
 	chmodSync(destPath, 0o755);
 	core.addPath(bindir);
 	core.setOutput("path", destPath);
