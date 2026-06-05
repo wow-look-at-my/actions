@@ -3,6 +3,8 @@ import * as assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as path from 'node:path';
+import * as os from 'node:os';
+import * as fs from 'node:fs';
 
 const execFileAsync = promisify(execFile);
 const DIST = path.join(__dirname, '..', 'dist', 'index.js');
@@ -22,6 +24,37 @@ async function runAction(script: string, env: Record<string, string> = {}): Prom
 		return { stdout, stderr, exitCode: 0 };
 	} catch (err: any) {
 		return { stdout: err.stdout ?? '', stderr: err.stderr ?? '', exitCode: err.code ?? 1 };
+	}
+}
+
+// Parse the heredoc-style $GITHUB_OUTPUT file that @actions/core writes:
+//   <name><<ghadelimiter_<uuid>\n<value>\nghadelimiter_<uuid>\n
+function parseGithubOutput(raw: string): Record<string, string> {
+	const out: Record<string, string> = {};
+	const lines = raw.split('\n');
+	for (let i = 0; i < lines.length; i++) {
+		const m = lines[i].match(/^(.+?)<<(ghadelimiter_\S+)$/);
+		if (!m) continue;
+		const [, key, delim] = m;
+		const value: string[] = [];
+		for (i++; i < lines.length && lines[i] !== delim; i++) value.push(lines[i]);
+		out[key] = value.join('\n');
+	}
+	return out;
+}
+
+// Run the action with a real $GITHUB_OUTPUT file so the `result` output is observable.
+async function runActionWithOutputs(
+	script: string,
+	env: Record<string, string> = {},
+): Promise<RunResult & { outputs: Record<string, string> }> {
+	const outFile = path.join(os.tmpdir(), `gh-output-${process.pid}-${Math.random().toString(36).slice(2)}`);
+	fs.writeFileSync(outFile, '');
+	try {
+		const res = await runAction(script, { ...env, GITHUB_OUTPUT: outFile });
+		return { ...res, outputs: parseGithubOutput(fs.readFileSync(outFile, 'utf-8')) };
+	} finally {
+		fs.rmSync(outFile, { force: true });
 	}
 }
 
@@ -50,19 +83,50 @@ describe('typescript action', () => {
 		assert.ok(stdout.includes('after-await'));
 	});
 
-	it('supports import with top-level await', async () => {
+	it('supports a bare top-level return (TS1108 regression)', async () => {
+		// A top-level `return` must type-check and run — it is legal inside the
+		// async-function body the script is wrapped in. Before the fix this
+		// failed type-check with "TS1108: A 'return' statement can only be used
+		// within a function body."
 		const { stdout, exitCode } = await runAction(`
-			import * as core2 from "@actions/core";
-			const val = await Promise.resolve("imported");
-			core2.info("got:" + val);
+			const skip = false;
+			if (skip) return;
+			core.info("did-not-skip");
 		`);
 		assert.equal(exitCode, 0);
-		assert.ok(stdout.includes('got:imported'));
+		assert.ok(stdout.includes('did-not-skip'));
 	});
 
-	it('supports import of node built-in modules', async () => {
+	it('exposes a top-level return value as the result output', async () => {
+		const { outputs, exitCode } = await runActionWithOutputs(`
+			const sum = 1 + 2;
+			core.info("computed");
+			return { sum, label: "ok" };
+		`);
+		assert.equal(exitCode, 0);
+		assert.equal(outputs.result, '{"sum":3,"label":"ok"}');
+	});
+
+	it('combines top-level await and return into the result output', async () => {
+		const { outputs, exitCode } = await runActionWithOutputs(
+			'const v = await Promise.resolve(7); return v * 6;'
+		);
+		assert.equal(exitCode, 0);
+		assert.equal(outputs.result, '42');
+	});
+
+	it('supports dynamic import() with await', async () => {
 		const { stdout, exitCode } = await runAction(`
-			import * as nodePath from "path";
+			const core2 = await import("@actions/core");
+			core2.info("dynamic:imported");
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('dynamic:imported'));
+	});
+
+	it('supports require of node built-in modules', async () => {
+		const { stdout, exitCode } = await runAction(`
+			const nodePath = require("path");
 			const joined = await Promise.resolve(nodePath.join("a", "b"));
 			core.info("path:" + joined);
 		`);
@@ -92,6 +156,26 @@ describe('typescript action', () => {
 	it('fails on type errors', async () => {
 		const { stdout, exitCode } = await runAction(
 			'const x: number = "not a number"'
+		);
+		assert.notEqual(exitCode, 0);
+		assert.ok(stdout.includes('TypeScript validation failed'));
+	});
+
+	it('maps type-error line numbers back to the user script', async () => {
+		// The wrapper adds lines before the user code; diagnostics must still
+		// point at the original `script:` line. The error is on line 2 here.
+		const { stdout, exitCode } = await runAction(
+			'core.info("line one");\nconst x: number = "nope";'
+		);
+		assert.notEqual(exitCode, 0);
+		assert.ok(stdout.includes('script:2:'), `expected an error on line 2, got:\n${stdout}`);
+	});
+
+	it('rejects top-level ESM import (use require / dynamic import instead)', async () => {
+		// Wrapping the script in a function means top-level `import` is no longer
+		// valid — this is the documented tradeoff. It must fail type-checking.
+		const { exitCode, stdout } = await runAction(
+			'import * as c from "@actions/core"; c.info("x");'
 		);
 		assert.notEqual(exitCode, 0);
 		assert.ok(stdout.includes('TypeScript validation failed'));

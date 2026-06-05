@@ -26,10 +26,11 @@ The recipe runs `pnpm install`, `pnpm tsc`, `pnpm esbuild`, and then stages a cu
 
 ### Key Details
 
-- User script runs at the top level — it is prefixed with `globals.d.ts` (read from `dist/` at runtime) that declares the injected names (`core`, `fs`, etc.), but is NOT wrapped in a function. `import` statements and top-level `await` work naturally.
-- Type-checking uses `module: ES2022` (for top-level `await` / `import` support) via `ts.createProgram` with a CompilerHost that serves the source from memory; everything else (lib files, type packages) is read from disk under `dist/`.
-- Diagnostics are remapped: line numbers are adjusted by the globals-prefix line count so errors point at the user's script line, not the prefix.
-- Transpilation uses `ts.transpileModule` with `module: CommonJS` (converting `import` to `require()`), then the JS is executed via `AsyncFunction` with all helpers passed as arguments.
+- The user script is wrapped as the body of an `async function __main()` (see `buildSource`), prefixed with `globals.d.ts` (read from `dist/` at runtime) that declares the injected names (`core`, `fs`, etc.). Wrapping makes both top-level `await` AND top-level `return` work — the latter would be a TS1108 error in a bare module. `return <value>` becomes the `result` output. The tradeoff: top-level ESM `import`/`export` are no longer allowed (a function body can't contain them) — scripts use `require()` or dynamic `import()` instead.
+  - `__main`'s return type is left to inference on purpose: an explicit non-void annotation (e.g. `Promise<unknown>`) makes a script that never returns a value trip TS2355 ("must return a value").
+- Type-checking uses `module: ES2022` (for top-level `await` support) via `ts.createProgram` with a CompilerHost that serves the source from memory; everything else (lib files, type packages) is read from disk under `dist/`.
+- Diagnostics are remapped: line numbers are adjusted by the wrapper-prefix line count (`PREFIX_LINES`, derived from `SOURCE_PREFIX`) so errors point at the user's script line, not the prefix.
+- Transpilation uses `ts.transpileModule` with `module: CommonJS`, then the JS is executed via `AsyncFunction`. Running it defines `__main` on `module.exports`; the action then calls `__main()` and JSON-encodes its resolved value as `result`. Injected helpers (`core`, `$`, `context`, etc.) are assigned to `globalThis` before invocation.
 - A custom `require` is supplied so the user can `require('@actions/core')` etc. and get the same instance the action uses; unknown modules fall through to Node's regular `require`, then to `$GITHUB_WORKSPACE/node_modules` so packages installed by a prior `npm ci` step are also available.
 - `crypto` is NOT injected because `@types/node` declares `crypto` as a global (Web Crypto), and an ambient `declare const crypto: typeof import('crypto')` would clash. Users can `require('crypto')` for the Node module.
 - `@actions/github` is shipped as a stripped stub (`Context` + `WebhookPayload` only). Full Octokit types weigh in at ~7 MB; the `octokit` instance and `getOctokit` factory are typed loosely (`rest: any`, etc.) instead.
@@ -43,7 +44,7 @@ Run integration tests (requires `just build` first):
 pnpm tsx --test src/index.test.ts
 ```
 
-Tests cover: basic execution, top-level await, import + await, node built-in imports, error propagation, type errors, workflow contexts, and require of @actions modules.
+Tests cover: basic execution, top-level await, top-level `return` (bare + value-as-`result`-output, the TS1108 regression), dynamic `import()`, `require` of node built-ins and @actions modules, error propagation, type errors (including diagnostic line mapping), rejection of top-level ESM `import`, and workflow contexts.
 
 Smoke-test by running locally:
 
