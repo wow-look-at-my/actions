@@ -83,6 +83,25 @@ describe('typescript action', () => {
 		assert.ok(stdout.includes('after-await'));
 	});
 
+	it('runs top-level await interleaved with statements (no IIFE wrapper needed)', async () => {
+		// The action's promise: write `await` at the top level alongside ordinary
+		// statements and control flow — no `(async () => { ... })()` ceremony.
+		// As a plain CommonJS module this would need an IIFE to await; here the
+		// script is the body of the action's async function, so it just runs.
+		const { stdout, exitCode } = await runAction(`
+			core.info("start");
+			const first = await Promise.resolve(10);
+			let total = first;
+			for (const n of [20, 30]) {
+				total += await Promise.resolve(n);
+			}
+			core.info("total:" + total);
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('start'));
+		assert.ok(stdout.includes('total:60'));
+	});
+
 	it('supports a bare top-level return (TS1108 regression)', async () => {
 		// A top-level `return` must type-check and run — it is legal inside the
 		// async-function body the script is wrapped in. Before the fix this
