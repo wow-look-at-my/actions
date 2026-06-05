@@ -80,11 +80,28 @@ const VIRTUAL_FILE = path.join(TYPES_DIR, '__user-script.ts');
 
 const GLOBALS_DTS = fs.readFileSync(path.join(DIST_DIR, 'globals.d.ts'), 'utf-8');
 
-const SOURCE_PREFIX = `${GLOBALS_DTS}\nexport {};\n`;
+// Name of the async function the user script is wrapped in (see buildSource).
+const MAIN_FN = '__main';
+
+// The user script becomes the body of an async function. `export {};` alone
+// makes the file a module — where top-level `await` is legal but top-level
+// `return` is a TS1108 error. Wrapping in an async function makes BOTH legal
+// (matching the runtime, which already runs the script inside an AsyncFunction)
+// and gives `return <value>` a home: __main's resolved value is the `result`.
+// The return type is intentionally left to inference: an explicit non-void type
+// (e.g. Promise<unknown>) would make a script that never returns a value trip
+// TS2355 ("must return a value"). Tradeoff: a function body can't contain
+// top-level ESM `import`/`export` — scripts use `require()` (or dynamic
+// `import()`) and the injected globals instead.
+const SOURCE_PREFIX = `${GLOBALS_DTS}\nexport {};\nexport async function ${MAIN_FN}() {\n`;
+const SOURCE_SUFFIX = `\n}\n`;
+// Lines the prefix adds before the user's script; used to remap tsc diagnostic
+// line numbers back to the original `script:` input. Derived from SOURCE_PREFIX
+// so it stays correct if the prefix changes.
 const PREFIX_LINES = SOURCE_PREFIX.split('\n').length - 1;
 
 function buildSource(userScript: string): string {
-	return SOURCE_PREFIX + userScript;
+	return SOURCE_PREFIX + userScript + SOURCE_SUFFIX;
 }
 
 interface WorkflowContexts {
@@ -358,11 +375,17 @@ async function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: str
 		const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
 		const fn = new AsyncFunction('require', 'exports', 'module', '__filename', '__dirname', transpiledJs);
 		const mod = { exports: {} as Record<string, unknown> };
+		// Running the transpiled module only *defines* __main on exports; the
+		// user's code lives in __main's body. Invoke it to run the script and
+		// use its resolved value as the result (so `return <value>` works).
 		await fn(scriptRequire, mod.exports, mod, scriptFilename, baseDir);
-		if (typeof mod.exports === 'object' && mod.exports !== null && Object.keys(mod.exports).length === 0) {
+		const main = mod.exports[MAIN_FN];
+		if (typeof main !== 'function') {
+			// buildSource always wraps the script in __main; only reachable if the
+			// user reassigned module.exports. Treat as "no result".
 			return undefined;
 		}
-		return mod.exports;
+		return await (main as () => Promise<unknown>)();
 	} finally {
 		NodeModule._resolveFilename = origResolve;
 		for (const name of Object.keys(actionModules)) delete (require.cache as any)[name];

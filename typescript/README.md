@@ -44,9 +44,9 @@ If the script needs contexts the runner doesn't expose to action processes (`var
 
 ## How it works
 
-1. The `script` input is wrapped in an async function and type-checked using the bundled TypeScript compiler with `strict: true`. Any `tsc` error fails the step before any code runs.
+1. The `script` input is wrapped in the body of an `async function` and type-checked using the bundled TypeScript compiler with `strict: true`. Any `tsc` error fails the step before any code runs.
 2. The validated source is transpiled to JavaScript.
-3. The JS is executed in-process. The injected helpers are bound as parameters to the wrapping function, not as ambient globals — so they don't leak across runs.
+3. The wrapping function is invoked in-process with the injected helpers in scope. The action runs as a fresh process per step, so nothing carries over between invocations.
 4. If the script returns a value, it is JSON-serialized and exposed as the `result` output.
 
 ## Inputs
@@ -102,4 +102,4 @@ Always available inside the script:
 
 - `crypto` is intentionally not injected because Node's global `crypto` (Web Crypto) conflicts with the `crypto` module's type. Use the global, or `require('crypto')` for the Node module.
 - `octokit` is typed loosely (`rest: any`, `graphql: any`, ...) so the action stays small. For full Octokit types, write a separate Node action.
-- The `script` is treated as the body of an `async function`, so top-level `await` and `return` work without ceremony.
+- The `script` is treated as the body of an `async function`, so top-level `await` and `return` both work without ceremony — and `return <value>` becomes the `result` output. The flip side of being a function body: top-level ESM `import` / `export` statements are not available. Use `require('module-name')` (or a dynamic `import()`) plus the injected globals instead.
