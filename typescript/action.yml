@@ -1,10 +1,10 @@
 name: TypeScript
-version: 1
+version: 2
 description: Run an inline TypeScript script, validated with tsc, with helpful globals pre-injected.
 
 inputs:
   script:
-    description: TypeScript source to execute. The body runs inside an async function with helpers like `core`, `context`, `octokit`, `fs`, `path` already in scope. Mutually exclusive with `file`.
+    description: TypeScript source to execute. Top-level `import`/`export`, `await`, and `return <value>` all work, with helpers like `core`, `context`, `octokit`, `fs`, `path` already in scope. Mutually exclusive with `file`.
     required: false
     default: ''
   file:

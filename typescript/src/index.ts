@@ -9,6 +9,7 @@ import * as child_process from 'child_process';
 import * as util from 'util';
 import { createRequire } from 'module';
 import * as ts from 'typescript';
+import { MAIN_FN, transformScript } from './transform';
 
 type ShellArg = string | number | boolean | null | undefined | string[];
 
@@ -77,32 +78,14 @@ const TYPES_DIR = path.join(DIST_DIR, 'types');
 // Virtual file for type-checking. Located under TYPES_DIR so node module
 // resolution finds dist/types/node_modules/* by walking up.
 const VIRTUAL_FILE = path.join(TYPES_DIR, '__user-script.ts');
+// The ambient declarations for the injected helpers are served to tsc as their
+// own in-memory global script file (a .d.ts with no top-level import/export),
+// not prepended into the user's module: that keeps user line numbers intact and
+// lets a user-level `import * as path from 'node:path'` legally shadow the
+// injected `path` instead of colliding with a same-file declaration.
+const GLOBALS_VIRTUAL_FILE = path.join(TYPES_DIR, '__globals.d.ts');
 
 const GLOBALS_DTS = fs.readFileSync(path.join(DIST_DIR, 'globals.d.ts'), 'utf-8');
-
-// Name of the async function the user script is wrapped in (see buildSource).
-const MAIN_FN = '__main';
-
-// The user script becomes the body of an async function. `export {};` alone
-// makes the file a module — where top-level `await` is legal but top-level
-// `return` is a TS1108 error. Wrapping in an async function makes BOTH legal
-// (matching the runtime, which already runs the script inside an AsyncFunction)
-// and gives `return <value>` a home: __main's resolved value is the `result`.
-// The return type is intentionally left to inference: an explicit non-void type
-// (e.g. Promise<unknown>) would make a script that never returns a value trip
-// TS2355 ("must return a value"). Tradeoff: a function body can't contain
-// top-level ESM `import`/`export` — scripts use `require()` (or dynamic
-// `import()`) and the injected globals instead.
-const SOURCE_PREFIX = `${GLOBALS_DTS}\nexport {};\nexport async function ${MAIN_FN}() {\n`;
-const SOURCE_SUFFIX = `\n}\n`;
-// Lines the prefix adds before the user's script; used to remap tsc diagnostic
-// line numbers back to the original `script:` input. Derived from SOURCE_PREFIX
-// so it stays correct if the prefix changes.
-const PREFIX_LINES = SOURCE_PREFIX.split('\n').length - 1;
-
-function buildSource(userScript: string): string {
-	return SOURCE_PREFIX + userScript + SOURCE_SUFFIX;
-}
 
 interface WorkflowContexts {
 	github: unknown;
@@ -259,7 +242,10 @@ function baseCompilerOptions(): ts.CompilerOptions {
 function typeCheck(source: string): readonly ts.Diagnostic[] {
 	const opts: ts.CompilerOptions = { ...baseCompilerOptions(), noEmit: true };
 
-	const sources = new Map<string, string>([[VIRTUAL_FILE, source]]);
+	const sources = new Map<string, string>([
+		[VIRTUAL_FILE, source],
+		[GLOBALS_VIRTUAL_FILE, GLOBALS_DTS],
+	]);
 	const host = ts.createCompilerHost(opts);
 	const originalReadFile = host.readFile.bind(host);
 	const originalFileExists = host.fileExists.bind(host);
@@ -276,24 +262,42 @@ function typeCheck(source: string): readonly ts.Diagnostic[] {
 	};
 
 	const program = ts.createProgram({
-		rootNames: [VIRTUAL_FILE],
+		rootNames: [VIRTUAL_FILE, GLOBALS_VIRTUAL_FILE],
 		options: opts,
 		host,
 	});
 
+	// Syntactic/semantic diagnostics are scoped to the user's file: the globals
+	// file is the action's own (and skipLibCheck'd), and collecting program-wide
+	// would surface its diagnostics under a misleading user-facing label.
+	const userFile = program.getSourceFile(VIRTUAL_FILE);
 	return [
-		...program.getSyntacticDiagnostics(),
-		...program.getSemanticDiagnostics(),
+		...program.getSyntacticDiagnostics(userFile),
+		...program.getSemanticDiagnostics(userFile),
 		...program.getGlobalDiagnostics(),
 	];
 }
 
-function formatDiagnostic(d: ts.Diagnostic, label: string): string {
+// Maps an emitted (transformed) 0-based line back to a 1-based user-script
+// line. Synthetic wrapper lines have no source line; fall back to the nearest
+// preceding user line so errors like "'}' expected" still point somewhere sane.
+function toUserLine(lineMap: number[], outLine: number): number {
+	for (let i = Math.min(outLine, lineMap.length - 1); i >= 0; i--) {
+		if (lineMap[i] >= 0) return lineMap[i] + 1;
+	}
+	return 1;
+}
+
+function formatDiagnostic(d: ts.Diagnostic, label: string, lineMap: number[]): string {
 	const message = ts.flattenDiagnosticMessageText(d.messageText, '\n');
 	if (d.file && d.start !== undefined) {
 		const { line, character } = d.file.getLineAndCharacterOfPosition(d.start);
-		const userLine = Math.max(1, line - PREFIX_LINES + 1);
-		return `${label}:${userLine}:${character + 1}: error TS${d.code}: ${message}`;
+		if (d.file.fileName !== VIRTUAL_FILE) {
+			// Diagnostics are scoped to the user file; anything else (e.g. from
+			// getGlobalDiagnostics) is labeled by its own name, unmapped.
+			return `${path.basename(d.file.fileName)}:${line + 1}:${character + 1}: error TS${d.code}: ${message}`;
+		}
+		return `${label}:${toUserLine(lineMap, line)}:${character + 1}: error TS${d.code}: ${message}`;
 	}
 	return `error TS${d.code}: ${message}`;
 }
@@ -375,9 +379,11 @@ async function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: str
 		const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
 		const fn = new AsyncFunction('require', 'exports', 'module', '__filename', '__dirname', transpiledJs);
 		const mod = { exports: {} as Record<string, unknown> };
-		// Running the transpiled module only *defines* __main on exports; the
-		// user's code lives in __main's body. Invoke it to run the script and
-		// use its resolved value as the result (so `return <value>` works).
+		// Running the transpiled module executes the hoisted module-scope
+		// statements (imports become require() calls, export initializers run)
+		// and defines __main on exports. The rest of the user's code lives in
+		// __main's body — invoke it and use its resolved value as the result
+		// (so `return <value>` works).
 		await fn(scriptRequire, mod.exports, mod, scriptFilename, baseDir);
 		const main = mod.exports[MAIN_FN];
 		if (typeof main !== 'function') {
@@ -418,13 +424,13 @@ function readUserScript(): { script: string; label: string; dir: string } {
 async function run(): Promise<void> {
 	const { script: userScript, label, dir } = readUserScript();
 	const ctx = readContexts();
-	const source = buildSource(userScript);
+	const { text: source, lineMap } = transformScript(userScript);
 
 	core.startGroup('Type-checking with tsc');
 	const diagnostics = typeCheck(source);
 	if (diagnostics.length > 0) {
 		for (const d of diagnostics) {
-			core.error(formatDiagnostic(d, label));
+			core.error(formatDiagnostic(d, label, lineMap));
 		}
 		core.endGroup();
 		core.setFailed(`TypeScript validation failed with ${diagnostics.length} error(s).`);

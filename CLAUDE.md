@@ -17,6 +17,7 @@ Each action lives in its own directory with an `action.yml` file:
 - `smart-cache/` - Node.js action (TypeScript compiled to JS)
 - `cache-size/` - Node.js action (TypeScript compiled to JS)
 - `tag-runner/` - Node.js action (TypeScript compiled to JS)
+- `typescript/` - Node.js action (run an inline or file-based TypeScript script, tsc-validated, with injected helper globals)
 
 ## Reusable Workflows
 

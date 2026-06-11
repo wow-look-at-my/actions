@@ -190,14 +190,157 @@ describe('typescript action', () => {
 		assert.ok(stdout.includes('script:2:'), `expected an error on line 2, got:\n${stdout}`);
 	});
 
-	it('rejects top-level ESM import (use require / dynamic import instead)', async () => {
-		// Wrapping the script in a function means top-level `import` is no longer
-		// valid — this is the documented tradeoff. It must fail type-checking.
-		const { exitCode, stdout } = await runAction(
-			'import * as c from "@actions/core"; c.info("x");'
+	it('supports top-level ESM import of @actions modules (same instance as the global)', async () => {
+		// Top-level `import` used to be rejected (TS1232) when the whole script
+		// was an async-function body. Imports are now hoisted to module scope —
+		// and `@actions/*` imports resolve to the action's own instances.
+		const { stdout, exitCode } = await runAction(
+			'import * as c from "@actions/core";\nc.info("esm:" + (c.info === core.info));'
+		);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('esm:true'));
+	});
+
+	it('supports a top-level export alone', async () => {
+		const { outputs, exitCode } = await runActionWithOutputs('export const VERSION = "1.0.0";');
+		assert.equal(exitCode, 0);
+		assert.ok(!('result' in outputs), `expected no result output, got: ${JSON.stringify(outputs)}`);
+	});
+
+	it('combines a top-level import with a top-level return into the result output', async () => {
+		// A real ES module cannot contain a top-level `return`; an async function
+		// body cannot contain a top-level `import`. Both must work at once.
+		const expected = JSON.parse(fs.readFileSync('package.json', 'utf-8')).version;
+		const { outputs, exitCode } = await runActionWithOutputs(`
+			import { readFile } from "node:fs/promises";
+			const pkg = JSON.parse(await readFile("package.json", "utf8"));
+			return pkg.version;
+		`);
+		assert.equal(exitCode, 0);
+		assert.equal(outputs.result, JSON.stringify(expected));
+	});
+
+	it('combines top-level import, injected globals, top-level await, and fetch typing', async () => {
+		const { stdout, exitCode } = await runAction(
+			`
+			import { setTimeout as sleep } from "node:timers/promises";
+			core.info(\`workspace = \${path.join(env.GITHUB_WORKSPACE ?? ".", "package.json")}\`);
+			await sleep(10);
+			const f: typeof fetch = fetch;
+			core.info("fetch:" + typeof f);
+			`,
+			{ GITHUB_WORKSPACE: '/tmp/ws' }
+		);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('workspace = /tmp/ws/package.json'));
+		assert.ok(stdout.includes('fetch:function'));
+	});
+
+	it('supports a default import (esModuleInterop)', async () => {
+		const { stdout, exitCode } = await runAction(
+			'import assert2 from "node:assert/strict";\nassert2.equal(1 + 1, 2);\ncore.info("assert-ok");'
+		);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('assert-ok'));
+	});
+
+	it('handles the webhook-runner e2e shape: node: imports + globals + late functions + TLA', async () => {
+		const { stdout, exitCode } = await runAction(`
+			import { createServer } from "node:net";
+			import { createHmac } from "node:crypto";
+			import assert from "node:assert/strict";
+
+			const BINARY = path.join("build", "webhook-runner");
+			function freePort(): Promise<number> {
+				return new Promise((resolve) => {
+					const srv = createServer();
+					srv.listen(0, "127.0.0.1", () => {
+						const port = (srv.address() as { port: number }).port;
+						srv.close(() => resolve(port));
+					});
+				});
+			}
+			const sig = createHmac("sha256", "k").update("payload").digest("hex");
+			assert.equal(typeof child_process.execSync, "function");
+			const port = await freePort();
+			core.info("sig:" + sig.length + " port:" + port + " bin:" + BINARY);
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('sig:64'));
+		assert.ok(/port:\d+/.test(stdout));
+	});
+
+	it('still accepts a literal export {} marker', async () => {
+		const { stdout, exitCode } = await runAction('export {};\ncore.info("legacy-marker");');
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('legacy-marker'));
+	});
+
+	it('supports top-level await in an exported const initializer', async () => {
+		const { outputs, exitCode, stdout } = await runActionWithOutputs(
+			'export const value = await Promise.resolve(5);\ncore.info("v:" + value);\nreturn value;'
+		);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('v:5'));
+		assert.equal(outputs.result, '5');
+	});
+
+	it('maps type-error line numbers in scripts with hoisted imports', async () => {
+		const { stdout, exitCode } = await runAction(
+			'import * as fsp from "node:fs/promises";\ncore.info("ok:" + typeof fsp.readFile);\nconst n: number = "bad";'
 		);
 		assert.notEqual(exitCode, 0);
-		assert.ok(stdout.includes('TypeScript validation failed'));
+		assert.ok(stdout.includes('script:3:'), `expected an error on line 3, got:\n${stdout}`);
+	});
+
+	it('elides type-only imports (no runtime require)', async () => {
+		const { stdout, exitCode } = await runAction(
+			'import type { Context } from "@actions/github/lib/context";\nconst c: Context | null = null;\ncore.info("type-ok:" + (c === null));'
+		);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('type-ok:true'));
+	});
+
+	it('supports top-level ESM import of @actions/github (context + getOctokit)', async () => {
+		// The bundled stub must expose the module's real surface, not just the
+		// Context class — `getOctokit` and `context` have to type-check AND
+		// resolve to the action's own module instance at runtime.
+		const { stdout, exitCode } = await runAction(
+			[
+				'import { getOctokit } from "@actions/github";',
+				'import * as gh from "@actions/github";',
+				'const oct = getOctokit("fake-token");',
+				'core.info("gh:" + typeof oct.rest + ":" + typeof gh.context.eventName + ":" + (gh.getOctokit === getOctokit));',
+			].join('\n'),
+			{ GITHUB_EVENT_NAME: 'push' }
+		);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('gh:object:string:true'));
+	});
+
+	it('treats a file input with a shebang identically to inline (import + await + return)', async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-action-test-'));
+		fs.writeFileSync(
+			path.join(dir, 'script.ts'),
+			[
+				'#!/usr/bin/env -S npx tsx',
+				'import { setTimeout as sleep } from "node:timers/promises";',
+				'await sleep(5);',
+				'core.info("from-file");',
+				'return 7;',
+			].join('\n')
+		);
+		try {
+			const { outputs, exitCode, stdout } = await runActionWithOutputs('', {
+				INPUT_FILE: 'script.ts',
+				GITHUB_WORKSPACE: dir,
+			});
+			assert.equal(exitCode, 0);
+			assert.ok(stdout.includes('from-file'));
+			assert.equal(outputs.result, '7');
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
 	});
 
 	it('provides workflow contexts', async () => {
