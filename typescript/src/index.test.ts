@@ -301,6 +301,23 @@ describe('typescript action', () => {
 		assert.ok(stdout.includes('type-ok:true'));
 	});
 
+	it('supports top-level ESM import of @actions/github (context + getOctokit)', async () => {
+		// The bundled stub must expose the module's real surface, not just the
+		// Context class — `getOctokit` and `context` have to type-check AND
+		// resolve to the action's own module instance at runtime.
+		const { stdout, exitCode } = await runAction(
+			[
+				'import { getOctokit } from "@actions/github";',
+				'import * as gh from "@actions/github";',
+				'const oct = getOctokit("fake-token");',
+				'core.info("gh:" + typeof oct.rest + ":" + typeof gh.context.eventName + ":" + (gh.getOctokit === getOctokit));',
+			].join('\n'),
+			{ GITHUB_EVENT_NAME: 'push' }
+		);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('gh:object:string:true'));
+	});
+
 	it('treats a file input with a shebang identically to inline (import + await + return)', async () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-action-test-'));
 		fs.writeFileSync(

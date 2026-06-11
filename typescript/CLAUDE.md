@@ -23,7 +23,7 @@ This is a Node.js action. Do NOT commit `dist/` or built JS files — CI builds 
 just build
 ```
 
-The recipe runs `pnpm install`, `pnpm tsc`, `pnpm esbuild`, and then stages a curated subset of type definitions into `dist/types/node_modules/` plus the TypeScript standard libs (`lib.es*.d.ts`, no DOM/webworker) into `dist/`. These are needed at runtime so the bundled `tsc` can find type definitions.
+The recipe runs `pnpm install`, `pnpm tsc`, `pnpm esbuild`, and then stages a curated subset of type definitions into `dist/types/node_modules/` plus only the TypeScript standard libs in the `/// <reference lib="..." />` closure of `lib.es2022.d.ts` (seeded with any lib the staged types reference) into `dist/`. These are needed at runtime so the bundled `tsc` can find type definitions. The orphan release tag ships `dist/` verbatim, so the recipe stages nothing else: no compiler API declarations, no unused lib variants, no JS/source maps/READMEs from type packages, no `@types/node` ts5.6/ts5.7 fallback trees.
 
 ### Key Details
 
@@ -35,7 +35,7 @@ The recipe runs `pnpm install`, `pnpm tsc`, `pnpm esbuild`, and then stages a cu
 - Transpilation uses `ts.transpileModule` with `module: CommonJS`, then the JS is executed via `AsyncFunction`. Running it executes the hoisted statements (imports become `require()` calls — `@actions/*` hit the seeded `require.cache`, so ESM imports get the action's own instances — and export initializers run, including `export const x = await ...`) and defines `__main` on `module.exports`; the action then calls `__main()` and JSON-encodes its resolved value as `result`. Injected helpers (`core`, `$`, `context`, etc.) are assigned to `globalThis` before invocation.
 - A custom `require` is supplied so the user can `require('@actions/core')` etc. and get the same instance the action uses; unknown modules fall through to Node's regular `require`, then to `$GITHUB_WORKSPACE/node_modules` so packages installed by a prior `npm ci` step are also available.
 - `crypto` is NOT injected because `@types/node` declares `crypto` as a global (Web Crypto), and an ambient `declare const crypto: typeof import('crypto')` would clash. Users can `require('crypto')` for the Node module.
-- `@actions/github` is shipped as a stripped stub (`Context` + `WebhookPayload` only). Full Octokit types weigh in at ~7 MB; the `octokit` instance and `getOctokit` factory are typed loosely (`rest: any`, etc.) instead.
+- `@actions/github` is shipped as a stripped stub: the real `Context`/`WebhookPayload` declarations plus a hand-rolled `lib/github.d.ts` exposing the module's real surface (`context`, `getOctokit`) with octokit instances typed loosely. Full Octokit types weigh in at ~7 MB; the `octokit` instance and `getOctokit` factory are typed loosely (`rest: any`, etc.) instead.
 - `octokit` is a pre-authenticated `OctokitInstance` using `GITHUB_TOKEN`. It is also callable as `octokit(token)` for backward compatibility (emits a `core.warning` deprecation notice). Use `getOctokit(token, options?)` as the clean factory for custom tokens.
 
 ### Testing
