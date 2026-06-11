@@ -9,6 +9,7 @@ Node.js action (TypeScript) that runs a user-supplied TypeScript snippet (inline
 - `action.yml` — Action definition
 - `globals.d.ts` — Ambient type declarations for injected helpers (`core`, `fs`, `octokit`, workflow contexts, etc.). Copied to `dist/` at build time and read at runtime.
 - `src/index.ts` — TypeScript source (runs tsc, transpiles, executes via `AsyncFunction`)
+- `src/transform.ts` — Hoisting transform: splits the user script into module-scope statements (import/export, namespaces, `declare`s) and an `async function __main()` body, with a per-line source map for diagnostics
 - `justfile` — Build recipe (`just build`); the recipe also stages `dist/lib.*.d.ts` and `dist/types/node_modules/*` so the bundled `tsc` can resolve declarations at runtime
 - `package.json` — Dependencies (no `scripts` section)
 
@@ -26,11 +27,12 @@ The recipe runs `pnpm install`, `pnpm tsc`, `pnpm esbuild`, and then stages a cu
 
 ### Key Details
 
-- The user script is wrapped as the body of an `async function __main()` (see `buildSource`), prefixed with `globals.d.ts` (read from `dist/` at runtime) that declares the injected names (`core`, `fs`, etc.). Wrapping makes both top-level `await` AND top-level `return` work — the latter would be a TS1108 error in a bare module. `return <value>` becomes the `result` output. The tradeoff: top-level ESM `import`/`export` are no longer allowed (a function body can't contain them) — scripts use `require()` or dynamic `import()` instead.
+- The user script is split by `transformScript` (`src/transform.ts`): top-level `import`/`export` declarations — and other module-only statements (namespaces, `declare global`, `declare`-modified) — stay at real module scope, while the remaining statements become the body of `export async function __main()`. That gives every construct a legal home: a module allows import/export but not top-level `return` (TS1108); an async function body allows `await`/`return` but not import/export (TS1232). `return <value>` becomes the `result` output. A shebang first line is neutralized position-preservingly; a leading BOM is stripped.
   - `__main`'s return type is left to inference on purpose: an explicit non-void annotation (e.g. `Promise<unknown>`) makes a script that never returns a value trip TS2355 ("must return a value").
-- Type-checking uses `module: ES2022` (for top-level `await` support) via `ts.createProgram` with a CompilerHost that serves the source from memory; everything else (lib files, type packages) is read from disk under `dist/`.
-- Diagnostics are remapped: line numbers are adjusted by the wrapper-prefix line count (`PREFIX_LINES`, derived from `SOURCE_PREFIX`) so errors point at the user's script line, not the prefix.
-- Transpilation uses `ts.transpileModule` with `module: CommonJS`, then the JS is executed via `AsyncFunction`. Running it defines `__main` on `module.exports`; the action then calls `__main()` and JSON-encodes its resolved value as `result`. Injected helpers (`core`, `$`, `context`, etc.) are assigned to `globalThis` before invocation.
+  - Known limitation: a hoisted exported declaration can't reference non-exported top-level bindings (they live inside `__main`) — tsc reports a clear, line-mapped error.
+- Type-checking uses `module: ES2022` (for top-level `await` support) via `ts.createProgram` with a CompilerHost that serves two files from memory: the transformed user module and `globals.d.ts` (read from `dist/` at runtime) as its own global script file — so the injected names stay ambient and a user-level `import * as path ...` legally shadows them. Everything else (lib files, type packages) is read from disk under `dist/`. Syntactic/semantic diagnostics are scoped to the user's file.
+- Diagnostics are remapped through the transform's per-line map (hoisting reorders lines, so a constant offset doesn't work); synthetic wrapper lines fall back to the nearest preceding user line.
+- Transpilation uses `ts.transpileModule` with `module: CommonJS`, then the JS is executed via `AsyncFunction`. Running it executes the hoisted statements (imports become `require()` calls — `@actions/*` hit the seeded `require.cache`, so ESM imports get the action's own instances — and export initializers run, including `export const x = await ...`) and defines `__main` on `module.exports`; the action then calls `__main()` and JSON-encodes its resolved value as `result`. Injected helpers (`core`, `$`, `context`, etc.) are assigned to `globalThis` before invocation.
 - A custom `require` is supplied so the user can `require('@actions/core')` etc. and get the same instance the action uses; unknown modules fall through to Node's regular `require`, then to `$GITHUB_WORKSPACE/node_modules` so packages installed by a prior `npm ci` step are also available.
 - `crypto` is NOT injected because `@types/node` declares `crypto` as a global (Web Crypto), and an ambient `declare const crypto: typeof import('crypto')` would clash. Users can `require('crypto')` for the Node module.
 - `@actions/github` is shipped as a stripped stub (`Context` + `WebhookPayload` only). Full Octokit types weigh in at ~7 MB; the `octokit` instance and `getOctokit` factory are typed loosely (`rest: any`, etc.) instead.
@@ -44,7 +46,7 @@ Run integration tests (requires `just build` first):
 pnpm tsx --test src/index.test.ts
 ```
 
-Tests cover: basic execution, top-level await, top-level `return` (bare + value-as-`result`-output, the TS1108 regression), dynamic `import()`, `require` of node built-ins and @actions modules, error propagation, type errors (including diagnostic line mapping), rejection of top-level ESM `import`, and workflow contexts.
+Tests cover: basic execution, top-level await, top-level `return` (bare + value-as-`result`-output, the TS1108 regression), top-level ESM `import`/`export` (the TS1232 regression — incl. import+return combined, default imports, `@actions/*` same-instance imports, top-level await in exported initializers, type-only import elision, and a `file:` input with a shebang), dynamic `import()`, `require` of node built-ins and @actions modules, error propagation, type errors (including diagnostic line mapping with and without hoisted imports), and workflow contexts. `src/transform.test.ts` unit-tests the hoisting transform and its line map directly.
 
 Smoke-test by running locally:
 
