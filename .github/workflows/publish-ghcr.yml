@@ -33,6 +33,15 @@ on:
         required: false
         default: '10'
         type: string
+      updater-webhook-url:
+        description: 'docker-updater webhook URL to notify after push (e.g. https://docker-updater-hook.pazer.io/). Leave empty to skip.'
+        required: false
+        default: ''
+        type: string
+    secrets:
+      updater-webhook-secret:
+        description: 'Shared secret for signing the docker-updater webhook payload (HMAC-SHA256). Must match DOCKER_UPDATER_GITHUB_WEBHOOK_SECRET on the server.'
+        required: false
 
 jobs:
   publish-ghcr:
@@ -84,3 +93,22 @@ jobs:
           build_dockerfile: ${{ inputs.dockerfile }}
           build_context: ${{ inputs.context }}
           build_args: VERSION=${{ github.sha }}
+
+      - name: Notify docker-updater
+        if: steps.meta.outputs.push == 'true' && inputs.updater-webhook-url != ''
+        env:
+          UPDATER_URL: ${{ inputs.updater-webhook-url }}
+          UPDATER_SECRET: ${{ secrets.updater-webhook-secret }}
+        run: |
+          PKG="${GITHUB_REPOSITORY##*/}"; PKG="${PKG,,}"
+          NS="${GITHUB_REPOSITORY%%/*}";  NS="${NS,,}"
+          BODY="{\"action\":\"published\",\"package\":{\"name\":\"$PKG\",\"namespace\":\"$NS\",\"package_type\":\"CONTAINER\"}}"
+          [ -z "${UPDATER_SECRET:-}" ] && { echo "no updater secret; skipping"; exit 0; }
+          SIG="sha256=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$UPDATER_SECRET" | awk '{print $NF}')"
+          curl -fsS -m 15 -X POST "$UPDATER_URL" \
+            -H "X-GitHub-Event: package" \
+            -H "X-Hub-Signature-256: $SIG" \
+            -H "Content-Type: application/json" \
+            --data-binary "$BODY" \
+            && echo "docker-updater triggered" \
+            || echo "docker-updater trigger failed (non-fatal)"
