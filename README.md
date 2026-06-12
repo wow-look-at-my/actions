@@ -175,4 +175,4 @@ jobs:
       updater-webhook-secret: ${{ secrets.DOCKER_UPDATER_WEBHOOK_SECRET }}
 ```
 
-Set `DOCKER_UPDATER_WEBHOOK_URL` (e.g. `https://docker-updater-hook.pazer.io/`) and `DOCKER_UPDATER_WEBHOOK_SECRET` (same value as docker-updater's `DOCKER_UPDATER_GITHUB_WEBHOOK_SECRET`) at the org level so every repo opts in with just those two lines. Callers that omit `updater-webhook-url` get today's behavior unchanged.
+The URL defaults to `https://docker-updater-hook.pazer.io/`, so `updater-webhook-url` can be omitted unless you run your own instance. Set `DOCKER_UPDATER_WEBHOOK_SECRET` (same value as docker-updater's `DOCKER_UPDATER_GITHUB_WEBHOOK_SECRET`) at the org level. Callers that omit both url and secret get today's behavior unchanged (secret empty → step skips silently).

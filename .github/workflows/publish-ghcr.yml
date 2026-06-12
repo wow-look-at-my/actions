@@ -34,9 +34,9 @@ on:
         default: '10'
         type: string
       updater-webhook-url:
-        description: 'docker-updater webhook URL to notify after push (e.g. https://docker-updater-hook.pazer.io/). Leave empty to skip.'
+        description: 'docker-updater webhook URL to notify after push. Leave empty to skip.'
         required: false
-        default: ''
+        default: 'https://docker-updater-hook.pazer.io/'
         type: string
     secrets:
       updater-webhook-secret:
