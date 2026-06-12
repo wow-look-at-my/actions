@@ -48,6 +48,13 @@ pnpm tsx --test src/index.test.ts
 
 Tests cover: basic execution, top-level await, top-level `return` (bare + value-as-`result`-output, the TS1108 regression), top-level ESM `import`/`export` (the TS1232 regression — incl. import+return combined, default imports, `@actions/*` same-instance imports, top-level await in exported initializers, type-only import elision, and a `file:` input with a shebang), dynamic `import()`, `require` of node built-ins and @actions modules, error propagation, type errors (including diagnostic line mapping with and without hoisted imports), and workflow contexts. `src/transform.test.ts` unit-tests the hoisting transform and its line map directly.
 
+#### CI dogfood harness (`test/`)
+
+`test/` holds a composite action (`test/action.yml`) that drives the *built* action end-to-end through `uses: ./typescript` with real `file:` inputs — the published surface the `src/*.test.ts` runner (which spawns `node dist/index.js` with `INPUT_SCRIPT`) does not exercise. It is invoked by the `test-typescript` job in `.github/workflows/release.yml` (which runs `just build` first, since `dist/` is not committed) and is never released — both `detect` in `release.yml` and `generate-readme.sh` skip `*/test/*`.
+
+- `test/repro.ts` — top-level `import` + injected globals (`core`, `path`, `env`) + top-level `await` + a real global `fetch`. A green step proves it compiles under strict tsc and runs (the action exits non-zero on any tsc/runtime error).
+- `test/repro2.ts` — top-level `export` + top-level `import` + top-level `return`, where the returned value (not the exported `VERSION`) must flow to the `result` output. The harness seeds a known `package.json` at the workspace root (the action's CWD, which `readFile("package.json")` resolves against) and asserts `result` equals that version.
+
 Smoke-test by running locally:
 
 ```sh

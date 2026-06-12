@@ -1,0 +1,42 @@
+name: Test typescript
+version: 1
+description: "Dogfood the typescript action via file: inputs exercising import/export/return/await/fetch hoisting (never released)"
+
+runs:
+  using: composite
+  steps:
+    # repro.ts: top-level import + injected globals + top-level await + global
+    # fetch. A successful step proves it type-checks under strict tsc AND runs --
+    # the action setFailed()s (non-zero exit) on any tsc or runtime error, which
+    # fails this step and the job.
+    - name: "repro.ts: import + globals + await + fetch"
+      uses: ./typescript
+      with:
+        file: typescript/test/repro.ts
+
+    # repro2.ts reads package.json from the action's working directory (the
+    # workspace root) and returns its version. Seed a known one so the assertion
+    # below is deterministic and distinguishable from the script's `export
+    # const VERSION = "1.0.0"` (which must NOT be what reaches `result`).
+    - name: Seed package.json for repro2 (readFile("package.json"))
+      shell: bash
+      run: echo '{"version":"9.9.9-test"}' > "${GITHUB_WORKSPACE}/package.json"
+
+    - name: "repro2.ts: export + import + top-level return"
+      id: repro2
+      uses: ./typescript
+      with:
+        file: typescript/test/repro2.ts
+
+    - name: Assert the top-level return reached the result output
+      shell: bash
+      env:
+        RESULT: ${{ steps.repro2.outputs.result }}
+      run: |
+        set -euo pipefail
+        echo "repro2 result output: ${RESULT}"
+        if [ "${RESULT}" != '"9.9.9-test"' ]; then
+          echo "::error::expected result '\"9.9.9-test\"' (the returned pkg.version), got '${RESULT}'"
+          exit 1
+        fi
+        echo "repro2 OK: top-level return value reached the result output"
