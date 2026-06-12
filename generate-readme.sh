@@ -62,4 +62,9 @@ while IFS= read -r wf; do
   echo "  ${wf%.yml}:"
   echo "    uses: wow-look-at-my/actions/.github/workflows/${wf}@master"
   echo '```'
+  extra=".github/workflows/${wf%.yml}.md"
+  if [ -f "$extra" ]; then
+    echo ""
+    cat "$extra"
+  fi
 done < <(find .github/workflows -maxdepth 1 -name '*.yml' -printf '%f\n' | sort)
