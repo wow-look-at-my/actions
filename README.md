@@ -140,14 +140,6 @@ Reusable GitHub Actions.
 
 ## Reusable Workflows
 
-### PR Management
-
-```yml
-jobs:
-  pr-management:
-    uses: wow-look-at-my/actions/.github/workflows/pr-management.yml@master
-```
-
 ### Publish to GHCR
 
 ```yml

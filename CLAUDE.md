@@ -22,7 +22,6 @@ Each action lives in its own directory with an `action.yml` file:
 
 GitHub requires reusable workflows (`on: workflow_call`) to live in `.github/workflows/` (not in subdirectories, not elsewhere -- see [actions/runner#2102](https://github.com/actions/runner/issues/2102)). These are distinct from the repo's own CI workflows but share the same directory.
 
-- `.github/workflows/pr-management.yml` - Opens PRs for branches missing one, updates PRs behind their base. Uses the `typescript` action internally.
 - `.github/workflows/publish-ghcr.yml` - Builds a Docker image from a Dockerfile, pushes to GHCR on the push branch (default: master), and prunes old versions. Downloads a build artifact (default: `go-build`) before building. Used by docker-updater, auto-anywhere, and buildhost.
 
 ## Action Types
