@@ -77,13 +77,6 @@ Reusable GitHub Actions.
 - uses: wow-look-at-my/actions@ghcr#latest
 ```
 
-### [Go Packages](go-packages/)
-
-```yml
-# Build Go binaries with go-toolchain and publish multi-arch scratch container images to GHCR..
-- uses: wow-look-at-my/actions@go-packages#latest
-```
-
 ### [Multi-Command](multicmd/)
 
 ```yml

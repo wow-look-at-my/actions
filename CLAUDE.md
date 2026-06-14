@@ -11,7 +11,6 @@ Each action lives in its own directory with an `action.yml` file:
 - `download-release-binary/` - Node.js action (TypeScript compiled to JS)
 - `ghcr/` - Composite action (build, push, and prune container images on GHCR with 3 toggleable phases: login, build, push)
 - `ghcr-prune/` - Node.js action (prune old GHCR package versions)
-- `go-packages/` - Composite action (builds Go binaries and publishes multi-arch scratch container images to GHCR)
 - `multicmd/` - Composite action (YAML only)
 - `orphan-release/` - Composite action (shell script)
 - `smart-cache/` - Node.js action (TypeScript compiled to JS)
