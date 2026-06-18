@@ -94,6 +94,22 @@ jobs:
             exit 1
           fi
 
+  validate-workflows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate workflow YAML with action-validator
+        uses: ./action-validator
+        with:
+          # Only the workflow files are validated here. The repo's action.yml
+          # files carry a non-standard `version:` field (consumed by this
+          # workflow's release jobs for orphan tags) and `using: node24`, both of
+          # which action-validator's bundled schema rejects -- so a non-matching
+          # glob skips them (nullglob -> zero iterations) while every workflow,
+          # including the reusable ones, is schema-checked.
+          actions: 'no-such-dir/*/action.yml'
+          workflows: '.github/workflows/*.yml'
+
   detect:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
