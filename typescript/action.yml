@@ -1,5 +1,5 @@
 name: TypeScript
-version: 2
+version: 3
 description: Run an inline TypeScript script, validated with tsc, with helpful globals pre-injected.
 
 inputs:
@@ -11,6 +11,10 @@ inputs:
     description: Path to a .ts file to execute (resolved relative to $GITHUB_WORKSPACE). The file contents are treated like an inline `script`. Mutually exclusive with `script`.
     required: false
     default: ''
+  github-token:
+    description: Token used to authenticate the injected `octokit` instance (and the default token for `getOctokit()`). Defaults to the automatic GITHUB_TOKEN (the github.token expression). Override with a PAT for broader scope. The caller must still grant the matching `permissions:` for the token to be allowed to act.
+    required: false
+    default: ${{ github.token }}
 
   # Contexts the runner only exposes via workflow-expression substitution —
   # never to action processes. Pass them through explicitly when needed:

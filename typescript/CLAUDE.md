@@ -36,7 +36,7 @@ The recipe runs `pnpm install`, `pnpm tsc`, `pnpm esbuild`, and then stages a cu
 - A custom `require` is supplied so the user can `require('@actions/core')` etc. and get the same instance the action uses; unknown modules fall through to Node's regular `require`, then to `$GITHUB_WORKSPACE/node_modules` so packages installed by a prior `npm ci` step are also available.
 - `crypto` is NOT injected because `@types/node` declares `crypto` as a global (Web Crypto), and an ambient `declare const crypto: typeof import('crypto')` would clash. Users can `require('crypto')` for the Node module.
 - `@actions/github` is shipped as a stripped stub: the real `Context`/`WebhookPayload` declarations plus a hand-rolled `lib/github.d.ts` exposing the module's real surface (`context`, `getOctokit`) with octokit instances typed loosely. Full Octokit types weigh in at ~7 MB; the `octokit` instance and `getOctokit` factory are typed loosely (`rest: any`, etc.) instead.
-- `octokit` is a pre-authenticated `OctokitInstance` using `GITHUB_TOKEN`. It is also callable as `octokit(token)` for backward compatibility (emits a `core.warning` deprecation notice). Use `getOctokit(token, options?)` as the clean factory for custom tokens.
+- `octokit` is a pre-authenticated `OctokitInstance`. Its token comes from the `github-token` action input (default `${{ github.token }}`), read via `core.getInput('github-token')` in `run()` and threaded into `execute()` — NOT from `process.env.GITHUB_TOKEN`, which the runner does not set for action processes (reading env was the bug that left `octokit.rest.*` throwing `Parameter token or opts.auth is required`). It mirrors how `actions/github-script` obtains the automatic token. The instance is built lazily on first property access, so an empty token only throws if the script actually touches `octokit`. It is also callable as `octokit(token)` for backward compatibility (emits a `core.warning` deprecation notice). Use `getOctokit(token, options?)` as the clean factory for custom tokens.
 
 ### Testing
 
@@ -46,7 +46,7 @@ Run integration tests (requires `just build` first):
 pnpm tsx --test src/index.test.ts
 ```
 
-Tests cover: basic execution, top-level await, top-level `return` (bare + value-as-`result`-output, the TS1108 regression), top-level ESM `import`/`export` (the TS1232 regression — incl. import+return combined, default imports, `@actions/*` same-instance imports, top-level await in exported initializers, type-only import elision, and a `file:` input with a shebang), dynamic `import()`, `require` of node built-ins and @actions modules, error propagation, type errors (including diagnostic line mapping with and without hoisted imports), and workflow contexts. `src/transform.test.ts` unit-tests the hoisting transform and its line map directly.
+Tests cover: basic execution, top-level await, top-level `return` (bare + value-as-`result`-output, the TS1108 regression), top-level ESM `import`/`export` (the TS1232 regression — incl. import+return combined, default imports, `@actions/*` same-instance imports, top-level await in exported initializers, type-only import elision, and a `file:` input with a shebang), dynamic `import()`, `require` of node built-ins and @actions modules, error propagation, type errors (including diagnostic line mapping with and without hoisted imports), workflow contexts, and octokit auth — including the regression guard that the injected `octokit` is authenticated from the `github-token` input (env var `INPUT_GITHUB-TOKEN`) and NOT from `process.env.GITHUB_TOKEN`. `src/transform.test.ts` unit-tests the hoisting transform and its line map directly.
 
 #### CI dogfood harness (`test/`)
 
@@ -54,6 +54,7 @@ Tests cover: basic execution, top-level await, top-level `return` (bare + value-
 
 - `test/repro.ts` — top-level `import` + injected globals (`core`, `path`, `env`) + top-level `await` + a real global `fetch`. A green step proves it compiles under strict tsc and runs (the action exits non-zero on any tsc/runtime error).
 - `test/repro2.ts` — top-level `export` + top-level `import` + top-level `return`, where the returned value (not the exported `VERSION`) must flow to the `result` output. The harness seeds a known `package.json` at the workspace root (the action's CWD, which `readFile("package.json")` resolves against) and asserts `result` equals that version.
+- `test/repro3.ts` — the injected `octokit` must be authenticated out of the box from the `github-token` input (default `${{ github.token }}`) with NO `secrets:` plumbing and NO `getOctokit(...)` call. It makes a real `octokit.rest.repos.get(context.repo)` call and asserts `full_name` matches `context.repo`; an unauthenticated octokit throws `Parameter token or opts.auth is required` and fails the step. This exercises the `${{ github.token }}` input-default resolution end-to-end (the `src/*.test.ts` runner can only simulate it by setting `INPUT_GITHUB-TOKEN`). The `test-typescript` job grants `permissions: contents: read` for this call.
 
 Smoke-test by running locally:
 

@@ -362,12 +362,28 @@ describe('typescript action', () => {
 		assert.ok(stdout.includes('req:required'));
 	});
 
-	it('provides pre-authenticated octokit instance', async () => {
+	it('provides a pre-authenticated octokit from the github-token input', async () => {
 		const { stdout, exitCode } = await runAction(
 			'core.info("octokit-rest:" + typeof octokit.rest)',
-			{ GITHUB_TOKEN: 'fake-token-for-test' }
+			{ 'INPUT_GITHUB-TOKEN': 'fake-token-for-test' }
 		);
 		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('octokit-rest:object'));
+	});
+
+	it('authenticates the injected octokit from the github-token input, not process.env.GITHUB_TOKEN (regression)', async () => {
+		// Regression for "Error: Parameter token or opts.auth is required": the
+		// runner does NOT expose GITHUB_TOKEN to the action process, so the
+		// pre-authenticated octokit must take its token from the `github-token`
+		// input (which defaults to ${{ github.token }}), never from process.env.
+		// Here the token arrives ONLY via the input while GITHUB_TOKEN is empty in
+		// the env; accessing octokit.rest must still succeed. Before the fix the
+		// proxy read process.env.GITHUB_TOKEN and getOctokit('') threw on first use.
+		const { stdout, exitCode } = await runAction(
+			'core.info("octokit-rest:" + typeof octokit.rest)',
+			{ 'INPUT_GITHUB-TOKEN': 'fake-token-from-input', GITHUB_TOKEN: '' }
+		);
+		assert.equal(exitCode, 0, `expected octokit.rest to be reachable, got:\n${stdout}`);
 		assert.ok(stdout.includes('octokit-rest:object'));
 	});
 
