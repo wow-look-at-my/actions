@@ -54,6 +54,10 @@ jobs:
 
   test-typescript:
     runs-on: ubuntu-latest
+    # repro3.ts in the dogfood harness makes a real authenticated octokit call
+    # (repos.get) with the default github-token, so the job needs read access.
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

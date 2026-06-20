@@ -26,21 +26,63 @@ Instead of inlining the script, you can point to a `.ts` file in the repo:
 
 The file path is resolved relative to `$GITHUB_WORKSPACE`. Its contents are treated exactly like an inline `script` — same compilation, same injected helpers (a shebang first line is tolerated).
 
+## Authenticated API calls (`octokit`)
+
+The injected `octokit` is **pre-authenticated out of the box** — no `secrets:` plumbing, no `getOctokit(...)` call. Use it directly:
+
+```yaml
+- uses: wow-look-at-my/actions@typescript#latest
+  with:
+    script: |
+      const { data } = await octokit.rest.repos.get(context.repo);
+      core.info(`Stars: ${data.stargazers_count}`);
+```
+
+The token comes from the `github-token` input, which defaults to the automatic `${{ github.token }}` (`GITHUB_TOKEN`). **You must still grant the matching `permissions:`** — the automatic token is read-only for many scopes, so a write call needs an explicit grant on the job:
+
+```yaml
+jobs:
+  comment:
+    permissions:
+      pull-requests: write          # required for the createComment call below
+    steps:
+      - uses: wow-look-at-my/actions@typescript#latest
+        with:
+          script: |
+            await octokit.rest.issues.createComment({
+              ...context.repo,
+              issue_number: context.issue.number,
+              body: 'Hello from the typescript action',
+            });
+```
+
+To authenticate as something other than the automatic token — a PAT with broader scope, or a token for a different repo — pass it via `github-token`. It becomes the token for the injected `octokit` and the default for `getOctokit()`:
+
+```yaml
+- uses: wow-look-at-my/actions@typescript#latest
+  with:
+    github-token: ${{ secrets.MY_PAT }}
+    script: |
+      const { data } = await octokit.rest.repos.get({ owner: 'other-org', repo: 'other-repo' });
+      core.info(data.full_name);
+```
+
+`getOctokit(token, options?)` is also injected, for building an extra client with a specific token inline.
+
+## Passing other workflow contexts
+
 If the script needs contexts the runner doesn't expose to action processes (`vars`, `secrets`, `steps`, `needs`, `inputs`, `strategy`, `matrix`), pass them explicitly:
 
 ```yaml
 - uses: wow-look-at-my/actions@typescript#latest
   with:
-    secrets: ${{ toJSON(secrets) }}
+    vars: ${{ toJSON(vars) }}
     matrix: ${{ toJSON(matrix) }}
     script: |
-      const oct = octokit(secrets.GITHUB_TOKEN);
-      const { data } = await oct.rest.repos.get({
-        owner: context.repo.owner,
-        repo: context.repo.repo,
-      });
-      core.info(`Stars: ${data.stargazers_count} (matrix.node=${matrix.node})`);
+      core.info(`region=${vars.AWS_REGION} node=${matrix.node}`);
 ```
+
+(For an API token you do **not** need `secrets:` — use the `github-token` input as shown above.)
 
 ## How it works
 
@@ -55,6 +97,7 @@ If the script needs contexts the runner doesn't expose to action processes (`var
 |------|----------|---------|-------------|
 | `script` | No | — | TypeScript source to execute. Mutually exclusive with `file`. |
 | `file` | No | — | Path to a `.ts` file to execute (resolved relative to `$GITHUB_WORKSPACE`). Mutually exclusive with `script`. |
+| `github-token` | No | `${{ github.token }}` | Token the injected `octokit` authenticates with (and the default token for `getOctokit()`). Defaults to the automatic `GITHUB_TOKEN`; override with a PAT for broader scope. The caller must still declare the matching `permissions:` for the token to be allowed to act. |
 | `github` | No | auto | Override for the `github` context. By default derived from `$GITHUB_*` env vars + `$GITHUB_EVENT_PATH`. |
 | `runner` | No | auto | Override for the `runner` context. By default derived from `$RUNNER_*` env vars. |
 | `env` | No | `process.env` | Override for the `env` context. Defaults to the action process's full environment. |
@@ -88,7 +131,8 @@ Always available inside the script:
 | `core` | `typeof import('@actions/core')` | `@actions/core` |
 | `exec` | `typeof import('@actions/exec')` | `@actions/exec` |
 | `io` | `typeof import('@actions/io')` | `@actions/io` |
-| `octokit` | `(token, options?) => Octokit` | `@actions/github`'s `getOctokit` |
+| `octokit` | pre-authenticated `Octokit` (loosely typed; also callable as `octokit(token)`, deprecated) | `@actions/github`'s `getOctokit(github-token)` |
+| `getOctokit` | `(token, options?) => Octokit` | `@actions/github`'s `getOctokit` |
 | `context` | `Context` (typed) | `@actions/github`'s `context`, hydrated from env |
 | `fs` | `typeof import('fs')` | Node built-in |
 | `path` | `typeof import('path')` | Node built-in |
@@ -101,6 +145,7 @@ Top-level ESM `import` works the same way: `import`s of `@actions/core|exec|io|g
 ## Notes
 
 - `crypto` is intentionally not injected because Node's global `crypto` (Web Crypto) conflicts with the `crypto` module's type. Use the global, `import { ... } from 'node:crypto'`, or `require('crypto')` for the Node module.
+- `octokit` is pre-authenticated with the `github-token` input (default `${{ github.token }}`), so `octokit.rest.*` works without any `secrets:` plumbing. Calling it as `octokit(token)` still works but is deprecated (it logs a warning) — use the instance directly, or `getOctokit(token)` for a one-off custom-token client. If `github-token` resolves to empty, `octokit` is unauthenticated and the first API call throws `Parameter token or opts.auth is required`.
 - `octokit` is typed loosely (`rest: any`, `graphql: any`, ...) so the action stays small. For full Octokit types, write a separate Node action. Top-level `import { context, getOctokit } from '@actions/github'` type-checks against a bundled stub with the module's real surface (`Context` fully typed, octokit instances loose) and resolves to the action's own module at runtime.
 - Top-level `import`/`export`, top-level `await`, and top-level `return <value>` (→ the `result` output) all work together: module-scope statements (imports, exports, namespaces, `declare`s) are hoisted to real module scope and execute before the remaining statements, matching ESM import-hoisting semantics. An `import` may shadow an injected global of the same name.
 - One limitation of the hoisting: an exported declaration can only reference imports, other module-scope declarations, and globals — not non-exported top-level `const`s/`function`s (those live in the async body). Violations fail type-checking with a clear error on the offending line.

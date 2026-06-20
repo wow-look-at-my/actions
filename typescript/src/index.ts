@@ -316,7 +316,12 @@ function transpile(source: string): string {
 	return result.outputText;
 }
 
-async function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: string): Promise<unknown> {
+async function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: string, githubToken: string): Promise<unknown> {
+	// The pre-authenticated `octokit` instance is built lazily from the
+	// `github-token` action input (default ${{ github.token }}), mirroring how
+	// actions/github-script obtains the automatic token. The runner does NOT put
+	// GITHUB_TOKEN in the action process env, so reading process.env.GITHUB_TOKEN
+	// would leave octokit unauthenticated (getOctokit('') throws on first use).
 	let _preAuth: ReturnType<typeof github.getOctokit> | null = null;
 	const octokitProxy = new Proxy(
 		function deprecatedOctokit(token: string, options?: Record<string, unknown>) {
@@ -325,7 +330,7 @@ async function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: str
 		},
 		{
 			get(_target, prop) {
-				if (!_preAuth) _preAuth = github.getOctokit(process.env.GITHUB_TOKEN ?? '');
+				if (!_preAuth) _preAuth = github.getOctokit(githubToken);
 				return (_preAuth as any)[prop];
 			},
 		}
@@ -424,6 +429,10 @@ function readUserScript(): { script: string; label: string; dir: string } {
 async function run(): Promise<void> {
 	const { script: userScript, label, dir } = readUserScript();
 	const ctx = readContexts();
+	// Token for the injected `octokit` (and the default getOctokit() token).
+	// Defaults to ${{ github.token }} via the action input, so the common case is
+	// authenticated with no caller plumbing.
+	const githubToken = core.getInput('github-token');
 	const { text: source, lineMap } = transformScript(userScript);
 
 	core.startGroup('Type-checking with tsc');
@@ -445,7 +454,7 @@ async function run(): Promise<void> {
 	core.endGroup();
 
 	core.startGroup('Executing script');
-	const result = await execute(js, ctx, dir);
+	const result = await execute(js, ctx, dir, githubToken);
 	core.endGroup();
 
 	if (result !== undefined) {
