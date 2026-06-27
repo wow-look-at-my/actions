@@ -443,6 +443,61 @@ describe('$ command runner', () => {
 		assert.ok(stdout.includes('cap=captured'), stdout);
 	});
 
+	it('stdout.json() parses the captured JSON (trailing newline tolerated)', async () => {
+		const { stdout, exitCode } = await runAction(`
+			const payload = JSON.stringify({ a: 1, b: ["x", "y"] });
+			const code = "process.stdout.write(process.argv[1])";
+			const r = await $\`node -e \${code} \${payload}\`;
+			const data = r.stdout.json();
+			core.info("json=" + data.a + ":" + data.b.join(","));
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('json=1:x,y'), stdout);
+	});
+
+	it('stdout.json() accepts a type parameter', async () => {
+		const { stdout, exitCode } = await runAction(`
+			const payload = JSON.stringify({ version: "1.2.3", count: 5 });
+			const code = "process.stdout.write(process.argv[1])";
+			const r = await $\`node -e \${code} \${payload}\`;
+			const data = r.stdout.json<{ version: string; count: number }>();
+			core.info("typed=" + data.version + "/" + (data.count + 1));
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('typed=1.2.3/6'), stdout);
+	});
+
+	it('stderr.json() parses the captured stderr too', async () => {
+		const { stdout, exitCode } = await runAction(`
+			const code = "process.stderr.write(JSON.stringify({ err: true }))";
+			const r = await $\`node -e \${code}\`;
+			core.info("stderr-json=" + r.stderr.json().err);
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('stderr-json=true'), stdout);
+	});
+
+	it('a stream still behaves as a string (methods, coercion, JSON.stringify)', async () => {
+		// The .json() helper rides on a boxed String; ordinary string usage must
+		// keep working. (Strict === against a literal is the documented exception.)
+		const { stdout, exitCode } = await runAction(`
+			const { stdout: out } = await $\`echo \${"hello world"}\`;
+			core.info("trim=" + out.trim());
+			core.info("split=" + out.trim().split(" ").length);
+			core.info("includes=" + out.includes("world"));
+			core.info("concat=" + ("[" + out.trim() + "]"));
+			core.info("stringify=" + JSON.stringify(out));
+			const asString: string = out;            // assignable to string
+			core.info("len=" + asString.length);
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('trim=hello world'), stdout);
+		assert.ok(stdout.includes('split=2'), stdout);
+		assert.ok(stdout.includes('includes=true'), stdout);
+		assert.ok(stdout.includes('concat=[hello world]'), stdout);
+		assert.ok(stdout.includes('stringify="hello world\\n"'), stdout);
+	});
+
 	it('throws on a non-zero exit by default', async () => {
 		const { stdout, exitCode } = await runAction(`
 			const code = "process.exit(3)";

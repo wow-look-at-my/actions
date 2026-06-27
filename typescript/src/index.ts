@@ -14,18 +14,40 @@ import { MAIN_FN, transformScript } from './transform';
 type ShellArg = string | number | boolean | null | undefined | string[];
 
 /**
+ * A captured output stream: a `String` object that also carries a `.json()`
+ * helper, so `output.stdout.json()` parses it while every ordinary string
+ * operation (`.trim()`, `.includes()`, concatenation, template literals) still
+ * works. Typed as `string & {...}` so it stays assignable to `string`.
+ *
+ * The runtime value is a boxed `String`, so `typeof` is `'object'` and a strict
+ * `===` against a string literal is `false` — use `.trim()`, loose `==`, or
+ * `String(stream)` when a primitive is needed for a comparison.
+ */
+type OutputStream = string & { json<T = any>(): T };
+
+function streamJson<T = any>(this: String): T {
+	return JSON.parse(this.toString()) as T;
+}
+
+/** Box a captured stream string and attach the `.json()` helper. */
+function makeStream(value: string): OutputStream {
+	return Object.assign(new String(value), { json: streamJson }) as unknown as OutputStream;
+}
+
+/**
  * Result of awaiting a `$` command: the captured streams plus the exit code.
  * `toString()` returns stdout (trailing newline trimmed) so a command's output
- * can be string-coerced inline, while the `stdout` property is the raw output.
+ * can be string-coerced inline, while `stdout`/`stderr` are the raw streams,
+ * each carrying a `.json()` helper.
  */
 class ProcessOutput {
-	readonly stdout: string;
-	readonly stderr: string;
+	readonly stdout: OutputStream;
+	readonly stderr: OutputStream;
 	readonly exitCode: number;
 
 	constructor(out: exec.ExecOutput) {
-		this.stdout = out.stdout;
-		this.stderr = out.stderr;
+		this.stdout = makeStream(out.stdout);
+		this.stderr = makeStream(out.stderr);
 		this.exitCode = out.exitCode;
 	}
 
@@ -41,8 +63,8 @@ class ProcessOutput {
  * the failure without re-running the command.
  */
 class ProcessError extends Error {
-	readonly stdout: string;
-	readonly stderr: string;
+	readonly stdout: OutputStream;
+	readonly stderr: OutputStream;
 	readonly exitCode: number;
 
 	constructor(command: string, output: ProcessOutput) {

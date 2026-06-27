@@ -7,16 +7,31 @@ declare const io: typeof import('@actions/io');
 type ShellArg = string | number | boolean | null | undefined | string[];
 
 /**
+ * A captured output stream from a `$` command: a string that also carries a
+ * `.json()` helper. Every ordinary string operation still works (`.trim()`,
+ * `.split()`, `.includes()`, concatenation, template literals); `.json()`
+ * parses the stream as JSON.
+ *
+ * Note: at runtime this is a boxed `String` object, so `typeof` is `'object'`
+ * and a strict `===` against a string literal is `false` — use `.trim()`, loose
+ * `==`, or `String(stream)` when you need the primitive for a comparison.
+ */
+type OutputStream = string & {
+	/** Parse this stream as JSON (throws if it is not valid JSON). */
+	json<T = any>(): T;
+};
+
+/**
  * Resolved result of awaiting a `$` command (zx-style). `toString()` returns
  * stdout with a single trailing newline trimmed, so the output can be
  * string-coerced inline (e.g. in a template literal); the `stdout` property is
  * the raw, untrimmed output.
  */
 interface ProcessOutput {
-	/** The command's full stdout, exactly as captured (not trimmed). */
-	stdout: string;
-	/** The command's full stderr, exactly as captured. */
-	stderr: string;
+	/** The command's full stdout (untrimmed), with a `.json()` helper. */
+	stdout: OutputStream;
+	/** The command's full stderr, with a `.json()` helper. */
+	stderr: OutputStream;
 	/** The process exit code. */
 	exitCode: number;
 	/** stdout with a single trailing newline (`\n` or `\r\n`) removed. */

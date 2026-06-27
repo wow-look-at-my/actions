@@ -100,6 +100,21 @@ script: |
 
 `stdout`/`stderr` are the raw captured streams (untrimmed); `toString()` returns `stdout` with a single trailing newline (`\n` or `\r\n`) removed.
 
+#### Parsing JSON output
+
+Both `stdout` and `stderr` carry a `.json()` helper that parses the captured stream (a trailing newline is fine — `JSON.parse` ignores it). Pass a type parameter for a typed result:
+
+```yaml
+script: |
+  const pkg = (await $`cat package.json`).stdout.json<{ version: string }>();
+  core.setOutput('version', pkg.version);
+
+  const tags = (await $`gh api repos/{owner}/{repo}/tags`).stdout.json();
+  core.info(`latest tag = ${tags[0]?.name}`);
+```
+
+> **Note:** `stdout`/`stderr` are string-like objects (so they can carry `.json()`). Every ordinary string operation works — `.trim()`, `.split()`, `.includes()`, concatenation, template interpolation, `JSON.stringify`, and assigning to a `string` — but because the runtime value is a boxed `String`, `typeof` is `'object'` and a strict `stdout === 'literal'` is `false`. Use `stdout.trim()`, loose `==`, or `String(stdout)` if you need the primitive for a comparison.
+
 ### Exit codes and errors
 
 By default a non-zero exit **throws** (the thrown error carries the captured `stdout`, `stderr`, and `exitCode`). Chain `.nothrow()` to handle the exit code yourself instead:
