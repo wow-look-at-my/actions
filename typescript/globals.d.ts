@@ -7,16 +7,38 @@ declare const io: typeof import('@actions/io');
 type ShellArg = string | number | boolean | null | undefined | string[];
 
 /**
- * Thenable command builder returned by `$`. Awaiting executes the command.
- * Chain methods to set options before awaiting.
+ * Resolved result of awaiting a `$` command (zx-style). `toString()` returns
+ * stdout with a single trailing newline trimmed, so the output can be
+ * string-coerced inline (e.g. in a template literal); the `stdout` property is
+ * the raw, untrimmed output.
  */
-interface ExecBuilder extends PromiseLike<number> {
+interface ProcessOutput {
+	/** The command's full stdout, exactly as captured (not trimmed). */
+	stdout: string;
+	/** The command's full stderr, exactly as captured. */
+	stderr: string;
+	/** The process exit code. */
+	exitCode: number;
+	/** stdout with a single trailing newline (`\n` or `\r\n`) removed. */
+	toString(): string;
+}
+
+/**
+ * Thenable command builder returned by `$`. Awaiting executes the command and
+ * resolves to a {@link ProcessOutput}. Chain methods to set options before
+ * awaiting.
+ */
+interface ExecBuilder extends PromiseLike<ProcessOutput> {
 	/** Pipe data to the command's stdin. */
 	input(data: Buffer | string): ExecBuilder;
 	/** Set the working directory. */
 	cwd(dir: string): ExecBuilder;
-	/** Suppress stdout/stderr. */
+	/** Suppress streaming stdout/stderr to the live log (still captured). */
 	silent(): ExecBuilder;
+	/** Merge/override environment variables for this command. */
+	env(vars: Record<string, string>): ExecBuilder;
+	/** Resolve even on a non-zero exit; read `exitCode` instead of catching. */
+	nothrow(): ExecBuilder;
 }
 
 /**
@@ -27,7 +49,10 @@ interface ExecBuilder extends PromiseLike<number> {
  * - string[] -> expanded as multiple arguments
  * - falsy (false, null, undefined, '') -> skipped
  *
- * Throws on non-zero exit. Chain .input()/.cwd()/.silent() before awaiting.
+ * Awaiting resolves to a {@link ProcessOutput} (`stdout`, `stderr`, `exitCode`).
+ * Throws on a non-zero exit by default (the thrown error carries the captured
+ * `stdout`/`stderr`/`exitCode`); chain `.nothrow()` to read `exitCode` instead.
+ * Chain .input()/.cwd()/.silent()/.env()/.nothrow() before awaiting.
  */
 declare function $(strings: TemplateStringsArray, ...values: ShellArg[]): ExecBuilder;
 declare const fs: typeof import('fs');

@@ -69,6 +69,68 @@ To authenticate as something other than the automatic token — a PAT with broad
 
 `getOctokit(token, options?)` is also injected, for building an extra client with a specific token inline.
 
+## Running commands (`$`)
+
+`$` is a tagged-template command runner (zx-style). Static parts of the template are split on whitespace; each interpolated value is passed as **exactly one argument** — never shell-split — so there is no quoting or injection footgun:
+
+```yaml
+- uses: wow-look-at-my/actions@typescript#latest
+  with:
+    script: |
+      const msg = 'commit with spaces';
+      await $`git commit -m ${msg}`;            // one arg, no quoting needed
+      await $`git push origin ${github.ref_name}`;
+```
+
+Interpolation rules: a `string`/`number` becomes one argument, a `string[]` expands to multiple arguments, and a falsy value (`false`, `null`, `undefined`, `''`) is skipped (handy for conditional flags: ``$`ls ${verbose && '-l'}` ``).
+
+### Capturing output
+
+Awaiting a command resolves to a **`ProcessOutput`** — `{ stdout, stderr, exitCode }` plus a `toString()`. So capturing output is a one-liner, no `exec.exec(..., { listeners: { stdout } })` block:
+
+```yaml
+script: |
+  const { stdout } = await $`git rev-parse HEAD`;
+  core.info(`sha = ${stdout.trim()}`);
+
+  // toString() returns stdout with one trailing newline trimmed, so a command
+  // string-coerces inline:
+  core.setOutput('branch', `${await $`git branch --show-current`}`);
+```
+
+`stdout`/`stderr` are the raw captured streams (untrimmed); `toString()` returns `stdout` with a single trailing newline (`\n` or `\r\n`) removed.
+
+### Exit codes and errors
+
+By default a non-zero exit **throws** (the thrown error carries the captured `stdout`, `stderr`, and `exitCode`). Chain `.nothrow()` to handle the exit code yourself instead:
+
+```yaml
+script: |
+  const { exitCode } = await $`git diff --quiet`.nothrow();
+  core.setOutput('changed', String(exitCode !== 0));
+```
+
+### Modifiers
+
+Chain these on the builder before awaiting (each returns a new builder):
+
+| Modifier | Effect |
+|----------|--------|
+| `.input(data)` | Pipe a `string`/`Buffer` to the command's stdin. |
+| `.cwd(dir)` | Run in `dir` instead of the current working directory. |
+| `.silent()` | Don't stream stdout/stderr to the live log (still captured in the result). |
+| `.env(vars)` | Merge/override environment variables for this command (layered over the current process env). |
+| `.nothrow()` | Resolve even on a non-zero exit instead of throwing. |
+
+```yaml
+script: |
+  // capture, override env, and feed stdin — all without leaving $
+  const { stdout } = await $`gpg --clearsign`
+    .input('release notes')
+    .env({ GNUPGHOME: '/tmp/gnupg' })
+    .cwd(env.GITHUB_WORKSPACE);
+```
+
 ## Passing other workflow contexts
 
 If the script needs contexts the runner doesn't expose to action processes (`vars`, `secrets`, `steps`, `needs`, `inputs`, `strategy`, `matrix`), pass them explicitly:
@@ -131,6 +193,7 @@ Always available inside the script:
 | `core` | `typeof import('@actions/core')` | `@actions/core` |
 | `exec` | `typeof import('@actions/exec')` | `@actions/exec` |
 | `io` | `typeof import('@actions/io')` | `@actions/io` |
+| `$` | tagged-template command runner → `ProcessOutput` (see [Running commands](#running-commands-)) | `@actions/exec`'s `getExecOutput` |
 | `octokit` | pre-authenticated `Octokit` (loosely typed; also callable as `octokit(token)`, deprecated) | `@actions/github`'s `getOctokit(github-token)` |
 | `getOctokit` | `(token, options?) => Octokit` | `@actions/github`'s `getOctokit` |
 | `context` | `Context` (typed) | `@actions/github`'s `context`, hydrated from env |

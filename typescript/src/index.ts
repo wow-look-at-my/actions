@@ -13,37 +13,112 @@ import { MAIN_FN, transformScript } from './transform';
 
 type ShellArg = string | number | boolean | null | undefined | string[];
 
-class ExecBuilder implements PromiseLike<number> {
+/**
+ * Result of awaiting a `$` command: the captured streams plus the exit code.
+ * `toString()` returns stdout (trailing newline trimmed) so a command's output
+ * can be string-coerced inline, while the `stdout` property is the raw output.
+ */
+class ProcessOutput {
+	readonly stdout: string;
+	readonly stderr: string;
+	readonly exitCode: number;
+
+	constructor(out: exec.ExecOutput) {
+		this.stdout = out.stdout;
+		this.stderr = out.stderr;
+		this.exitCode = out.exitCode;
+	}
+
+	/** stdout with a single trailing newline (`\n` or `\r\n`) removed. */
+	toString(): string {
+		return this.stdout.replace(/\r?\n$/, '');
+	}
+}
+
+/**
+ * Thrown when a `$` command exits non-zero (unless `.nothrow()` was chained).
+ * Carries the captured `stdout`/`stderr`/`exitCode` so a `catch` can inspect
+ * the failure without re-running the command.
+ */
+class ProcessError extends Error {
+	readonly stdout: string;
+	readonly stderr: string;
+	readonly exitCode: number;
+
+	constructor(command: string, output: ProcessOutput) {
+		const detail = output.stderr.trim();
+		super(`\`$\` command failed with exit code ${output.exitCode}: ${command}${detail ? `\n${detail}` : ''}`);
+		this.name = 'ProcessError';
+		this.stdout = output.stdout;
+		this.stderr = output.stderr;
+		this.exitCode = output.exitCode;
+	}
+}
+
+class ExecBuilder implements PromiseLike<ProcessOutput> {
 	private cmd: string;
 	private args: string[];
 	private opts: exec.ExecOptions;
+	private throwOnNonZero: boolean;
 
-	constructor(cmd: string, args: string[], opts: exec.ExecOptions = {}) {
+	constructor(cmd: string, args: string[], opts: exec.ExecOptions = {}, throwOnNonZero = true) {
 		this.cmd = cmd;
 		this.args = args;
 		this.opts = opts;
+		this.throwOnNonZero = throwOnNonZero;
 	}
 
+	private with(patch: Partial<exec.ExecOptions>, throwOnNonZero = this.throwOnNonZero): ExecBuilder {
+		return new ExecBuilder(this.cmd, this.args, { ...this.opts, ...patch }, throwOnNonZero);
+	}
+
+	/** Pipe data to the command's stdin. */
 	input(data: Buffer | string): ExecBuilder {
-		return new ExecBuilder(this.cmd, this.args, {
-			...this.opts,
-			input: Buffer.isBuffer(data) ? data : Buffer.from(data),
-		});
+		return this.with({ input: Buffer.isBuffer(data) ? data : Buffer.from(data) });
 	}
 
+	/** Set the working directory. */
 	cwd(dir: string): ExecBuilder {
-		return new ExecBuilder(this.cmd, this.args, { ...this.opts, cwd: dir });
+		return this.with({ cwd: dir });
 	}
 
+	/** Suppress streaming stdout/stderr to the live log (still captured). */
 	silent(): ExecBuilder {
-		return new ExecBuilder(this.cmd, this.args, { ...this.opts, silent: true });
+		return this.with({ silent: true });
 	}
 
-	then<T = number, R = never>(
-		onfulfilled?: ((v: number) => T | PromiseLike<T>) | null,
+	/**
+	 * Merge/override environment variables for this command. @actions/exec
+	 * *replaces* the environment when `env` is set, so seed from the current
+	 * process env (or a prior `.env()`) and layer the overrides on top.
+	 */
+	env(vars: Record<string, string>): ExecBuilder {
+		const base = this.opts.env ?? (process.env as Record<string, string>);
+		return this.with({ env: { ...base, ...vars } });
+	}
+
+	/** Resolve even on a non-zero exit; read `exitCode` instead of catching. */
+	nothrow(): ExecBuilder {
+		return this.with({}, false);
+	}
+
+	private async run(): Promise<ProcessOutput> {
+		// Always capture and never let getExecOutput throw on a non-zero exit
+		// (ignoreReturnCode), so stdout/stderr survive a failure; the throw
+		// decision is made here so the error can carry the captured output.
+		const raw = await exec.getExecOutput(this.cmd, this.args, { ...this.opts, ignoreReturnCode: true });
+		const output = new ProcessOutput(raw);
+		if (this.throwOnNonZero && raw.exitCode !== 0) {
+			throw new ProcessError([this.cmd, ...this.args].join(' '), output);
+		}
+		return output;
+	}
+
+	then<T = ProcessOutput, R = never>(
+		onfulfilled?: ((v: ProcessOutput) => T | PromiseLike<T>) | null,
 		onrejected?: ((e: any) => R | PromiseLike<R>) | null,
 	): Promise<T | R> {
-		return exec.exec(this.cmd, this.args, this.opts).then(onfulfilled, onrejected);
+		return this.run().then(onfulfilled, onrejected);
 	}
 }
 

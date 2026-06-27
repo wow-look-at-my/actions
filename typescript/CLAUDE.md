@@ -46,7 +46,7 @@ Run integration tests (requires `just build` first):
 pnpm tsx --test src/index.test.ts
 ```
 
-Tests cover: basic execution, top-level await, top-level `return` (bare + value-as-`result`-output, the TS1108 regression), top-level ESM `import`/`export` (the TS1232 regression — incl. import+return combined, default imports, `@actions/*` same-instance imports, top-level await in exported initializers, type-only import elision, and a `file:` input with a shebang), dynamic `import()`, `require` of node built-ins and @actions modules, error propagation, type errors (including diagnostic line mapping with and without hoisted imports), workflow contexts, and octokit auth — including the regression guard that the injected `octokit` is authenticated from the `github-token` input (env var `INPUT_GITHUB-TOKEN`) and NOT from `process.env.GITHUB_TOKEN`. `src/transform.test.ts` unit-tests the hoisting transform and its line map directly.
+Tests cover: basic execution, top-level await, top-level `return` (bare + value-as-`result`-output, the TS1108 regression), top-level ESM `import`/`export` (the TS1232 regression — incl. import+return combined, default imports, `@actions/*` same-instance imports, top-level await in exported initializers, type-only import elision, and a `file:` input with a shebang), dynamic `import()`, `require` of node built-ins and @actions modules, error propagation, type errors (including diagnostic line mapping with and without hoisted imports), workflow contexts, and octokit auth — including the regression guard that the injected `octokit` is authenticated from the `github-token` input (env var `INPUT_GITHUB-TOKEN`) and NOT from `process.env.GITHUB_TOKEN`. The `$ command runner` describe block covers the `ProcessOutput` result (stdout/stderr/exitCode capture, `toString()` trimming + template-literal coercion), throw-on-non-zero (and the thrown error carrying captured output), `.nothrow()`, `.env()` merge-over-process-env, argument interpolation (single-arg / array-expansion / falsy-skip, no shell split), and `.input()`/`.cwd()`/`.silent()` plus modifier chaining. `src/transform.test.ts` unit-tests the hoisting transform and its line map directly.
 
 #### CI dogfood harness (`test/`)
 
@@ -65,10 +65,12 @@ INPUT_SCRIPT='core.info("hello")' node dist/index.js
 To exercise the `$` tagged template (safe command execution):
 
 ```sh
-INPUT_SCRIPT='await $`echo ${"hello world"}`' node dist/index.js
+INPUT_SCRIPT='const { stdout } = await $`echo ${"hello world"}`; core.info(stdout.trim())' node dist/index.js
 ```
 
 `$` splits static template parts by whitespace. Interpolated values are passed as individual arguments (never shell-split). Arrays expand to multiple args; falsy values are skipped.
+
+Awaiting `$` resolves to a `ProcessOutput` (`{ stdout, stderr, exitCode, toString() }`), implemented on top of `@actions/exec`'s `getExecOutput`. `toString()` returns `stdout` with a single trailing newline trimmed; the `stdout`/`stderr` properties are the raw captured streams. A non-zero exit throws by default (the thrown `ProcessError` carries `stdout`/`stderr`/`exitCode`); `$` always runs the child with `ignoreReturnCode` and makes the throw decision itself, so output is captured even on failure. Chainable modifiers: `.input()`, `.cwd()`, `.silent()`, `.env()` (merged over `process.env` — `@actions/exec` replaces rather than merges the env, so the builder seeds from the current env), and `.nothrow()` (resolve instead of throwing). Each modifier returns a fresh builder.
 
 To exercise contexts:
 

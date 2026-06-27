@@ -1,5 +1,5 @@
 name: TypeScript
-version: 3
+version: 4
 description: Run an inline TypeScript script, validated with tsc, with helpful globals pre-injected.
 
 inputs:
