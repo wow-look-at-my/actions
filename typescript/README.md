@@ -102,36 +102,37 @@ script: |
 
 #### Parsing JSON output
 
-For the common case — parse a command's **stdout** as JSON — `$` exposes a paren-free shortcut, `.json()` (with an optional type parameter), plus `.text()` for the trimmed string:
+`stdout` and `stderr` each carry a `.json()` helper, and the builder's `.stdout` / `.stderr` are themselves awaitable — so you can parse a stream straight off a command, no `(await ...)` wrapper needed:
+
+```yaml
+script: |
+  const pkg  = await $`cat package.json`.stdout.json<{ version: string }>();
+  core.setOutput('version', pkg.version);
+
+  const meta = await $`some-cmd`.stderr.json();             // stderr too
+  const sha  = await $`git rev-parse HEAD`.stdout.text();   // stdout string, trailing newline trimmed
+```
+
+For the very common "parse stdout" case there are terser aliases right on the builder — `.json()` and `.text()` (stdout-only):
 
 ```yaml
 script: |
   const pkg = await $`cat package.json`.json<{ version: string }>();
-  core.setOutput('version', pkg.version);
-
-  const sha = await $`git rev-parse HEAD`.text();   // stdout, trailing newline trimmed
+  const sha = await $`git rev-parse HEAD`.text();
 ```
 
-These run the command and resolve straight to the parsed value / string (a trailing newline is fine — `JSON.parse` ignores it), and they compose with the modifiers above: `await $`gh api ...`.env({ ... }).json()`.
+All of these run the command once and resolve straight to the value (a trailing newline is fine — `JSON.parse` ignores it), and they compose with the modifiers above: `await $`gh api ...`.env({ ... }).stdout.json()`.
 
-You can also reach into either stream on the resolved result — `.stdout.json()` **and** `.stderr.json()` both work:
+You can also reach into the streams on the already-resolved result when you want the whole `ProcessOutput`:
 
 ```yaml
 script: |
   const out = await $`some-cmd`;
   const data = out.stdout.json();
-  const meta = out.stderr.json();               // stderr too
+  core.info(`exit ${out.exitCode}`);
 ```
 
-But inline this needs parentheses, because `await` binds looser than `.`:
-
-```yaml
-script: |
-  const data = (await $`cmd`).stdout.json();    // ✅
-  // await $`cmd`.stdout.json()                 // ❌ parses as await ($`cmd`.stdout.json())
-```
-
-`await $`cmd`.stdout.json()` would call `.stdout` on the *un-awaited* builder — the same gotcha as `(await fetch(url)).json()`. The `.json()` / `.text()` shortcuts above sidestep it for stdout.
+`await $`cmd`.stdout` works because the builder's `.stdout`/`.stderr` are *lazy* accessors — awaiting one runs the command and resolves to that stream (the same raw, untrimmed `OutputStream` as `(await $`cmd`).stdout`). That is what lets `.stdout.json()` chain off the un-awaited command directly, sidestepping the `(await fetch(url)).json()`-style precedence trap (`await` binds looser than `.`).
 
 > **Note:** `stdout`/`stderr` are string-like objects (so they can carry `.json()`). Every ordinary string operation works — `.trim()`, `.split()`, `.includes()`, concatenation, template interpolation, `JSON.stringify`, and assigning to a `string` — but because the runtime value is a boxed `String`, `typeof` is `'object'` and a strict `stdout === 'literal'` is `false`. Use `stdout.trim()`, loose `==`, or `String(stdout)` if you need the primitive for a comparison.
 

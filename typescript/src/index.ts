@@ -34,6 +34,11 @@ function makeStream(value: string): OutputStream {
 	return Object.assign(new String(value), { json: streamJson }) as unknown as OutputStream;
 }
 
+/** Remove a single trailing newline (`\n` or `\r\n`) — shell `$(...)`-style. */
+function trimTrailingNewline(s: string): string {
+	return s.replace(/\r?\n$/, '');
+}
+
 /**
  * Result of awaiting a `$` command: the captured streams plus the exit code.
  * `toString()` returns stdout (trailing newline trimmed) so a command's output
@@ -53,7 +58,7 @@ class ProcessOutput {
 
 	/** stdout with a single trailing newline (`\n` or `\r\n`) removed. */
 	toString(): string {
-		return this.stdout.replace(/\r?\n$/, '');
+		return trimTrailingNewline(this.stdout);
 	}
 }
 
@@ -74,6 +79,41 @@ class ProcessError extends Error {
 		this.stdout = output.stdout;
 		this.stderr = output.stderr;
 		this.exitCode = output.exitCode;
+	}
+}
+
+/**
+ * Lazy accessor for one stream of a `$` command that has not run yet — the
+ * value of the builder's `.stdout` / `.stderr` getters. Awaiting it runs the
+ * command and resolves to that stream (an `OutputStream`); `.json()` / `.text()`
+ * are paren-free terminals. This is what makes `await $`cmd`.stdout.json()` work
+ * without the `(await ...)` wrapper (`await` binds looser than `.`).
+ */
+class StreamPromise implements PromiseLike<OutputStream> {
+	constructor(
+		private readonly run: () => Promise<ProcessOutput>,
+		private readonly pick: (o: ProcessOutput) => OutputStream,
+	) {}
+
+	private resolve(): Promise<OutputStream> {
+		return this.run().then(this.pick);
+	}
+
+	then<T = OutputStream, R = never>(
+		onfulfilled?: ((v: OutputStream) => T | PromiseLike<T>) | null,
+		onrejected?: ((e: any) => R | PromiseLike<R>) | null,
+	): Promise<T | R> {
+		return this.resolve().then(onfulfilled, onrejected);
+	}
+
+	/** Run the command and resolve to this stream parsed as JSON. */
+	json<T = any>(): Promise<T> {
+		return this.resolve().then((s) => s.json<T>());
+	}
+
+	/** Run the command and resolve to this stream with a trailing newline trimmed. */
+	text(): Promise<string> {
+		return this.resolve().then(trimTrailingNewline);
 	}
 }
 
@@ -125,21 +165,32 @@ class ExecBuilder implements PromiseLike<ProcessOutput> {
 	}
 
 	/**
-	 * Run the command and resolve to its stdout parsed as JSON. A paren-free
-	 * terminal shortcut: `await $`...`.json()` instead of
-	 * `(await $`...`).stdout.json()` (`await` binds looser than `.`).
+	 * Lazy stdout accessor. Awaitable on its own (`await $`cmd`.stdout`) and the
+	 * reason `await $`cmd`.stdout.json()` works paren-free.
+	 */
+	get stdout(): StreamPromise {
+		return new StreamPromise(() => this.run(), (o) => o.stdout);
+	}
+
+	/** Lazy stderr accessor — `await $`cmd`.stderr` / `.stderr.json()`. */
+	get stderr(): StreamPromise {
+		return new StreamPromise(() => this.run(), (o) => o.stderr);
+	}
+
+	/**
+	 * Run the command and resolve to its stdout parsed as JSON. A terse stdout
+	 * shortcut equivalent to `.stdout.json()`: `await $`...`.json()`.
 	 */
 	json<T = any>(): Promise<T> {
-		return this.run().then((o) => o.stdout.json<T>());
+		return this.stdout.json<T>();
 	}
 
 	/**
 	 * Run the command and resolve to its stdout as a string with a single
-	 * trailing newline trimmed (like `toString()`). Paren-free terminal
-	 * shortcut: `await $`...`.text()`.
+	 * trailing newline trimmed (like `toString()`): `await $`...`.text()`.
 	 */
 	text(): Promise<string> {
-		return this.run().then((o) => o.toString());
+		return this.stdout.text();
 	}
 
 	private async run(): Promise<ProcessOutput> {

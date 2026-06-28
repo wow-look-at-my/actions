@@ -39,6 +39,21 @@ interface ProcessOutput {
 }
 
 /**
+ * Lazy accessor for one stream of a not-yet-run `$` command — the value of the
+ * builder's `.stdout` / `.stderr`. Awaiting it runs the command and resolves to
+ * that stream (an {@link OutputStream}); `.json()` / `.text()` are paren-free
+ * terminals. This is what lets `await $`cmd`.stdout.json()` work directly,
+ * without the `(await ...)` wrapper that `await`'s loose precedence otherwise
+ * forces.
+ */
+interface StreamPromise extends PromiseLike<OutputStream> {
+	/** Run the command and resolve to this stream parsed as JSON. */
+	json<T = any>(): Promise<T>;
+	/** Run the command and resolve to this stream with a trailing newline trimmed. */
+	text(): Promise<string>;
+}
+
+/**
  * Thenable command builder returned by `$`. Awaiting executes the command and
  * resolves to a {@link ProcessOutput}. Chain methods to set options before
  * awaiting.
@@ -55,13 +70,15 @@ interface ExecBuilder extends PromiseLike<ProcessOutput> {
 	/** Resolve even on a non-zero exit; read `exitCode` instead of catching. */
 	nothrow(): ExecBuilder;
 	/**
-	 * Run the command and resolve to its stdout parsed as JSON. Paren-free
-	 * terminal shortcut for `(await $`...`).stdout.json()` — write
-	 * `await $`...`.json()` (`await` binds looser than `.`, so the parens are
-	 * otherwise required).
+	 * Lazy stdout accessor: awaitable on its own (`await $`cmd`.stdout`) and the
+	 * reason `await $`cmd`.stdout.json()` works without the `(await ...)` wrapper.
 	 */
+	readonly stdout: StreamPromise;
+	/** Lazy stderr accessor — `await $`cmd`.stderr` / `.stderr.json()`. */
+	readonly stderr: StreamPromise;
+	/** Terse stdout shortcut equivalent to `.stdout.json()`: `await $`...`.json()`. */
 	json<T = any>(): Promise<T>;
-	/** Run the command and resolve to its stdout as a string (trailing newline trimmed). */
+	/** Terse stdout shortcut equivalent to `.stdout.text()`: `await $`...`.text()`. */
 	text(): Promise<string>;
 }
 

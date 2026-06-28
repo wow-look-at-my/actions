@@ -539,6 +539,51 @@ describe('$ command runner', () => {
 		assert.ok(stdout.includes('composed=via-env'), stdout);
 	});
 
+	it('await $`...`.stdout.json() works directly — no `(await ...)` wrapper', async () => {
+		const { stdout, exitCode } = await runAction(`
+			const payload = JSON.stringify({ ok: true, n: 7 });
+			const code = "process.stdout.write(process.argv[1])";
+			const data = await $\`node -e \${code} \${payload}\`.stdout.json();
+			core.info("lazy-stdout-json=" + data.ok + ":" + data.n);
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('lazy-stdout-json=true:7'), stdout);
+	});
+
+	it('await $`...`.stderr.json() works directly too', async () => {
+		const { stdout, exitCode } = await runAction(`
+			const code = "process.stderr.write(JSON.stringify({ warn: 3 }))";
+			const data = await $\`node -e \${code}\`.stderr.json<{ warn: number }>();
+			core.info("lazy-stderr-json=" + data.warn);
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('lazy-stderr-json=3'), stdout);
+	});
+
+	it('await $`...`.stdout resolves to the raw stream (untrimmed, still .json()-able)', async () => {
+		const { stdout, exitCode } = await runAction(`
+			const out = await $\`echo \${"raw-line"}\`.stdout;
+			core.info("raw=" + JSON.stringify(out));   // keeps the trailing newline
+			core.info("trimmed=" + out.trim());
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('raw="raw-line\\n"'), stdout);
+		assert.ok(stdout.includes('trimmed=raw-line'), stdout);
+	});
+
+	it('await $`...`.stdout.text() trims; .stdout.json() composes with modifiers', async () => {
+		const { stdout, exitCode } = await runAction(`
+			const sha = await $\`echo \${"v2"}\`.stdout.text();
+			core.info("lazy-text=[" + sha + "]");
+			const code = "process.stdout.write(JSON.stringify({ home: process.env.HOMEVAR }))";
+			const data = await $\`node -e \${code}\`.env({ HOMEVAR: "set" }).stdout.json();
+			core.info("lazy-composed=" + data.home);
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('lazy-text=[v2]'), stdout);
+		assert.ok(stdout.includes('lazy-composed=set'), stdout);
+	});
+
 	it('throws on a non-zero exit by default', async () => {
 		const { stdout, exitCode } = await runAction(`
 			const code = "process.exit(3)";
