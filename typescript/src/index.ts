@@ -124,6 +124,24 @@ class ExecBuilder implements PromiseLike<ProcessOutput> {
 		return this.with({}, false);
 	}
 
+	/**
+	 * Run the command and resolve to its stdout parsed as JSON. A paren-free
+	 * terminal shortcut: `await $`...`.json()` instead of
+	 * `(await $`...`).stdout.json()` (`await` binds looser than `.`).
+	 */
+	json<T = any>(): Promise<T> {
+		return this.run().then((o) => o.stdout.json<T>());
+	}
+
+	/**
+	 * Run the command and resolve to its stdout as a string with a single
+	 * trailing newline trimmed (like `toString()`). Paren-free terminal
+	 * shortcut: `await $`...`.text()`.
+	 */
+	text(): Promise<string> {
+		return this.run().then((o) => o.toString());
+	}
+
 	private async run(): Promise<ProcessOutput> {
 		// Always capture and never let getExecOutput throw on a non-zero exit
 		// (ignoreReturnCode), so stdout/stderr survive a failure; the throw

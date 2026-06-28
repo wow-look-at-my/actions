@@ -54,6 +54,15 @@ interface ExecBuilder extends PromiseLike<ProcessOutput> {
 	env(vars: Record<string, string>): ExecBuilder;
 	/** Resolve even on a non-zero exit; read `exitCode` instead of catching. */
 	nothrow(): ExecBuilder;
+	/**
+	 * Run the command and resolve to its stdout parsed as JSON. Paren-free
+	 * terminal shortcut for `(await $`...`).stdout.json()` — write
+	 * `await $`...`.json()` (`await` binds looser than `.`, so the parens are
+	 * otherwise required).
+	 */
+	json<T = any>(): Promise<T>;
+	/** Run the command and resolve to its stdout as a string (trailing newline trimmed). */
+	text(): Promise<string>;
 }
 
 /**

@@ -498,6 +498,47 @@ describe('$ command runner', () => {
 		assert.ok(stdout.includes('stringify="hello world\\n"'), stdout);
 	});
 
+	it('builder.json() is a paren-free shortcut (no `(await ...)` needed)', async () => {
+		const { stdout, exitCode } = await runAction(`
+			const payload = JSON.stringify({ ok: true, n: 41 });
+			const code = "process.stdout.write(process.argv[1])";
+			const data = await $\`node -e \${code} \${payload}\`.json();
+			core.info("paren-free=" + data.ok + ":" + (data.n + 1));
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('paren-free=true:42'), stdout);
+	});
+
+	it('builder.json() accepts a type parameter', async () => {
+		const { stdout, exitCode } = await runAction(`
+			const payload = JSON.stringify({ version: "9.9.9" });
+			const code = "process.stdout.write(process.argv[1])";
+			const data = await $\`node -e \${code} \${payload}\`.json<{ version: string }>();
+			core.info("typed-shortcut=" + data.version);
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('typed-shortcut=9.9.9'), stdout);
+	});
+
+	it('builder.text() resolves to trimmed stdout paren-free', async () => {
+		const { stdout, exitCode } = await runAction(`
+			const sha = await $\`echo \${"deadbeef"}\`.text();
+			core.info("text=[" + sha + "]");
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('text=[deadbeef]'), stdout);
+	});
+
+	it('builder.json() composes with modifiers chained before it', async () => {
+		const { stdout, exitCode } = await runAction(`
+			const code = "process.stdout.write(JSON.stringify({ v: process.env.MYVAR }))";
+			const data = await $\`node -e \${code}\`.env({ MYVAR: "via-env" }).json();
+			core.info("composed=" + data.v);
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('composed=via-env'), stdout);
+	});
+
 	it('throws on a non-zero exit by default', async () => {
 		const { stdout, exitCode } = await runAction(`
 			const code = "process.exit(3)";

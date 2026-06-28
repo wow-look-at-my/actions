@@ -102,16 +102,36 @@ script: |
 
 #### Parsing JSON output
 
-Both `stdout` and `stderr` carry a `.json()` helper that parses the captured stream (a trailing newline is fine — `JSON.parse` ignores it). Pass a type parameter for a typed result:
+For the common case — parse a command's **stdout** as JSON — `$` exposes a paren-free shortcut, `.json()` (with an optional type parameter), plus `.text()` for the trimmed string:
 
 ```yaml
 script: |
-  const pkg = (await $`cat package.json`).stdout.json<{ version: string }>();
+  const pkg = await $`cat package.json`.json<{ version: string }>();
   core.setOutput('version', pkg.version);
 
-  const tags = (await $`gh api repos/{owner}/{repo}/tags`).stdout.json();
-  core.info(`latest tag = ${tags[0]?.name}`);
+  const sha = await $`git rev-parse HEAD`.text();   // stdout, trailing newline trimmed
 ```
+
+These run the command and resolve straight to the parsed value / string (a trailing newline is fine — `JSON.parse` ignores it), and they compose with the modifiers above: `await $`gh api ...`.env({ ... }).json()`.
+
+You can also reach into either stream on the resolved result — `.stdout.json()` **and** `.stderr.json()` both work:
+
+```yaml
+script: |
+  const out = await $`some-cmd`;
+  const data = out.stdout.json();
+  const meta = out.stderr.json();               // stderr too
+```
+
+But inline this needs parentheses, because `await` binds looser than `.`:
+
+```yaml
+script: |
+  const data = (await $`cmd`).stdout.json();    // ✅
+  // await $`cmd`.stdout.json()                 // ❌ parses as await ($`cmd`.stdout.json())
+```
+
+`await $`cmd`.stdout.json()` would call `.stdout` on the *un-awaited* builder — the same gotcha as `(await fetch(url)).json()`. The `.json()` / `.text()` shortcuts above sidestep it for stdout.
 
 > **Note:** `stdout`/`stderr` are string-like objects (so they can carry `.json()`). Every ordinary string operation works — `.trim()`, `.split()`, `.includes()`, concatenation, template interpolation, `JSON.stringify`, and assigning to a `string` — but because the runtime value is a boxed `String`, `typeof` is `'object'` and a strict `stdout === 'literal'` is `false`. Use `stdout.trim()`, loose `==`, or `String(stdout)` if you need the primitive for a comparison.
 
