@@ -13,37 +13,203 @@ import { MAIN_FN, transformScript } from './transform';
 
 type ShellArg = string | number | boolean | null | undefined | string[];
 
-class ExecBuilder implements PromiseLike<number> {
+/**
+ * A captured output stream: a `String` object that also carries a `.json()`
+ * helper, so `output.stdout.json()` parses it while every ordinary string
+ * operation (`.trim()`, `.includes()`, concatenation, template literals) still
+ * works. Typed as `string & {...}` so it stays assignable to `string`.
+ *
+ * The runtime value is a boxed `String`, so `typeof` is `'object'` and a strict
+ * `===` against a string literal is `false` — use `.trim()`, loose `==`, or
+ * `String(stream)` when a primitive is needed for a comparison.
+ */
+type OutputStream = string & { json<T = any>(): T };
+
+function streamJson<T = any>(this: String): T {
+	return JSON.parse(this.toString()) as T;
+}
+
+/** Box a captured stream string and attach the `.json()` helper. */
+function makeStream(value: string): OutputStream {
+	return Object.assign(new String(value), { json: streamJson }) as unknown as OutputStream;
+}
+
+/** Remove a single trailing newline (`\n` or `\r\n`) — shell `$(...)`-style. */
+function trimTrailingNewline(s: string): string {
+	return s.replace(/\r?\n$/, '');
+}
+
+/**
+ * Result of awaiting a `$` command: the captured streams plus the exit code.
+ * `toString()` returns stdout (trailing newline trimmed) so a command's output
+ * can be string-coerced inline, while `stdout`/`stderr` are the raw streams,
+ * each carrying a `.json()` helper.
+ */
+class ProcessOutput {
+	readonly stdout: OutputStream;
+	readonly stderr: OutputStream;
+	readonly exitCode: number;
+
+	constructor(out: exec.ExecOutput) {
+		this.stdout = makeStream(out.stdout);
+		this.stderr = makeStream(out.stderr);
+		this.exitCode = out.exitCode;
+	}
+
+	/** stdout with a single trailing newline (`\n` or `\r\n`) removed. */
+	toString(): string {
+		return trimTrailingNewline(this.stdout);
+	}
+}
+
+/**
+ * Thrown when a `$` command exits non-zero (unless `.nothrow()` was chained).
+ * Carries the captured `stdout`/`stderr`/`exitCode` so a `catch` can inspect
+ * the failure without re-running the command.
+ */
+class ProcessError extends Error {
+	readonly stdout: OutputStream;
+	readonly stderr: OutputStream;
+	readonly exitCode: number;
+
+	constructor(command: string, output: ProcessOutput) {
+		const detail = output.stderr.trim();
+		super(`\`$\` command failed with exit code ${output.exitCode}: ${command}${detail ? `\n${detail}` : ''}`);
+		this.name = 'ProcessError';
+		this.stdout = output.stdout;
+		this.stderr = output.stderr;
+		this.exitCode = output.exitCode;
+	}
+}
+
+/**
+ * Lazy accessor for one stream of a `$` command that has not run yet — the
+ * value of the builder's `.stdout` / `.stderr` getters. Awaiting it runs the
+ * command and resolves to that stream (an `OutputStream`); `.json()` / `.text()`
+ * are paren-free terminals. This is what makes `await $`cmd`.stdout.json()` work
+ * without the `(await ...)` wrapper (`await` binds looser than `.`).
+ */
+class StreamPromise implements PromiseLike<OutputStream> {
+	constructor(
+		private readonly run: () => Promise<ProcessOutput>,
+		private readonly pick: (o: ProcessOutput) => OutputStream,
+	) {}
+
+	private resolve(): Promise<OutputStream> {
+		return this.run().then(this.pick);
+	}
+
+	then<T = OutputStream, R = never>(
+		onfulfilled?: ((v: OutputStream) => T | PromiseLike<T>) | null,
+		onrejected?: ((e: any) => R | PromiseLike<R>) | null,
+	): Promise<T | R> {
+		return this.resolve().then(onfulfilled, onrejected);
+	}
+
+	/** Run the command and resolve to this stream parsed as JSON. */
+	json<T = any>(): Promise<T> {
+		return this.resolve().then((s) => s.json<T>());
+	}
+
+	/** Run the command and resolve to this stream with a trailing newline trimmed. */
+	text(): Promise<string> {
+		return this.resolve().then(trimTrailingNewline);
+	}
+}
+
+class ExecBuilder implements PromiseLike<ProcessOutput> {
 	private cmd: string;
 	private args: string[];
 	private opts: exec.ExecOptions;
+	private throwOnNonZero: boolean;
 
-	constructor(cmd: string, args: string[], opts: exec.ExecOptions = {}) {
+	constructor(cmd: string, args: string[], opts: exec.ExecOptions = {}, throwOnNonZero = true) {
 		this.cmd = cmd;
 		this.args = args;
 		this.opts = opts;
+		this.throwOnNonZero = throwOnNonZero;
 	}
 
+	private with(patch: Partial<exec.ExecOptions>, throwOnNonZero = this.throwOnNonZero): ExecBuilder {
+		return new ExecBuilder(this.cmd, this.args, { ...this.opts, ...patch }, throwOnNonZero);
+	}
+
+	/** Pipe data to the command's stdin. */
 	input(data: Buffer | string): ExecBuilder {
-		return new ExecBuilder(this.cmd, this.args, {
-			...this.opts,
-			input: Buffer.isBuffer(data) ? data : Buffer.from(data),
-		});
+		return this.with({ input: Buffer.isBuffer(data) ? data : Buffer.from(data) });
 	}
 
+	/** Set the working directory. */
 	cwd(dir: string): ExecBuilder {
-		return new ExecBuilder(this.cmd, this.args, { ...this.opts, cwd: dir });
+		return this.with({ cwd: dir });
 	}
 
+	/** Suppress streaming stdout/stderr to the live log (still captured). */
 	silent(): ExecBuilder {
-		return new ExecBuilder(this.cmd, this.args, { ...this.opts, silent: true });
+		return this.with({ silent: true });
 	}
 
-	then<T = number, R = never>(
-		onfulfilled?: ((v: number) => T | PromiseLike<T>) | null,
+	/**
+	 * Merge/override environment variables for this command. @actions/exec
+	 * *replaces* the environment when `env` is set, so seed from the current
+	 * process env (or a prior `.env()`) and layer the overrides on top.
+	 */
+	env(vars: Record<string, string>): ExecBuilder {
+		const base = this.opts.env ?? (process.env as Record<string, string>);
+		return this.with({ env: { ...base, ...vars } });
+	}
+
+	/** Resolve even on a non-zero exit; read `exitCode` instead of catching. */
+	nothrow(): ExecBuilder {
+		return this.with({}, false);
+	}
+
+	/**
+	 * Lazy stdout accessor. Awaitable on its own (`await $`cmd`.stdout`) and the
+	 * reason `await $`cmd`.stdout.json()` works paren-free.
+	 */
+	get stdout(): StreamPromise {
+		return new StreamPromise(() => this.run(), (o) => o.stdout);
+	}
+
+	/** Lazy stderr accessor — `await $`cmd`.stderr` / `.stderr.json()`. */
+	get stderr(): StreamPromise {
+		return new StreamPromise(() => this.run(), (o) => o.stderr);
+	}
+
+	/**
+	 * Run the command and resolve to its stdout parsed as JSON. A terse stdout
+	 * shortcut equivalent to `.stdout.json()`: `await $`...`.json()`.
+	 */
+	json<T = any>(): Promise<T> {
+		return this.stdout.json<T>();
+	}
+
+	/**
+	 * Run the command and resolve to its stdout as a string with a single
+	 * trailing newline trimmed (like `toString()`): `await $`...`.text()`.
+	 */
+	text(): Promise<string> {
+		return this.stdout.text();
+	}
+
+	private async run(): Promise<ProcessOutput> {
+		// Always capture and never let getExecOutput throw on a non-zero exit
+		// (ignoreReturnCode), so stdout/stderr survive a failure; the throw
+		// decision is made here so the error can carry the captured output.
+		const raw = await exec.getExecOutput(this.cmd, this.args, { ...this.opts, ignoreReturnCode: true });
+		const output = new ProcessOutput(raw);
+		if (this.throwOnNonZero && raw.exitCode !== 0) {
+			throw new ProcessError([this.cmd, ...this.args].join(' '), output);
+		}
+		return output;
+	}
+
+	then<T = ProcessOutput, R = never>(
+		onfulfilled?: ((v: ProcessOutput) => T | PromiseLike<T>) | null,
 		onrejected?: ((e: any) => R | PromiseLike<R>) | null,
 	): Promise<T | R> {
-		return exec.exec(this.cmd, this.args, this.opts).then(onfulfilled, onrejected);
+		return this.run().then(onfulfilled, onrejected);
 	}
 }
 
