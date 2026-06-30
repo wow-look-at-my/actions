@@ -23,14 +23,17 @@ type ShellArg = string | number | boolean | null | undefined | string[];
  * `===` against a string literal is `false` — use `.trim()`, loose `==`, or
  * `String(stream)` when a primitive is needed for a comparison.
  */
+// eslint-disable-next-line local/no-callable-primitive-intersection -- known: $ output is a boxed branded-primitive (the documented TS footgun); pending the primitive-string redesign
 type OutputStream = string & { json<T = any>(): T };
 
+// eslint-disable-next-line @typescript-eslint/no-wrapper-object-types -- known: $ output is a boxed branded-primitive (the documented TS footgun); pending the primitive-string redesign
 function streamJson<T = any>(this: String): T {
 	return JSON.parse(this.toString()) as T;
 }
 
 /** Box a captured stream string and attach the `.json()` helper. */
 function makeStream(value: string): OutputStream {
+	// eslint-disable-next-line no-new-wrappers -- known: $ output is a boxed branded-primitive (the documented TS footgun); pending the primitive-string redesign
 	return Object.assign(new String(value), { json: streamJson }) as unknown as OutputStream;
 }
 
