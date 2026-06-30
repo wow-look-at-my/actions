@@ -2,6 +2,12 @@
 help:
 	@just --list
 
+# Lint the action sources for the "fake string" branded-primitive footgun
+# (and the stock boxing guards). Config: eslint.config.js (type-aware).
+lint:
+	pnpm install
+	pnpm exec eslint .
+
 build:
 	#!/usr/bin/env bash
 	# Compiles src/, bundles via esbuild, then stages the type definitions and

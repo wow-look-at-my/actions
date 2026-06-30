@@ -16,6 +16,7 @@ type ShellArg = string | number | boolean | null | undefined | string[];
  * and a strict `===` against a string literal is `false` — use `.trim()`, loose
  * `==`, or `String(stream)` when you need the primitive for a comparison.
  */
+// eslint-disable-next-line local/no-callable-primitive-intersection -- known: $ output is a boxed branded-primitive (the documented TS footgun); pending the primitive-string redesign
 type OutputStream = string & {
 	/** Parse this stream as JSON (throws if it is not valid JSON). */
 	json<T = any>(): T;
