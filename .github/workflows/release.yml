@@ -72,6 +72,12 @@ jobs:
       - name: Build typescript action
         working-directory: typescript
         run: just build
+      # Guard against the "fake string" branded-primitive footgun (boxed String
+      # output streams) creeping back in. Type-aware ESLint config under
+      # typescript/eslint.config.js; known existing cases carry scoped disables.
+      - name: Lint typescript action
+        working-directory: typescript
+        run: just lint
       - uses: ./typescript/test
 
   validate-slugs:
