@@ -11,19 +11,19 @@ Each action lives in its own directory with an `action.yml` file:
 - `download-release-binary/` - Node.js action (TypeScript compiled to JS)
 - `ghcr/` - Composite action (build, push, and prune container images on GHCR with 3 toggleable phases: login, build, push)
 - `ghcr-prune/` - Node.js action (prune old GHCR package versions)
-- `go-packages/` - Composite action (builds Go binaries and publishes multi-arch scratch container images to GHCR)
 - `multicmd/` - Composite action (YAML only)
 - `orphan-release/` - Composite action (shell script)
 - `smart-cache/` - Node.js action (TypeScript compiled to JS)
 - `cache-size/` - Node.js action (TypeScript compiled to JS)
 - `tag-runner/` - Node.js action (TypeScript compiled to JS)
+- `typescript/` - Node.js action (run an inline or file-based TypeScript script, tsc-validated, with injected helper globals)
 
 ## Reusable Workflows
 
 GitHub requires reusable workflows (`on: workflow_call`) to live in `.github/workflows/` (not in subdirectories, not elsewhere -- see [actions/runner#2102](https://github.com/actions/runner/issues/2102)). These are distinct from the repo's own CI workflows but share the same directory.
 
-- `.github/workflows/pr-management.yml` - Opens PRs for branches missing one, updates PRs behind their base. Uses the `typescript` action internally.
 - `.github/workflows/publish-ghcr.yml` - Builds a Docker image from a Dockerfile, pushes to GHCR on the push branch (default: master), and prunes old versions. Downloads a build artifact (default: `go-build`) before building. Used by docker-updater, auto-anywhere, and buildhost.
+- `.github/workflows/buildhost-preview.yml` - Deploys a pull-request preview to a [buildhost](https://github.com/wow-look-at-my/buildhost) static-site project and posts a sticky PR comment with the preview URL. Reuses `wow-look-at-my/buildhost/.github/actions/buildhost-publish-site@master` for the upload (tar.gz PUT, GitHub OIDC auth -- no static secret) and `wow-look-at-my/actions@typescript#latest` for the sticky comment (marker `<!-- pr-preview-buildhost -->`). PRs deploy to a `pr-<number>` branch, pushes to `branch/<ref-name>`; fork PRs are skipped (no OIDC token). This is the buildhost flavour of the PR-preview pair; the GitHub Pages flavour lives in `pr-preview.yml`. The extra README prose for this workflow lives in `.github/workflows/buildhost-preview.md` (appended verbatim by `generate-readme.sh`).
 
 ## Action Types
 

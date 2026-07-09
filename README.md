@@ -77,13 +77,6 @@ Reusable GitHub Actions.
 - uses: wow-look-at-my/actions@ghcr#latest
 ```
 
-### [Go Packages](go-packages/)
-
-```yml
-# Build Go binaries with go-toolchain and publish multi-arch scratch container images to GHCR..
-- uses: wow-look-at-my/actions@go-packages#latest
-```
-
 ### [Multi-Command](multicmd/)
 
 ```yml
@@ -147,13 +140,57 @@ Reusable GitHub Actions.
 
 ## Reusable Workflows
 
-### PR Management
+### PR Preview (buildhost)
 
 ```yml
 jobs:
-  pr-management:
-    uses: wow-look-at-my/actions/.github/workflows/pr-management.yml@master
+  buildhost-preview:
+    uses: wow-look-at-my/actions/.github/workflows/buildhost-preview.yml@master
 ```
+
+Deploys a pull-request preview to a [buildhost](https://github.com/wow-look-at-my/buildhost) static-site project and posts a sticky PR comment with the preview URL. Authenticates to buildhost via GitHub OIDC (no static secret). PRs deploy to a `pr-<number>` branch; pushes deploy to `branch/<ref-name>`.
+
+The caller must declare the permissions the reusable workflow needs (a reusable workflow cannot escalate beyond its caller):
+
+```yml
+name: PR preview
+on:
+  push:
+    branches: [master]
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+  actions: read         # only needed when using artifact-name
+  pull-requests: write  # sticky comment
+  id-token: write       # OIDC to buildhost
+
+jobs:
+  preview:
+    uses: wow-look-at-my/actions/.github/workflows/buildhost-preview.yml@master
+    with:
+      source-dir: ./site   # directory to deploy (defaults to ".")
+    secrets: inherit
+```
+
+To deploy a previously-uploaded run artifact instead of checking out `source-dir`, pass `artifact-name` (mutually exclusive with `source-dir`):
+
+```yml
+jobs:
+  preview:
+    uses: wow-look-at-my/actions/.github/workflows/buildhost-preview.yml@master
+    with:
+      artifact-name: build
+    secrets: inherit
+```
+
+Notes:
+
+- `project` defaults to the repository name. buildhost derives the project as the **lowercase** repo name and rejects a mismatch, so pin `project:` explicitly if your repo name is not already lowercase.
+- `public: true` serves the preview without buildhost auth even when the source repo/project is private (opt-in; default `false` keeps a private repo's preview gated).
+- Fork PRs are skipped (they receive no OIDC token and cannot authenticate to buildhost).
+- For the GitHub Pages flavour, use the `pr-preview.yml` reusable workflow instead.
 
 ### Publish to GHCR
 
@@ -162,3 +199,15 @@ jobs:
   publish-ghcr:
     uses: wow-look-at-my/actions/.github/workflows/publish-ghcr.yml@master
 ```
+
+To opt in to instant docker-updater notifications after a push (recommended for private images, which don't emit GitHub package webhooks), pass the secret. The URL defaults to `https://docker-updater-hook.pazer.io/`:
+
+```yml
+jobs:
+  publish-ghcr:
+    uses: wow-look-at-my/actions/.github/workflows/publish-ghcr.yml@master
+    secrets:
+      updater-webhook-secret: ${{ secrets.DOCKER_UPDATER_WEBHOOK_SECRET }}
+```
+
+Set `DOCKER_UPDATER_WEBHOOK_SECRET` (same value as docker-updater's `DOCKER_UPDATER_GITHUB_WEBHOOK_SECRET`) at the org level. Callers that omit the secret get today's behavior unchanged.
