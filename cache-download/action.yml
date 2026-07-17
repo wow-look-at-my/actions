@@ -11,7 +11,7 @@ inputs:
     required: false
     default: ''
   fail-if-missing:
-    description: 'Fail the job if the hand-off is not found'
+    description: 'Fail the job if the hand-off is not found (only an explicit false lets a miss continue)'
     required: false
     default: 'true'
 
