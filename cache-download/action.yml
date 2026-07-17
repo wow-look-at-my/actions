@@ -1,0 +1,28 @@
+name: Cache Download
+version: 1
+description: Restore files handed off by cache-upload earlier in the same workflow run (artifact-free replacement for actions/download-artifact)
+
+inputs:
+  name:
+    description: 'Hand-off name used by the matching cache-upload step'
+    required: true
+  path:
+    description: 'Destination directory to restore into (defaults to the workspace)'
+    required: false
+    default: ''
+  fail-if-missing:
+    description: 'Fail the job if the hand-off is not found (only an explicit false lets a miss continue)'
+    required: false
+    default: 'true'
+
+outputs:
+  download-path:
+    description: 'Absolute path of the directory the files were restored into'
+  cache-hit:
+    description: 'true on an exact key match (same run attempt); false when restored from an earlier attempt'
+  cache-matched-key:
+    description: 'Cache key actually restored (empty on a miss)'
+
+runs:
+  using: node24
+  main: dist/index.js
