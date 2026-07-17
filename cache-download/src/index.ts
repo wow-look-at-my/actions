@@ -46,6 +46,7 @@ import * as cacheHttpClient from '@actions/cache/lib/internal/cacheHttpClient';
 import {getCacheServiceVersion} from '@actions/cache/lib/internal/config';
 import {internalCacheTwirpClient} from '@actions/cache/lib/internal/shared/cacheTwirpClient';
 import {handoffKey, handoffRestorePrefix, handoffVersion, validateName} from './lib';
+import {missOutcome} from './miss';
 import {unpackFromFile} from './xfer';
 
 function requireEnv(name: string): string {
@@ -74,7 +75,7 @@ async function run(): Promise<void> {
 
 	const name = core.getInput('name', {required: true});
 	const pathInput = core.getInput('path');
-	const failOnCacheMiss = core.getBooleanInput('fail-on-cache-miss');
+	const failIfMissing = core.getBooleanInput('fail-if-missing');
 	validateName(name);
 
 	// Artifact parity: the destination is a real directory of the consumer's
@@ -94,11 +95,11 @@ async function run(): Promise<void> {
 		core.setOutput('cache-hit', 'false');
 		core.setOutput('cache-matched-key', '');
 		core.setOutput('download-path', '');
-		const message = `Hand-off '${name}' was not found for this workflow run (key ${key})`;
-		if (failOnCacheMiss) {
-			core.setFailed(`${message}. Did the producing job run cache-upload with the same name?`);
+		const outcome = missOutcome(name, key, restorePrefix, failIfMissing);
+		if (outcome.fail) {
+			core.setFailed(outcome.message);
 		} else {
-			core.info(`${message}; continuing (fail-on-cache-miss is false)`);
+			core.info(outcome.message);
 		}
 		return;
 	}
