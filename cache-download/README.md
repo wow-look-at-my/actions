@@ -30,7 +30,7 @@ The archive is self-describing: a directory hand-off extracts its tree into the 
 - **Re-run all jobs**: the producer re-uploads under the new attempt and the exact key matches it.
 - Caveat: if a [`cache-cleanup`](../cache-cleanup/) job already deleted the failed run's entries (it runs on failure too, by design), "re-run failed jobs" has nothing left to restore — use "Re-run all jobs".
 
-A missing hand-off fails loudly: `fail-on-cache-miss` defaults to `true`, so the job aborts instead of silently continuing without its files. Set it to `'false'` for an optional hand-off and check the `cache-matched-key` output.
+**A missing hand-off fails loudly by default**: `fail-if-missing` defaults to `true`, so the job aborts instead of silently continuing without its files — the failure names the hand-off, the exact key tried, and the restore prefix. Only an explicit `fail-if-missing: 'false'` lets a miss continue (for a genuinely optional hand-off); check the `cache-hit` / `cache-matched-key` outputs in that case.
 
 ## Stability note
 
@@ -44,7 +44,7 @@ Known risk, deliberately accepted rather than mitigated: GitHub has changed this
 |------|----------|---------|-------------|
 | `name` | Yes | — | Hand-off name used by the matching `cache-upload` step |
 | `path` | No | workspace | Destination directory to restore into (created if missing) |
-| `fail-on-cache-miss` | No | `true` | Fail the job if the hand-off is not found |
+| `fail-if-missing` | No | `true` | Fail the job if the hand-off is not found (only an explicit `false` lets a miss continue) |
 
 ## Outputs
 
