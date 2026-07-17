@@ -40,6 +40,14 @@ Reusable GitHub Actions.
     paths: # Directories to measure (newline or space separated)
 ```
 
+### [Download Artifact (cache-backed)](download-artifact/)
+
+```yml
+# Download a cache-backed artifact that was uploaded by this repo's cache-backed upload-artifact action.
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/download-artifact/README.md
+- uses: wow-look-at-my/actions@download-artifact#latest
+```
+
 ### [Download Executable Artifact](download-exe/)
 
 ```yml
@@ -136,6 +144,16 @@ Reusable GitHub Actions.
 # Run an inline TypeScript script, validated with tsc, with helpful globals pre-injected..
 # Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/typescript/README.md
 - uses: wow-look-at-my/actions@typescript#latest
+```
+
+### [Upload Artifact (cache-backed)](upload-artifact/)
+
+```yml
+# Upload a build artifact via the Actions cache service -- a drop-in replacement for actions/upload-artifact that is immune to the artifact storage quota.
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/upload-artifact/README.md
+- uses: wow-look-at-my/actions@upload-artifact#latest
+  with:
+    path: # A file, directory or wildcard pattern that describes what to upload
 ```
 
 ## Reusable Workflows

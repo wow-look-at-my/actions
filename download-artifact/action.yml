@@ -24,7 +24,7 @@ inputs:
       The id of the workflow run whose upload should be downloaded. Defaults to
       the current run. An explicit other run-id works only when that run saved
       on a ref this run can restore from (the same branch, a PR's base branch,
-      or the default branch — cache entries are branch-scoped).
+      or the default branch -- cache entries are branch-scoped).
     required: false
     default: ${{ github.run_id }}
   repository:
@@ -35,18 +35,18 @@ inputs:
     default: ${{ github.repository }}
   pattern:
     description: >-
-      NOT SUPPORTED by the cache-backed implementation — setting it fails the
+      NOT SUPPORTED by the cache-backed implementation -- setting it fails the
       step. Download one artifact per step by its explicit name.
     required: false
   merge-multiple:
     description: >-
-      NOT SUPPORTED by the cache-backed implementation — setting it to true
+      NOT SUPPORTED by the cache-backed implementation -- setting it to true
       fails the step. Download one artifact per step by its explicit name.
     required: false
     default: 'false'
   artifact-ids:
     description: >-
-      NOT SUPPORTED by the cache-backed implementation — setting it fails the
+      NOT SUPPORTED by the cache-backed implementation -- setting it fails the
       step. Download one artifact per step by its explicit name.
     required: false
 

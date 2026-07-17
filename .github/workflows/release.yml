@@ -80,6 +80,156 @@ jobs:
         run: just lint
       - uses: ./typescript/test
 
+  # Integration self-test of the cache-backed artifact pair, upload half:
+  # builds ./upload-artifact from source and drives it for real against the
+  # Actions cache service (save, duplicate-save must fail, overwrite re-save
+  # must succeed). The download half runs in test-cache-artifact-download,
+  # which also deletes this run's selftest cache entries.
+  test-cache-artifact:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      - uses: extractions/setup-just@v2
+      # upload-artifact is a node24 action: its dist/ is not committed, so
+      # build it before the dogfood steps invoke it via `uses: ./upload-artifact`.
+      - name: Build upload-artifact action
+        working-directory: upload-artifact
+        run: just build
+      - name: Generate fixtures
+        run: |
+          mkdir -p fixtures/sub/deep
+          printf 'hello from the ghart selftest\n' > fixtures/top.txt
+          printf 'nested file\n' > fixtures/sub/deep/nested.txt
+          printf '#!/bin/sh\necho ok\n' > fixtures/sub/run.sh
+          chmod +x fixtures/sub/run.sh
+          printf 'a file with spaces in its name\n' > 'fixtures/sub/file with spaces.txt'
+          python3 -c 'import sys; sys.stdout.buffer.write(bytes(range(256)) * 4096)' > fixtures/blob.bin
+      - name: Upload selftest artifact
+        id: up
+        uses: ./upload-artifact
+        with:
+          name: ghart-selftest
+          path: fixtures
+      - name: Assert upload outputs
+        env:
+          KEY: ${{ steps.up.outputs.artifact-key }}
+          DIGEST: ${{ steps.up.outputs.artifact-digest }}
+        run: |
+          test -n "$KEY"
+          test -n "$DIGEST"
+          echo "artifact-key=$KEY"
+          echo "artifact-digest=$DIGEST"
+      # Cache keys are immutable: a second save of the same name must fail
+      # loudly (with the duplicate-key diagnosis), never silently no-op.
+      - name: Duplicate save (expected failure)
+        id: dup
+        continue-on-error: true
+        uses: ./upload-artifact
+        with:
+          name: ghart-selftest
+          path: fixtures
+      - name: Assert the duplicate save failed
+        if: steps.dup.outcome != 'failure'
+        run: |
+          echo "::error::the duplicate save was expected to fail but its outcome was '${{ steps.dup.outcome }}'"
+          exit 1
+      - name: Overwrite re-save
+        id: ow
+        uses: ./upload-artifact
+        with:
+          name: ghart-selftest
+          path: fixtures
+          overwrite: true
+      - name: Assert the overwrite re-save succeeded
+        env:
+          KEY: ${{ steps.ow.outputs.artifact-key }}
+          DIGEST: ${{ steps.ow.outputs.artifact-digest }}
+        run: |
+          test -n "$KEY"
+          test -n "$DIGEST"
+
+  # Download half of the cache-artifact self-test: restores what
+  # test-cache-artifact saved on another runner, diffs the tree, checks the
+  # expected failure of a nonexistent name, then deletes this run's selftest
+  # cache entries so they never linger against the repo's ~10 GB cache cap.
+  test-cache-artifact-download:
+    needs: test-cache-artifact
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      - uses: extractions/setup-just@v2
+      # download-artifact is a node24 action: its dist/ is not committed, so
+      # build it before the dogfood steps invoke it via `uses: ./download-artifact`.
+      - name: Build download-artifact action
+        working-directory: download-artifact
+        run: just build
+      - name: Regenerate the expected fixtures
+        run: |
+          mkdir -p fixtures/sub/deep
+          printf 'hello from the ghart selftest\n' > fixtures/top.txt
+          printf 'nested file\n' > fixtures/sub/deep/nested.txt
+          printf '#!/bin/sh\necho ok\n' > fixtures/sub/run.sh
+          chmod +x fixtures/sub/run.sh
+          printf 'a file with spaces in its name\n' > 'fixtures/sub/file with spaces.txt'
+          python3 -c 'import sys; sys.stdout.buffer.write(bytes(range(256)) * 4096)' > fixtures/blob.bin
+      - name: Download selftest artifact
+        id: dl
+        uses: ./download-artifact
+        with:
+          name: ghart-selftest
+          path: restored
+      - name: Assert the restored tree matches the fixtures
+        env:
+          DL_PATH: ${{ steps.dl.outputs.download-path }}
+        run: |
+          test -n "$DL_PATH"
+          diff -r fixtures "$DL_PATH"
+          test -x "$DL_PATH/sub/run.sh"
+      - name: Download of a nonexistent name (expected failure)
+        id: missdl
+        continue-on-error: true
+        uses: ./download-artifact
+        with:
+          name: ghart-no-such-artifact
+          path: nowhere
+      - name: Assert the nonexistent download failed
+        if: steps.missdl.outcome != 'failure'
+        run: |
+          echo "::error::the nonexistent-name download was expected to fail but its outcome was '${{ steps.missdl.outcome }}'"
+          exit 1
+      - name: Clean up this run's selftest caches
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ids=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/caches?key=ghart-v1-${GITHUB_RUN_ID}-&per_page=100" \
+            | jq -r '.actions_caches[].id')
+          for id in $ids; do
+            echo "deleting selftest cache entry id $id"
+            curl -sS -X DELETE -H "Authorization: Bearer $GH_TOKEN" \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/caches/${id}" \
+              -o /dev/null -w "  HTTP %{http_code}\n"
+          done
+
   validate-slugs:
     runs-on: ubuntu-latest
     steps:

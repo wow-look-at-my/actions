@@ -1,6 +1,6 @@
 name: Upload Artifact (cache-backed)
 version: 1
-description: Upload a build artifact via the Actions cache service — a drop-in replacement for actions/upload-artifact that is immune to the artifact storage quota
+description: Upload a build artifact via the Actions cache service -- a drop-in replacement for actions/upload-artifact that is immune to the artifact storage quota
 
 inputs:
   name:
@@ -62,7 +62,7 @@ outputs:
       this id is only meaningful to the cache-management APIs.
   artifact-url:
     description: >-
-      Always empty — cache-backed artifacts have no browser download URL.
+      Always empty -- cache-backed artifacts have no browser download URL.
       Publish human-download deliverables to buildhost instead.
   artifact-digest:
     description: 'SHA-256 hex digest of the payload tar that was uploaded.'

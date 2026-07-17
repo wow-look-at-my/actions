@@ -8,6 +8,7 @@ Each action lives in its own directory with an `action.yml` file:
 
 - `action-validator/` - Composite action (YAML only)
 - `branch-block/` - Composite action (shell script)
+- `download-artifact/` - Node.js action (cache-backed replacement for actions/download-artifact; pairs with `upload-artifact/`, shares its `ghart-v1` key/payload contract via a byte-identical `src/shared.ts`)
 - `download-release-binary/` - Node.js action (TypeScript compiled to JS)
 - `ghcr/` - Composite action (build, push, and prune container images on GHCR with 3 toggleable phases: login, build, push)
 - `ghcr-prune/` - Node.js action (prune old GHCR package versions)
@@ -17,6 +18,7 @@ Each action lives in its own directory with an `action.yml` file:
 - `cache-size/` - Node.js action (TypeScript compiled to JS)
 - `tag-runner/` - Node.js action (TypeScript compiled to JS)
 - `typescript/` - Node.js action (run an inline or file-based TypeScript script, tsc-validated, with injected helper globals)
+- `upload-artifact/` - Node.js action (cache-backed replacement for actions/upload-artifact: stores artifacts in the Actions cache service because the org's artifact storage is quota-blocked; pairs with `download-artifact/`)
 
 ## Reusable Workflows
 
