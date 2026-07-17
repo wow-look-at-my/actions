@@ -1,0 +1,26 @@
+name: Runner smoke test
+
+# Manual smoke test for the org's self-hosted ephemeral JIT runner fleets
+# (the gha-runner / gha-runner-dind hooks in wow-look-at-my/webhooks).
+# Dispatch it ONLY once those runners are live: a job targeting a
+# self-hosted label with no runner to serve it queues indefinitely.
+# runs-on must be EXACTLY one label -- the hooks drop multi-label jobs.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  wow-linux:
+    runs-on: wow-linux
+    timeout-minutes: 10
+    steps:
+      - run: echo "hello from wow-linux"
+      - run: uname -a
+
+  wow-dind:
+    runs-on: wow-dind
+    timeout-minutes: 10
+    steps:
+      - run: echo "hello from wow-dind"
+      - run: uname -a
+      - run: docker run --rm hello-world
