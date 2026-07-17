@@ -11,6 +11,7 @@ Each action lives in its own directory with an `action.yml` file:
 - `cache-cleanup/` - Node.js action (deletes a run's cache hand-offs and sweeps aged ones)
 - `cache-download/` - Node.js action (restores files handed off by cache-upload in the same run)
 - `cache-upload/` - Node.js action (hands files to later jobs in the same run via the actions cache)
+- `cloudflare-pages/` - Composite action (publish a directory to Cloudflare Pages by wrangler direct upload; credentials from secret-server via OIDC, green-warn no-op when unentitled)
 - `download-release-binary/` - Node.js action (TypeScript compiled to JS)
 - `ghcr/` - Composite action (build, push, and prune container images on GHCR with 3 toggleable phases: login, build, push)
 - `ghcr-prune/` - Node.js action (prune old GHCR package versions)
