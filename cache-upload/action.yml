@@ -1,0 +1,21 @@
+name: Cache Upload
+version: 1
+description: Hand files to later jobs in the same workflow run via the actions cache (artifact-free replacement for actions/upload-artifact)
+
+inputs:
+  name:
+    description: 'Hand-off name, unique within the workflow run (like an artifact name)'
+    required: true
+  path:
+    description: 'Files/directories to save (passed through to actions/cache/save path)'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Save files to run-scoped cache
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ inputs.path }}
+        key: cache-xfer-${{ inputs.name }}-${{ github.run_id }}-${{ github.run_attempt }}
+        enableCrossOsArchive: true

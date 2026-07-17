@@ -1,0 +1,36 @@
+name: Cache Download
+version: 1
+description: Restore files handed off by cache-upload earlier in the same workflow run (artifact-free replacement for actions/download-artifact)
+
+inputs:
+  name:
+    description: 'Hand-off name used by the matching cache-upload step'
+    required: true
+  path:
+    description: 'Files/directories to restore; must be byte-identical to the path given to cache-upload'
+    required: true
+  fail-on-cache-miss:
+    description: 'Fail the job if the hand-off is not found'
+    required: false
+    default: 'true'
+
+outputs:
+  cache-hit:
+    description: 'true on an exact key match (same run attempt); false when restored via the prefix restore-key'
+    value: ${{ steps.restore.outputs.cache-hit }}
+  cache-matched-key:
+    description: 'Key of the cache entry actually restored (empty on a miss)'
+    value: ${{ steps.restore.outputs.cache-matched-key }}
+
+runs:
+  using: composite
+  steps:
+    - name: Restore files from run-scoped cache
+      id: restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ inputs.path }}
+        key: cache-xfer-${{ inputs.name }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: cache-xfer-${{ inputs.name }}-${{ github.run_id }}-
+        fail-on-cache-miss: ${{ inputs.fail-on-cache-miss }}
+        enableCrossOsArchive: true
