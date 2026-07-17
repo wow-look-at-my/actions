@@ -74,7 +74,6 @@ jobs:
         with:
           name: ${{ inputs.artifact-name }}
           path: ${{ inputs.artifact-path }}
-          fail-on-cache-miss: true
 
       - uses: wow-look-at-my/actions@typescript#latest
         id: meta
