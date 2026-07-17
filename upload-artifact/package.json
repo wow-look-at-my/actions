@@ -1,0 +1,21 @@
+{
+  "name": "upload-artifact",
+  "version": "1.0.0",
+  "description": "Upload a build artifact via the Actions cache service",
+  "main": "dist/index.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@actions/cache": "^5.2.0",
+    "@actions/core": "^2.0.2",
+    "@actions/glob": "^0.5.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.10",
+    "esbuild": "^0.28.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
