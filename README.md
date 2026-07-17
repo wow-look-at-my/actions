@@ -69,6 +69,17 @@ Reusable GitHub Actions.
     path: # File or directory to hand off (a directory is captured as its contents)
 ```
 
+### [Cloudflare Pages](cloudflare-pages/)
+
+```yml
+# Publish a directory to Cloudflare Pages by direct upload (wrangler) - no Actions artifacts, no Cloudflare git integration. Credentials come from secret-server via OIDC (the caller must grant id-token: write permission); the first deploy auto-creates the Pages project; missing credentials default to a loud green no-op.
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/cloudflare-pages/README.md
+- uses: wow-look-at-my/actions@cloudflare-pages#latest
+  with:
+    directory: # Built/staged directory to upload
+    project-name: # Cloudflare Pages project name (auto-created on first use)
+```
+
 ### [Download Executable Artifact](download-exe/)
 
 ```yml
