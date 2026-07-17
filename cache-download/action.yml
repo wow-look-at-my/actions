@@ -7,30 +7,22 @@ inputs:
     description: 'Hand-off name used by the matching cache-upload step'
     required: true
   path:
-    description: 'Files/directories to restore; must be byte-identical to the path given to cache-upload'
-    required: true
+    description: 'Destination directory to restore into (defaults to the workspace)'
+    required: false
+    default: ''
   fail-on-cache-miss:
     description: 'Fail the job if the hand-off is not found'
     required: false
     default: 'true'
 
 outputs:
+  download-path:
+    description: 'Absolute path of the directory the files were restored into'
   cache-hit:
-    description: 'true on an exact key match (same run attempt); false when restored via the prefix restore-key'
-    value: ${{ steps.restore.outputs.cache-hit }}
+    description: 'true on an exact key match (same run attempt); false when restored from an earlier attempt'
   cache-matched-key:
-    description: 'Key of the cache entry actually restored (empty on a miss)'
-    value: ${{ steps.restore.outputs.cache-matched-key }}
+    description: 'Cache key actually restored (empty on a miss)'
 
 runs:
-  using: composite
-  steps:
-    - name: Restore files from run-scoped cache
-      id: restore
-      uses: actions/cache/restore@v4
-      with:
-        path: ${{ inputs.path }}
-        key: cache-xfer-${{ inputs.name }}-${{ github.run_id }}-${{ github.run_attempt }}
-        restore-keys: cache-xfer-${{ inputs.name }}-${{ github.run_id }}-
-        fail-on-cache-miss: ${{ inputs.fail-on-cache-miss }}
-        enableCrossOsArchive: true
+  using: node24
+  main: dist/index.js

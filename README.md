@@ -22,6 +22,14 @@ Reusable GitHub Actions.
     branch: # Branch name to block
 ```
 
+### [Cache Cleanup](cache-cleanup/)
+
+```yml
+# Delete this run's cache hand-offs and sweep aged ones left by crashed runs (housekeeping for cache-upload/cache-download).
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/cache-cleanup/README.md
+- uses: wow-look-at-my/actions@cache-cleanup#latest
+```
+
 ### [Cache Download](cache-download/)
 
 ```yml
@@ -30,7 +38,6 @@ Reusable GitHub Actions.
 - uses: wow-look-at-my/actions@cache-download#latest
   with:
     name: # Hand-off name used by the matching cache-upload step
-    path: # Files/directories to restore; must be byte-identical to the path given to cache-upload
 ```
 
 ### [Cache rg](cache-rg/)
@@ -54,12 +61,12 @@ Reusable GitHub Actions.
 ### [Cache Upload](cache-upload/)
 
 ```yml
-# Hand files to later jobs in the same workflow run via the actions cache (artifact-free replacement for actions/upload-artifact).
+# Hand a file or directory to later jobs in the same workflow run via the actions cache (artifact-free replacement for actions/upload-artifact).
 # Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/cache-upload/README.md
 - uses: wow-look-at-my/actions@cache-upload#latest
   with:
     name: # Hand-off name, unique within the workflow run (like an artifact name)
-    path: # Files/directories to save (passed through to actions/cache/save path)
+    path: # File or directory to hand off (a directory is captured as its contents)
 ```
 
 ### [Download Executable Artifact](download-exe/)
