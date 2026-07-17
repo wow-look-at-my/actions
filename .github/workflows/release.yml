@@ -80,6 +80,133 @@ jobs:
         run: just lint
       - uses: ./typescript/test
 
+  # Live end-to-end exercise of the cache hand-off trio against the real
+  # cache service: produce two hand-offs (tar + raw mode), consume them in a
+  # later job asserting contents and permission bits, then janitor the run's
+  # entries with cache-cleanup and prove via the documented REST list API
+  # that they are gone. Keys embed the run id, so concurrent runs never
+  # collide. All three are node24 actions whose dist/ is not committed, so
+  # each job builds the action it invokes before `uses: ./<dir>`.
+  test-cache-xfer-produce:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      - uses: extractions/setup-just@v2
+      - name: Build cache-upload
+        working-directory: cache-upload
+        run: just build
+      - name: Create fixtures
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/xfer-src/sub
+          echo "hello dir" > /tmp/xfer-src/plain.txt
+          echo "nested" > /tmp/xfer-src/sub/nested.txt
+          echo "dot" > /tmp/xfer-src/.hidden
+          printf '#!/bin/sh\necho ok\n' > /tmp/xfer-src/tool
+          chmod +x /tmp/xfer-src/tool
+          printf 'raw payload' > /tmp/xfer-raw-file
+          chmod 0755 /tmp/xfer-raw-file
+      - name: Upload directory hand-off (tar mode)
+        uses: ./cache-upload
+        with:
+          name: xfer-dir
+          path: /tmp/xfer-src
+      - name: Upload single-file hand-off (raw mode)
+        uses: ./cache-upload
+        with:
+          name: xfer-raw
+          path: /tmp/xfer-raw-file
+
+  test-cache-xfer-consume:
+    needs: test-cache-xfer-produce
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      - uses: extractions/setup-just@v2
+      - name: Build cache-download
+        working-directory: cache-download
+        run: just build
+      - name: Download directory hand-off
+        id: dl-dir
+        uses: ./cache-download
+        with:
+          name: xfer-dir
+          path: /tmp/xfer-out-dir
+      - name: Download single-file hand-off
+        id: dl-raw
+        uses: ./cache-download
+        with:
+          name: xfer-raw
+          path: /tmp/xfer-out-raw
+      - name: Assert restored contents, modes, and outputs
+        env:
+          DIR_CACHE_HIT: ${{ steps.dl-dir.outputs.cache-hit }}
+          DIR_DOWNLOAD_PATH: ${{ steps.dl-dir.outputs.download-path }}
+          RAW_MATCHED_KEY: ${{ steps.dl-raw.outputs.cache-matched-key }}
+        run: |
+          set -euo pipefail
+          [ "$(cat /tmp/xfer-out-dir/plain.txt)" = "hello dir" ]
+          [ "$(cat /tmp/xfer-out-dir/sub/nested.txt)" = "nested" ]
+          [ "$(cat /tmp/xfer-out-dir/.hidden)" = "dot" ]
+          [ -x /tmp/xfer-out-dir/tool ]
+          [ "$(/tmp/xfer-out-dir/tool)" = "ok" ]
+          [ "$(cat /tmp/xfer-out-raw/xfer-raw-file)" = "raw payload" ]
+          [ -x /tmp/xfer-out-raw/xfer-raw-file ]
+          [ "$DIR_CACHE_HIT" = "true" ]
+          [ "$DIR_DOWNLOAD_PATH" = "/tmp/xfer-out-dir" ]
+          [ "$RAW_MATCHED_KEY" = "cache-xfer-xfer-raw-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" ]
+
+  test-cache-xfer-cleanup:
+    needs: test-cache-xfer-consume
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write # cache-cleanup deletes cache entries via the REST API
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert this run's hand-off entries exist before cleanup
+        run: |
+          set -euo pipefail
+          dir=$(gh api "repos/${GITHUB_REPOSITORY}/actions/caches?key=cache-xfer-xfer-dir-${GITHUB_RUN_ID}-" --jq '.total_count')
+          raw=$(gh api "repos/${GITHUB_REPOSITORY}/actions/caches?key=cache-xfer-xfer-raw-${GITHUB_RUN_ID}-" --jq '.total_count')
+          echo "before cleanup: dir=$dir raw=$raw (want >0 each)"
+          [ "$dir" -gt 0 ]
+          [ "$raw" -gt 0 ]
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      - uses: extractions/setup-just@v2
+      - name: Build cache-cleanup
+        working-directory: cache-cleanup
+        run: just build
+      - name: Run cache-cleanup
+        uses: ./cache-cleanup
+      - name: Assert this run's hand-off entries are gone
+        run: |
+          set -euo pipefail
+          dir=$(gh api "repos/${GITHUB_REPOSITORY}/actions/caches?key=cache-xfer-xfer-dir-${GITHUB_RUN_ID}-" --jq '.total_count')
+          raw=$(gh api "repos/${GITHUB_REPOSITORY}/actions/caches?key=cache-xfer-xfer-raw-${GITHUB_RUN_ID}-" --jq '.total_count')
+          echo "after cleanup: dir=$dir raw=$raw (want 0 each)"
+          [ "$dir" = "0" ]
+          [ "$raw" = "0" ]
+
   validate-slugs:
     runs-on: ubuntu-latest
     steps:
