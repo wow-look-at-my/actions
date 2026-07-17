@@ -2,16 +2,27 @@ import * as core from '@actions/core';
 import * as fsp from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
-// Internal modules of the PINNED @actions/cache (exact version in
-// package.json; bundled into dist/ at release, so consumers never resolve it
-// again). These internals — not the public restoreCache() — are what let us
-// send our own (key, version) pair: the twirp v2 cache service takes both as
-// plain request parameters, and the path-derived version hash is purely
-// client-side convention. Driving these endpoints directly with the job's
-// ACTIONS_RUNTIME_TOKEN is established practice (docker buildx
-// `--cache-from type=gha` and sccache's GHA backend speak to the same
-// service); the real risk is protocol churn — the v1 REST API was sunset in
-// 2025 in favor of this twirp service — which pinning + bundling mitigates.
+// Internal modules of the pinned @actions/cache (exact version in
+// package.json; bundled into dist/ at release). These internals — not the
+// public restoreCache() — are what let us send our own (key, version) pair:
+// the twirp v2 cache service takes both as plain request parameters, and
+// the path-derived version hash is purely client-side convention. Driving
+// these endpoints directly with the job's ACTIONS_RUNTIME_TOKEN is
+// established practice (docker buildx `--cache-from type=gha` and sccache's
+// GHA backend speak to the same service).
+//
+// Known risk, deliberately accepted rather than mitigated: this protocol is
+// undocumented and GitHub has changed it before — the legacy REST flavor
+// was shut off in 2025 in favor of this twirp service. A bundled pin cannot
+// protect against a server-side shutdown; when the protocol moves again,
+// this action breaks LOUDLY (RPC errors → failed jobs, never silent
+// corruption) until @actions/cache is bumped here and the action
+// republished. The actual containment is the release model, not the pin:
+// every consumer rides the moving `<name>#latest` tags, so the fix lands
+// org-wide from this one repo without touching consumer workflows — unlike
+// 2025, where every action pinning an old @actions/cache had to update
+// independently. The pin/bundle itself just keeps releases hermetic and
+// reviewable.
 //
 // Verified against @actions/cache 5.2.0 sources:
 //   - internalCacheTwirpClient (lib/internal/shared/cacheTwirpClient.js:171,

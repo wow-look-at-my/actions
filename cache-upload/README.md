@@ -40,7 +40,9 @@ Caches are branch-scoped and LRU-evicted (unused for 7 days, or when the repo ex
 
 ## Stability note
 
-Upload and download drive the cache service's twirp v2 endpoints directly (with the job's own `ACTIONS_RUNTIME_TOKEN` / `ACTIONS_RESULTS_URL`, which the runner injects into every step — no `permissions:` needed). Driving these endpoints is established practice (docker buildx `--cache-to type=gha` and sccache's GHA backend do the same), but they are not a documented public API; the mitigation is that the client library is **pinned to an exact version and bundled** into the released action, so behavior only changes when this repo deliberately updates it. GHES (v1 cache service) is not supported.
+Upload and download drive the cache service's twirp v2 endpoints directly (with the job's own `ACTIONS_RUNTIME_TOKEN` / `ACTIONS_RESULTS_URL`, which the runner injects into every step — no `permissions:` needed). Driving these endpoints is established practice (docker buildx `--cache-to type=gha` and sccache's GHA backend do the same), but they are not a documented public API.
+
+Known risk, deliberately accepted rather than mitigated: GitHub has changed this protocol before — the legacy REST flavor was shut off in 2025 in favor of the twirp service — and a bundled pin cannot protect against a server-side shutdown. When the protocol moves again, these actions break **loudly** (RPC errors → failed jobs, never silent corruption) until `@actions/cache` is bumped here and the actions republished. The actual containment is the release model, not the pin: every consumer rides the moving `<name>#latest` tags, so the fix lands org-wide from this one repo without touching consumer workflows — unlike 2025, where every action pinning an old `@actions/cache` had to update independently. The pin/bundle itself just keeps releases hermetic and reviewable. GHES (v1 cache service) is not supported.
 
 ## Re-runs
 
