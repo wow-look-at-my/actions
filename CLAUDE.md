@@ -8,6 +8,9 @@ Each action lives in its own directory with an `action.yml` file:
 
 - `action-validator/` - Composite action (YAML only)
 - `branch-block/` - Composite action (shell script)
+- `cache-cleanup/` - Node.js action (deletes a run's cache hand-offs and sweeps aged ones)
+- `cache-download/` - Node.js action (restores files handed off by cache-upload in the same run)
+- `cache-upload/` - Node.js action (hands files to later jobs in the same run via the actions cache)
 - `download-release-binary/` - Node.js action (TypeScript compiled to JS)
 - `ghcr/` - Composite action (build, push, and prune container images on GHCR with 3 toggleable phases: login, build, push)
 - `ghcr-prune/` - Node.js action (prune old GHCR package versions)
