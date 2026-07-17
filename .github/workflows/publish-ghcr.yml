@@ -68,8 +68,6 @@ jobs:
               core.setFailed("Missing 'actions: read' permission — add it to your calling workflow's permissions block.");
             }
 
-      # go-toolchain@v1 no longer uploads a run artifact; producer jobs hand
-      # the build over via wow-look-at-my/actions@cache-upload#latest instead.
       - uses: wow-look-at-my/actions@cache-download#latest
         with:
           name: ${{ inputs.artifact-name }}

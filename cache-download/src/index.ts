@@ -74,7 +74,7 @@ async function run(): Promise<void> {
 
 	const name = core.getInput('name', {required: true});
 	const pathInput = core.getInput('path');
-	const failOnCacheMiss = core.getBooleanInput('fail-on-cache-miss');
+	const failOnCacheMiss = core.getBooleanInput('fail-if-missing');
 	validateName(name);
 
 	// Artifact parity: the destination is a real directory of the consumer's
@@ -98,7 +98,7 @@ async function run(): Promise<void> {
 		if (failOnCacheMiss) {
 			core.setFailed(`${message}. Did the producing job run cache-upload with the same name?`);
 		} else {
-			core.info(`${message}; continuing (fail-on-cache-miss is false)`);
+			core.info(`${message}; continuing (fail-if-missing is false)`);
 		}
 		return;
 	}

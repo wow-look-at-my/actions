@@ -10,7 +10,7 @@ inputs:
     description: 'Destination directory to restore into (defaults to the workspace)'
     required: false
     default: ''
-  fail-on-cache-miss:
+  fail-if-missing:
     description: 'Fail the job if the hand-off is not found'
     required: false
     default: 'true'
