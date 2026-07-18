@@ -22,10 +22,10 @@ jobs:
 
 One paginated pass over the repo's `cache-xfer-*` entries; an entry is deleted when either:
 
-1. **It belongs to this run** — key matches `cache-xfer-<name>-<run_id>-<attempt>` for the current `run_id`, any attempt. This is the normal end-of-run cleanup.
-2. **It is aged out** — its `last_accessed_at` (falling back to `created_at`) is older than `max-age` (default `12h`; `'0'` disables the sweep). This is what bounds leftovers from crashed/cancelled runs whose own cleanup never ran: every subsequent run janitors the namespace, no cron needed. The service's 7-day-unused GC remains the final backstop.
+1. **It belongs to this run** — key matches `cache-xfer-<run_id>-<name>-<attempt>` for the current `run_id`, any attempt. During the v2 transition the pre-v2 (name-first) layout `cache-xfer-<name>-<run_id>-<attempt>` is matched too, so a mid-rollout run mixing old and new producers is still fully cleaned. This is the normal end-of-run cleanup.
+2. **It is aged out** — its `last_accessed_at` (falling back to `created_at`) is older than `max-age` (default `12h`; `'0'` disables the sweep). This is what bounds leftovers from crashed/cancelled runs whose own cleanup never ran: every subsequent run janitors the namespace, no cron needed. The sweep keys off the entry's timestamps, not its key layout, so it covers both layouts by construction. The service's 7-day-unused GC remains the final backstop.
 
-With `name` set, both phases are scoped to that one hand-off name.
+With `name` set, both phases are scoped to that one hand-off name. (Under the run-id-first layout a name is no longer a key prefix, so the listing always covers the whole `cache-xfer-` namespace and the name scoping is applied client-side — against both layouts.)
 
 Because cleanup runs on **failure too**, a failed run's hand-offs are deleted at its end — after that, "Re-run failed jobs" cannot restore them (the producing jobs are gone from the re-run as well), so use **"Re-run all jobs"**. Within a run, and for re-run-all, the download side's attempt-prefix fallback still applies.
 

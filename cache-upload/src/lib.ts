@@ -21,8 +21,20 @@ export const KEY_PREFIX = 'cache-xfer';
  * Bump the trailing revision whenever the envelope layout or codec set
  * changes: mixed-revision producers/consumers then land on different
  * versions, turning a would-be misparse into a clean cache miss.
+ *
+ * v2: run-id-first key layout (`cache-xfer-<run_id>-<name>-<attempt>`) and
+ * the envelope header now carries the hand-off `name` (nameless discovery).
  */
-export const VERSION_SEED = 'wow-look-at-my/actions/cache-xfer/v1';
+export const VERSION_SEED = 'wow-look-at-my/actions/cache-xfer/v2';
+
+/**
+ * TRANSITION (remove with the named-download legacy fallback once the v2
+ * rollout is done): the v1 seed, still sent by pre-v2 cache-upload
+ * producers. A NAMED download falls back to the v1 (key, version) pair when
+ * the v2 lookup misses, so a new-layout consumer riding `#latest` keeps
+ * working against an old-layout producer mid-rollout.
+ */
+export const LEGACY_VERSION_SEED = 'wow-look-at-my/actions/cache-xfer/v1';
 
 /** Magic bytes opening every hand-off archive. */
 export const ENVELOPE_MAGIC = 'WXFR1';
@@ -42,9 +54,19 @@ export function validateName(name: string): void {
 	}
 }
 
-/** Exact key for this hand-off: unique per (name, run, attempt). */
+function escapeRegExp(s: string): string {
+	return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Exact key for this hand-off: unique per (name, run, attempt). The run id
+ * comes FIRST so every key of one run shares the run-scoped prefix below —
+ * that is what makes nameless discovery safe: a prefix search scoped to the
+ * current run can never match another run's entry (the dash after the run
+ * id anchors it against longer run ids).
+ */
 export function handoffKey(name: string, runId: string, runAttempt: string): string {
-	const key = `${KEY_PREFIX}-${name}-${runId}-${runAttempt}`;
+	const key = `${KEY_PREFIX}-${runId}-${name}-${runAttempt}`;
 	if (key.length > MAX_KEY_LENGTH) {
 		throw new Error(`Hand-off cache key is ${key.length} characters; the cache service allows at most ${MAX_KEY_LENGTH}. Use a shorter 'name'.`);
 	}
@@ -52,17 +74,61 @@ export function handoffKey(name: string, runId: string, runAttempt: string): str
 }
 
 /**
- * Run-scoped restore prefix: matches any attempt of this run, so
+ * Name-scoped restore prefix: matches any attempt of this run, so
  * "re-run failed jobs" (new attempt, producer not re-run) still restores the
  * newest earlier attempt's files.
  */
 export function handoffRestorePrefix(name: string, runId: string): string {
-	return `${KEY_PREFIX}-${name}-${runId}-`;
+	return `${KEY_PREFIX}-${runId}-${name}-`;
+}
+
+/**
+ * Run-scoped restore prefix: matches EVERY hand-off of this run (any name,
+ * any attempt) — the nameless-discovery search. The run-id-first key layout
+ * guarantees it can never cross runs.
+ */
+export function runRestorePrefix(runId: string): string {
+	return `${KEY_PREFIX}-${runId}-`;
+}
+
+/**
+ * Extract the hand-off name from a (current-layout) key of run `runId`, or
+ * undefined for anything else — old-layout keys, other runs, foreign
+ * namespaces. The attempt segment is numeric-terminal, so a name containing
+ * dashes (even dash-digit segments) parses greedily and correctly.
+ */
+export function nameFromKey(key: string, runId: string): string | undefined {
+	const match = new RegExp(`^${KEY_PREFIX}-${escapeRegExp(runId)}-(.+)-\\d+$`).exec(key);
+	return match?.[1];
 }
 
 /** The constant version sent with every CreateCacheEntry/GetCacheEntryDownloadURL. */
 export function handoffVersion(): string {
 	return crypto.createHash('sha256').update(VERSION_SEED).digest('hex');
+}
+
+// ---------------------------------------------------------------------------
+// TRANSITION (remove with the named-download legacy fallback once every
+// producer runs a v2 cache-upload): the pre-v2 key layout put the name first
+// — `cache-xfer-<name>-<run_id>-<attempt>` — which is exactly why nameless
+// discovery was impossible (a nameless prefix search could match another
+// run's entry). Only a NAMED download may consult these; a nameless
+// old-layout prefix search would reintroduce the cross-run bug.
+// ---------------------------------------------------------------------------
+
+/** TRANSITION: exact key under the pre-v2 (name-first) layout. */
+export function legacyHandoffKey(name: string, runId: string, runAttempt: string): string {
+	return `${KEY_PREFIX}-${name}-${runId}-${runAttempt}`;
+}
+
+/** TRANSITION: restore prefix under the pre-v2 (name-first) layout. */
+export function legacyHandoffRestorePrefix(name: string, runId: string): string {
+	return `${KEY_PREFIX}-${name}-${runId}-`;
+}
+
+/** TRANSITION: the version pre-v2 producers saved under. */
+export function legacyHandoffVersion(): string {
+	return crypto.createHash('sha256').update(LEGACY_VERSION_SEED).digest('hex');
 }
 
 /**
@@ -75,10 +141,16 @@ export function handoffVersion(): string {
  * download side recreate `<dest>/<basename>` with its permission bits.
  * mode 'tar' carries a directory's contents as a tar stream (exec bits and
  * symlinks preserved by tar itself).
+ *
+ * `name` is the hand-off name the producer saved under — what lets a
+ * nameless download report which hand-off it picked without trusting the
+ * key. Optional on parse: v1 envelopes (reachable only through the named
+ * download's TRANSITION legacy fallback) predate it.
  */
 export interface EnvelopeHeader {
 	mode: 'tar' | 'raw';
 	codec: 'zstd';
+	name?: string;
 	basename?: string;
 	fileMode?: number;
 }
@@ -126,6 +198,9 @@ export function parseEnvelope(buf: Buffer): {header: EnvelopeHeader; dataOffset:
 	}
 	if (header.codec !== 'zstd') {
 		throw new Error(`Envelope codec '${String(header.codec)}' is not supported by this version of the action`);
+	}
+	if (header.name !== undefined && (typeof header.name !== 'string' || header.name === '')) {
+		throw new Error(`Envelope name ${JSON.stringify(header.name)} is not a non-empty string`);
 	}
 	if (header.mode === 'raw') {
 		if (typeof header.basename !== 'string' || header.basename === '' || header.basename === '.' || header.basename === '..' || header.basename.includes('/') || header.basename.includes('\\')) {

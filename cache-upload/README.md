@@ -18,12 +18,14 @@ Restore in a later job with [`cache-download`](../cache-download/) using the sam
 The payload is packed locally and stored through the cache service under a run-unique key:
 
 ```
-cache-xfer-<name>-<run_id>-<run_attempt>
+cache-xfer-<run_id>-<name>-<run_attempt>
 ```
+
+The **run id comes first**, so every hand-off of one run shares the run-scoped prefix `cache-xfer-<run_id>-` — that is what lets a nameless [`cache-download`](../cache-download/) discover this run's hand-off without knowing its name, with no risk of matching another run's entry.
 
 - A **directory** is captured as its **contents**: `tar -C <dir> .` streamed through `zstd --fast=2` (exec bits, symlinks, and dotfiles preserved by tar).
 - A **single file** takes a raw fast path — no tar process at all; the file streams straight through zstd, and the archive records its basename and permission bits so the download side recreates `<dest>/<basename>` exactly.
-- The archive is self-describing (a small `WXFR1` envelope header names the mode and codec), so the download side needs nothing but the `name`.
+- The archive is self-describing (a small `WXFR1` envelope header names the mode, codec, and the hand-off `name`), so the download side needs nothing at all — a nameless `cache-download` discovers the run's hand-off and reports which name it picked.
 - Nothing is buffered whole in memory — packing is pure child-process streaming.
 
 Unlike `actions/cache`, the entry's **version** is a constant (sha256 of a fixed format-revision literal), not a hash of the path spec — which is why upload and download have **no path contract at all**. The version literal is bumped when the payload format changes, so mixed-revision producers/consumers get a clean miss instead of a misparse.
@@ -46,7 +48,7 @@ Known risk, deliberately accepted rather than mitigated: GitHub has changed this
 
 ## Re-runs
 
-The exact key includes `run_attempt`; the matching `cache-download` also tries the prefix `cache-xfer-<name>-<run_id>-`, so "re-run failed jobs" (new attempt, succeeded producer not re-run) restores the newest earlier attempt's hand-off, while "re-run all jobs" exact-matches the new attempt. Caveat: if a [`cache-cleanup`](../cache-cleanup/) job already deleted the failed run's entries, "re-run failed jobs" has nothing to restore — use "Re-run all jobs".
+The exact key includes `run_attempt`; the matching `cache-download` also tries the prefix `cache-xfer-<run_id>-<name>-`, so "re-run failed jobs" (new attempt, succeeded producer not re-run) restores the newest earlier attempt's hand-off, while "re-run all jobs" exact-matches the new attempt. Caveat: if a [`cache-cleanup`](../cache-cleanup/) job already deleted the failed run's entries, "re-run failed jobs" has nothing to restore — use "Re-run all jobs".
 
 ## Inputs
 
