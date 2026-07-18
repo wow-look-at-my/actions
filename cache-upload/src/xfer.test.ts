@@ -31,9 +31,10 @@ test('directory round-trip preserves tree, exec bits, symlinks, dotfiles', async
 	await fsp.symlink('plain.txt', path.join(src, 'link'));
 
 	const archive = path.join(work, 'archive.wxfr');
-	const packed = await packToFile(src, archive);
+	const packed = await packToFile(src, archive, 'tree-handoff');
 	assert.equal(packed.mode, 'tar');
 	assert.equal(packed.codec, 'zstd');
+	assert.equal(packed.name, 'tree-handoff');
 
 	const {header} = await readEnvelope(archive);
 	assert.deepEqual(header, packed);
@@ -64,8 +65,9 @@ test('single-file round-trip uses raw mode and restores basename + mode', async 
 	await fsp.writeFile(file, body, {mode: 0o755});
 
 	const archive = path.join(work, 'archive.wxfr');
-	const packed = await packToFile(file, archive);
+	const packed = await packToFile(file, archive, 'toolchain');
 	assert.equal(packed.mode, 'raw');
+	assert.equal(packed.name, 'toolchain');
 	assert.equal(packed.basename, 'go-toolchain');
 	assert.equal((packed.fileMode as number) & 0o111, 0o111);
 
@@ -78,7 +80,7 @@ test('single-file round-trip uses raw mode and restores basename + mode', async 
 
 test('packToFile rejects a missing path', async () => {
 	const work = await tempDir();
-	await assert.rejects(packToFile(path.join(work, 'nope'), path.join(work, 'a.wxfr')), /does not exist/);
+	await assert.rejects(packToFile(path.join(work, 'nope'), path.join(work, 'a.wxfr'), 'x'), /does not exist/);
 	await fsp.rm(work, {recursive: true, force: true});
 });
 

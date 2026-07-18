@@ -84,7 +84,7 @@ async function run(): Promise<void> {
 	const tempDir = await fsp.mkdtemp(path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'cache-xfer-'));
 	const archivePath = path.join(tempDir, 'handoff.wxfr');
 	try {
-		const header = await packToFile(source, archivePath);
+		const header = await packToFile(source, archivePath, name);
 		const archiveSize = (await fsp.stat(archivePath)).size;
 		core.info(`Packed '${source}' (${header.mode}) into ${archiveSize} byte archive`);
 

@@ -6,22 +6,47 @@ function escapeRegExp(s: string): string {
 }
 
 /**
- * REST list prefix: scoped to one hand-off name when given, otherwise the
- * whole cache-xfer namespace. The list API's `key` parameter is documented as
- * "An explicit key or prefix for identifying the cache".
+ * REST list prefix: always the whole cache-xfer namespace. The current
+ * (run-id-first) key layout is `cache-xfer-<run_id>-<name>-<attempt>`, so a
+ * hand-off name is no longer a key prefix — name scoping happens client-side
+ * via keyMatchesName. The list API's `key` parameter is documented as "An
+ * explicit key or prefix for identifying the cache".
  */
-export function listPrefix(name?: string): string {
-	return name ? `${KEY_PREFIX}-${name}-` : `${KEY_PREFIX}-`;
+export function listPrefix(): string {
+	return `${KEY_PREFIX}-`;
 }
 
 /**
- * Does `key` belong to run `runId` (any attempt)? Keys are
- * `cache-xfer-<name>-<runId>-<attempt>`; the dash before runId anchors the
- * match, so a runId can never match inside another run's longer id.
+ * Does `key` belong to run `runId` (any attempt), optionally scoped to one
+ * hand-off name? Matches BOTH key layouts during the v2 transition:
+ *
+ *   current: `cache-xfer-<runId>-<name>-<attempt>`  (run-id-first)
+ *   legacy:  `cache-xfer-<name>-<runId>-<attempt>`  (pre-v2; TRANSITION —
+ *            keep until no pre-v2 cache-upload can still be producing)
+ *
+ * The dashes around runId anchor it, so a runId can never match inside
+ * another run's longer id.
  */
 export function isRunEntry(key: string, runId: string, name?: string): boolean {
 	const nameSegment = name === undefined ? '.+' : escapeRegExp(name);
-	return new RegExp(`^${KEY_PREFIX}-${nameSegment}-${escapeRegExp(runId)}-\\d+$`).test(key);
+	const run = escapeRegExp(runId);
+	const current = new RegExp(`^${KEY_PREFIX}-${run}-${nameSegment}-\\d+$`);
+	const legacy = new RegExp(`^${KEY_PREFIX}-${nameSegment}-${run}-\\d+$`);
+	return current.test(key) || legacy.test(key);
+}
+
+/**
+ * Does `key` carry hand-off name `name` under EITHER layout? Used to scope
+ * the aged sweep client-side (the run-id-first layout made name-prefix
+ * listing impossible). A key whose two interpretations disagree (an
+ * all-numeric name) matches if either reads as `name` — over-matching is
+ * acceptable for cleanup, under-matching would leak entries.
+ */
+export function keyMatchesName(key: string, name: string): boolean {
+	const escaped = escapeRegExp(name);
+	const current = new RegExp(`^${KEY_PREFIX}-\\d+-${escaped}-\\d+$`);
+	const legacy = new RegExp(`^${KEY_PREFIX}-${escaped}-\\d+-\\d+$`);
+	return current.test(key) || legacy.test(key);
 }
 
 /** Parse a max-age like '12h', '90m', '2d'; '0' disables. Returns milliseconds. */

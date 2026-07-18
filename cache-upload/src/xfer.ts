@@ -73,7 +73,9 @@ async function tarInvocation(): Promise<{cmd: string; extraArgs: string[]; fixPa
 }
 
 /**
- * Pack `sourcePath` into the envelope archive at `archivePath`.
+ * Pack `sourcePath` into the envelope archive at `archivePath`, stamping the
+ * hand-off `name` into the envelope header (what lets a nameless download
+ * report which hand-off it picked).
  *
  * A single regular file takes the raw fast path: its bytes stream straight
  * through zstd with no tar process, and the envelope carries basename +
@@ -82,7 +84,7 @@ async function tarInvocation(): Promise<{cmd: string; extraArgs: string[]; fixPa
  * by tar). Nothing is ever buffered whole in JS — header write aside, both
  * paths are pure child-process streaming.
  */
-export async function packToFile(sourcePath: string, archivePath: string): Promise<EnvelopeHeader> {
+export async function packToFile(sourcePath: string, archivePath: string, name: string): Promise<EnvelopeHeader> {
 	let stats: fs.Stats;
 	try {
 		stats = await fsp.stat(sourcePath);
@@ -95,11 +97,12 @@ export async function packToFile(sourcePath: string, archivePath: string): Promi
 		header = {
 			mode: 'raw',
 			codec: 'zstd',
+			name,
 			basename: path.basename(path.resolve(sourcePath)),
 			fileMode: stats.mode & 0o7777
 		};
 	} else if (stats.isDirectory()) {
-		header = {mode: 'tar', codec: 'zstd'};
+		header = {mode: 'tar', codec: 'zstd', name};
 	} else {
 		throw new Error(`path '${sourcePath}' is neither a regular file nor a directory`);
 	}

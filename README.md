@@ -36,8 +36,6 @@ Reusable GitHub Actions.
 # Restore files handed off by cache-upload earlier in the same workflow run (artifact-free replacement for actions/download-artifact).
 # Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/cache-download/README.md
 - uses: wow-look-at-my/actions@cache-download#latest
-  with:
-    name: # Hand-off name used by the matching cache-upload step
 ```
 
 ### [Cache rg](cache-rg/)
