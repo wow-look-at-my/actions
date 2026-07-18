@@ -1,6 +1,6 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
-import {isAgedOut, isRunEntry, listPrefix, parseMaxAge} from './lib';
+import {isAgedOut, isRunEntry, keyMatchesName, listPrefix, parseMaxAge} from './lib';
 
 // The cache service has no per-entry TTL, so short hand-off lifetime is done
 // by explicit deletion through the DOCUMENTED public REST API (unlike the
@@ -35,7 +35,10 @@ async function run(): Promise<void> {
 
 	const octokit = github.getOctokit(token);
 	const {owner, repo} = github.context.repo;
-	const prefix = listPrefix(name);
+	// Always list the whole cache-xfer namespace: under the run-id-first key
+	// layout a name is no longer a key prefix, so name scoping is applied
+	// client-side below (both key layouts, during the v2 transition).
+	const prefix = listPrefix();
 
 	// One paginated pass over the namespace; each entry is then judged twice:
 	// belongs-to-this-run (delete, all attempts) or aged-out (sweep). The
@@ -55,6 +58,9 @@ async function run(): Promise<void> {
 	let freedBytes = 0;
 	for (const entry of caches) {
 		if (entry.id === undefined || !entry.key) {
+			continue;
+		}
+		if (name && !keyMatchesName(entry.key, name)) {
 			continue;
 		}
 		let reason: string | undefined;
