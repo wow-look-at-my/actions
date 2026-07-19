@@ -16,7 +16,6 @@ Each action lives in its own directory with an `action.yml` file:
 - `ghcr/` - Composite action (build, push, and prune container images on GHCR with 3 toggleable phases: login, build, push)
 - `ghcr-prune/` - Node.js action (prune old GHCR package versions)
 - `multicmd/` - Composite action (YAML only)
-- `no-all-builds-job/` - Node.js action (fails CI when any job is named all-builds — the recurring trick that shadows the org's required all-builds gate in the GitHub UI)
 - `orphan-release/` - Composite action (shell script)
 - `smart-cache/` - Node.js action (TypeScript compiled to JS)
 - `cache-size/` - Node.js action (TypeScript compiled to JS)

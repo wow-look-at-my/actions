@@ -123,14 +123,6 @@ Reusable GitHub Actions.
 - uses: wow-look-at-my/actions@multicmd#latest
 ```
 
-### [no-all-builds-job](no-all-builds-job/)
-
-```yml
-# Fail CI when any job is named all-builds — a known trick that shadows the org's required all-builds gate (required-builds-manager) in the GitHub UI.
-# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/no-all-builds-job/README.md
-- uses: wow-look-at-my/actions@no-all-builds-job#latest
-```
-
 ### [No Scripts Check](no-scripts-action/)
 
 ```yml
