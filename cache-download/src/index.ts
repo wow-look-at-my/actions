@@ -36,9 +36,22 @@ import * as path from 'path';
 //     resolves the exact key first, then the restore keys by prefix — the
 //     flow mirrors restoreCacheV2 in lib/cache.js.
 //   - cacheHttpClient.downloadCache(signedDownloadUrl, archivePath,
-//     {useAzureSdk: true}) routes Azure blob URLs to
-//     downloadUtils.downloadCacheStorageSDK
-//     (lib/internal/cacheHttpClient.js, downloadCache).
+//     {useAzureSdk: false, concurrentBlobDownloads: true}) routes Azure blob
+//     URLs to downloadUtils.downloadCacheHttpClientConcurrent
+//     (lib/internal/cacheHttpClient.js, downloadCache). These are upstream's
+//     own defaults (lib/options.js), and the dispatcher comment there says
+//     the concurrent HttpClient path exists "to work around blob SDK issue".
+//     We pass them EXPLICITLY (not by omitting the argument) to document
+//     that the Azure SDK path (downloadCacheStorageSDK) is deliberately
+//     avoided: its response-stream teardown can reject with Node's
+//     ERR_STREAM_PREMATURE_CLOSE after every byte has already arrived
+//     ("Received ... (100.0%)" then "Premature close"), and nothing retries
+//     it — downloadCache is called once, so the blip fails the whole job
+//     (seen in prod 2026-07-19: github-state-mirror run 29669934747; the
+//     rerun restored the same entry fine). The concurrent path downloads
+//     4 MiB ranged segments each wrapped in downloadSegmentRetry (5 retries
+//     + a 30s per-attempt timeout), which absorbs exactly this class of
+//     transient stream failure.
 //   - config.getCacheServiceVersion() (lib/internal/config.js:18-24) gates
 //     v2 on the runner-set ACTIONS_CACHE_SERVICE_V2 flag and always reports
 //     v1 on GHES; this action supports only the v2 service (github.com).
@@ -234,7 +247,9 @@ async function run(): Promise<void> {
 	const archivePath = path.join(tempDir, 'handoff.wxfr');
 	let resolvedName: string;
 	try {
-		await cacheHttpClient.downloadCache(resolved.lookup.signedDownloadUrl, archivePath, {useAzureSdk: true});
+		// Explicitly upstream's own defaults, NOT the Azure SDK path — see the
+		// downloadCache note in the header comment for why.
+		await cacheHttpClient.downloadCache(resolved.lookup.signedDownloadUrl, archivePath, {useAzureSdk: false, concurrentBlobDownloads: true});
 		const header = await unpackFromFile(archivePath, destination);
 		// The envelope is the authority on the name (v1 archives, reachable
 		// only via the named legacy fallback, predate the field).
