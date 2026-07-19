@@ -1,10 +1,18 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {GUARDED_NAME, REQUIRED_BUILDS_MANAGER_APP_ID, findCheckRunViolations, findJobViolations, formatViolation, isShadowJobName, scanWorkflowYaml} from './detect';
+import {ALREADY_RAN_ENV, GUARDED_NAME, REQUIRED_BUILDS_MANAGER_APP_ID, findCheckRunViolations, findJobViolations, formatViolation, isShadowJobName, scanWorkflowYaml, shouldSkip} from './detect';
 
 test('pinned constants', () => {
 	assert.equal(GUARDED_NAME, 'all-builds');
 	assert.equal(REQUIRED_BUILDS_MANAGER_APP_ID, 3007670);
+	assert.equal(ALREADY_RAN_ENV, 'NO_ALL_BUILDS_JOB_ALREADY_RAN');
+});
+
+test('shouldSkip treats only a non-empty sentinel as already-ran', () => {
+	assert.equal(shouldSkip(undefined), false);
+	assert.equal(shouldSkip(''), false); // empty string = absent (the dogfood harness resets with `NO_ALL_BUILDS_JOB_ALREADY_RAN=`)
+	assert.equal(shouldSkip('1'), true);
+	assert.equal(shouldSkip('true'), true); // any non-empty value counts
 });
 
 test('isShadowJobName matches the guarded name in every rendered form', () => {
