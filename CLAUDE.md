@@ -54,4 +54,5 @@ The release workflow (`release.yml`) handles Node.js actions by:
 
 Composite actions are released directly without a build step.
 
+The Node/pnpm/just setup (+ optional `just build`) that release.yml's jobs share lives in the internal composite action `.github/actions/setup-and-build/` — under `.github/`, so the detect job never releases it; checkout stays in each job because a local `uses: ./...` only resolves after checkout.
 Tags are published from **master only** (branch pushes still build/test but never tag). Each action's numbered tag (`<name>#N`) auto-increments from the existing tags on each release, and `<name>#latest` is force-moved alongside it; an action whose content is unchanged since its `#latest` is skipped (no new tag). The `version:` field still present in some `action.yml` files is vestigial and no longer consumed.
