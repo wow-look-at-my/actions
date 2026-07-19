@@ -54,4 +54,13 @@ The release workflow (`release.yml`) handles Node.js actions by:
 
 Composite actions are released directly without a build step.
 
-Tags are published from **master only** (branch pushes still build/test but never tag). Each action's numbered tag (`<name>#N`) auto-increments from the existing tags on each release, and `<name>#latest` is force-moved alongside it; an action whose content is unchanged since its `#latest` is skipped (no new tag). The `version:` field still present in some `action.yml` files is vestigial and no longer consumed.
+Master publishes each action's plain tags: the numbered tag (`<name>#N`) auto-increments from the existing tags on each release, `<name>#latest` is force-moved alongside it (numbered tags are never force-pushed), and an action whose content is unchanged since its `#latest` is skipped (no new tag). Other branches publish per-branch **test tags** (`<name>/<branch>#N` / `<name>/<branch>#latest`, same auto-increment/dedup/no-force semantics within the branch namespace) — but only for actions whose published content differs from master's `<name>#latest`, so a branch push tags exactly the actions it changed and consumers can test them pre-merge via `uses: wow-look-at-my/actions@<name>/<branch>#latest`. `dependabot/*` branches never publish tags (their pushes still build and test). Branch tags are swept by the cleanup job once their branch is deleted. The `version:` field still present in some `action.yml` files is vestigial and no longer consumed.
+
+## Tag/release system — do not redesign
+
+The tag/release system (per-branch test tags, `#latest`, auto-incremented `#N`, release.yml + orphan-release) is deliberate and operator-owned.
+
+- Do NOT remove, master-gate, or "simplify" any part of it as a side effect of another task. Per-branch tag publishing in particular is the sanctioned way to test an action before it merges — it stays.
+- Never reference an unmerged action by commit SHA from another action or workflow. To consume in-progress action code, use `wow-look-at-my/actions@<action>/<branch>#latest`, or ask the operator to merge first.
+- Changes to release.yml / orphan-release beyond a surgical, explicitly-requested bug fix require operator sign-off in the task itself. Propose in the PR body; do not self-authorize a redesign.
+- History: branch tag publishing was removed once (PR #124, 2026-07-19) and had to be restored — do not repeat it.

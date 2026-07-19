@@ -351,17 +351,23 @@ jobs:
             fi
           done
 
-      # Tags are published from master only. The version auto-increments from
-      # the existing <action>#N tags (orphan-release.sh), and an action whose
-      # content is unchanged since <action>#latest is skipped entirely.
+      # Master publishes plain <action>#N / <action>#latest (auto-increment,
+      # dedup-skip when content matches #latest). Other branches publish
+      # per-branch TEST tags <action>/<branch>#N / #latest — but only for
+      # actions whose content differs from master's <action>#latest, so a
+      # branch push tags exactly what it changed (the sanctioned way to test
+      # an action before merging: uses: ...@<action>/<branch>#latest).
+      # Dependabot branches never publish tags; the same skips live in
+      # orphan-release.sh as defense in depth.
       - name: Create orphan tag
-        if: github.ref == 'refs/heads/master'
+        if: ${{ startsWith(github.ref, 'refs/heads/') && !startsWith(github.ref, 'refs/heads/dependabot/') }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: >
           ./orphan-release/orphan-release.sh
           --source "${{ matrix.action }}"
           --exclude "src node_modules tsconfig.json justfile package.json pnpm-lock.yaml pnpm-workspace.yaml"
+          --include-branch
 
   release-composite:
     needs: [cleanup, detect]
@@ -372,14 +378,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Tags are published from master only; versions auto-increment and
-      # unchanged actions are skipped (see release-node's orphan tag step).
+      # Same tag policy as release-node's orphan tag step: master publishes
+      # plain tags; other branches publish per-branch test tags for changed
+      # actions only; dependabot branches never tag.
       - name: Create orphan tags
-        if: github.ref == 'refs/heads/master'
+        if: ${{ startsWith(github.ref, 'refs/heads/') && !startsWith(github.ref, 'refs/heads/dependabot/') }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           for action in $(echo '${{ needs.detect.outputs.composite }}' | jq -r '.[]'); do
-            ./orphan-release/orphan-release.sh --source "$action"
+            ./orphan-release/orphan-release.sh --source "$action" --include-branch
           done
 

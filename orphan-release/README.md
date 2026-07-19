@@ -54,7 +54,25 @@ With `--include-branch`, non-main branches get branch-prefixed tags:
 - `my-action/feature-branch#1`
 - `my-action/feature-branch#latest`
 
-This is useful for GitHub Actions where you want separate tags per branch.
+This is useful for GitHub Actions where you want separate tags per branch —
+consumers test in-progress code with
+`uses: owner/repo@my-action/feature-branch#latest` before it merges.
+
+In auto-increment mode, branch releases are scoped so branch pushes cannot
+spam the tag namespace:
+
+- A branch release is skipped entirely when the content is identical to the
+  master-level `my-action#latest` — content master already serves has nothing
+  to test from a branch. A brand-new action with no `my-action#latest` yet
+  always publishes.
+- It is also skipped when identical to the existing
+  `my-action/feature-branch#latest`, the same dedup the master path applies,
+  so repeat pushes don't churn numbers.
+- Branch numbered tags auto-increment within the branch namespace and are
+  never force-pushed; only the branch `#latest` is force-moved.
+- `dependabot/*` branches never publish tags at all.
+
+Branch tags are swept by cleanup mode once their branch is deleted.
 
 ## Cleanup
 

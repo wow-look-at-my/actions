@@ -36,6 +36,15 @@ branch="${GITHUB_REF_NAME:-$(git rev-parse --abbrev-ref HEAD)}"
 # Determine if we should use branch in tag names
 use_branch=false
 if [ "$include_branch" = true ] && [ "$branch" != "master" ] && [ "$branch" != "main" ]; then
+	# Dependabot branches never publish tags: five open dependabot PRs once
+	# minted 133 branch tags. Their pushes still build and test; the release
+	# is a clean no-op.
+	case "$branch" in
+		dependabot/*)
+			echo "[$name] Dependabot branch '$branch': skipping release (no tags)"
+			exit 0
+			;;
+	esac
 	use_branch=true
 fi
 
@@ -49,6 +58,7 @@ fi
 # Auto-increment version if not specified
 auto_version=false
 latest_tree=""
+base_latest_tree=""
 if [ -z "$version" ]; then
 	auto_version=true
 	git fetch --tags --quiet 2>/dev/null || true
@@ -59,6 +69,13 @@ if [ -z "$version" ]; then
 	# Remember what #latest currently contains so an unchanged re-release can
 	# be skipped instead of burning a new number on identical content.
 	latest_tree=$(git rev-parse --verify --quiet "refs/tags/$prefix#latest^{tree}" || true)
+	# On a branch, also remember the master-level #latest: branch tags exist
+	# to test CHANGED actions, so content identical to what master already
+	# serves publishes nothing. A brand-new action with no master #latest
+	# yet always publishes.
+	if [ "$use_branch" = true ]; then
+		base_latest_tree=$(git rev-parse --verify --quiet "refs/tags/$name#latest^{tree}" || true)
+	fi
 elif ! [[ "$version" =~ ^[0-9]+$ ]]; then
 	# Guard against garbage from upstream lookups (e.g. yq printing "null"
 	# for a missing field), which used to mint tags like "name#null".
@@ -92,9 +109,19 @@ echo "::endgroup::"
 # byte-identical to what #latest already serves: tree OIDs are content-derived,
 # so comparing them across repos is exact. Without this, every repo push would
 # mint a new number for every action even when nothing about it changed.
-if [ "$auto_version" = true ] && [ -n "$latest_tree" ] && [ "$(git rev-parse 'HEAD^{tree}')" = "$latest_tree" ]; then
-	echo "[$prefix] Content identical to $prefix#latest; skipping release (no new tag)"
-	exit 0
+# On a branch, the same comparison also runs against the master-level #latest
+# first: an action that doesn't differ from what master serves has nothing to
+# test, so it gets no branch tags at all.
+if [ "$auto_version" = true ]; then
+	staged_tree=$(git rev-parse 'HEAD^{tree}')
+	if [ -n "$base_latest_tree" ] && [ "$staged_tree" = "$base_latest_tree" ]; then
+		echo "[$prefix] Content identical to $name#latest (master); skipping branch release (no new tag)"
+		exit 0
+	fi
+	if [ -n "$latest_tree" ] && [ "$staged_tree" = "$latest_tree" ]; then
+		echo "[$prefix] Content identical to $prefix#latest; skipping release (no new tag)"
+		exit 0
+	fi
 fi
 
 echo "::group::[$first_tag] Push tags"
