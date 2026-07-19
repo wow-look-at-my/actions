@@ -25,6 +25,12 @@ Layer 3 is load-bearing: org consumers' `permissions:` blocks mostly zero out `a
 
 Findings are not deduplicated across layers — the same job may be reported by more than one layer.
 
+## Run-Once Within a Job
+
+The guard deduplicates itself within a single job. A pass that found **nothing** exports the env var `NO_ALL_BUILDS_JOB_ALREADY_RAN=1` into the job env (`$GITHUB_ENV`); a later invocation in the same job — e.g. the go-toolchain composite followed by buildhost-publish, each embedding this guard — sees the sentinel before constructing any API client, logs `guard already ran earlier in this job — skipping duplicate check`, and exits successfully at near-zero cost. The sentinel is deliberately **not** exported when violations were found: a failure suppressed with `continue-on-error` never lets a later invocation skip past the swallowed violation — it re-detects. Cross-job deduplication is out of scope; every job re-checks.
+
+`NO_ALL_BUILDS_JOB_ALREADY_RAN` is an internal dedupe mechanism, not an input. Setting it manually to suppress the guard is working around the check — the exact thing the failure message forbids.
+
 ## Inputs
 
 | Name | Required | Default | Description |

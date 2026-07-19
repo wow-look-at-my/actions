@@ -178,12 +178,19 @@ jobs:
       # failure path execs the built bundle with a shell-level assignment
       # pointing GITHUB_WORKSPACE at the fixture — same entry point the action
       # runs. The bogus token exercises the API layers' warn-and-skip path.
+      # The success step above exported the run-once sentinel into the job
+      # env, so it is explicitly cleared here (empty = absent) — otherwise
+      # this run would skip instead of detecting the fixture violation.
       - name: Guard must fail on the shadowed fixture (file-scan layer)
         id: shadowed
         continue-on-error: true
-        run: GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/no-all-builds-job/test/fixtures/shadowed" INPUT_TOKEN=x node no-all-builds-job/dist/index.js
+        run: NO_ALL_BUILDS_JOB_ALREADY_RAN= GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/no-all-builds-job/test/fixtures/shadowed" INPUT_TOKEN=x node no-all-builds-job/dist/index.js
       - name: Assert the shadowed fixture failed the guard
         run: test "${{ steps.shadowed.outcome }}" = "failure"
+      # Run-once skip proof: with the sentinel set, the guard must exit 0 on
+      # the same violating fixture — the skip wins before any check runs.
+      - name: Guard skips when the run-once sentinel is set
+        run: NO_ALL_BUILDS_JOB_ALREADY_RAN=1 GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/no-all-builds-job/test/fixtures/shadowed" INPUT_TOKEN=x node no-all-builds-job/dist/index.js
 
   test-typescript:
     runs-on: ubuntu-latest
