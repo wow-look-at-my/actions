@@ -252,11 +252,12 @@ jobs:
         uses: ./action-validator
         with:
           # Only the workflow files are validated here. The repo's action.yml
-          # files carry a non-standard `version:` field (consumed by this
-          # workflow's release jobs for orphan tags) and `using: node24`, both of
-          # which action-validator's bundled schema rejects -- so a non-matching
-          # glob skips them (nullglob -> zero iterations) while every workflow,
-          # including the reusable ones, is schema-checked.
+          # files carry a non-standard `version:` field (vestigial -- release
+          # versions now auto-increment from the existing tags) and
+          # `using: node24`, both of which action-validator's bundled schema
+          # rejects -- so a non-matching glob skips them (nullglob -> zero
+          # iterations) while every workflow, including the reusable ones, is
+          # schema-checked.
           actions: 'no-such-dir/*/action.yml'
           workflows: '.github/workflows/*.yml'
 
@@ -321,13 +322,6 @@ jobs:
       - name: Validate action.yml
         run: |
           action="${{ matrix.action }}"
-          version=$(yq '.version' "$action/action.yml")
-          if [ "$version" = "null" ] || [ -z "$version" ]; then
-            echo "::error::$action/action.yml is missing required 'version' field"
-            exit 1
-          fi
-          echo "version=$version" >> $GITHUB_OUTPUT
-
           main=$(yq '.runs.main' "$action/action.yml")
           if [ "$main" != "null" ] && [ -n "$main" ]; then
             if [ ! -f "$action/$main" ]; then
@@ -345,7 +339,6 @@ jobs:
               fi
             fi
           done
-        id: version
 
       - name: Validate JS files are parseable
         working-directory: ${{ matrix.action }}
@@ -358,15 +351,17 @@ jobs:
             fi
           done
 
+      # Tags are published from master only. The version auto-increments from
+      # the existing <action>#N tags (orphan-release.sh), and an action whose
+      # content is unchanged since <action>#latest is skipped entirely.
       - name: Create orphan tag
+        if: github.ref == 'refs/heads/master'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: >
           ./orphan-release/orphan-release.sh
           --source "${{ matrix.action }}"
-          --version "${{ steps.version.outputs.version }}"
           --exclude "src node_modules tsconfig.json justfile package.json pnpm-lock.yaml pnpm-workspace.yaml"
-          --include-branch
 
   release-composite:
     needs: [cleanup, detect]
@@ -377,16 +372,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Tags are published from master only; versions auto-increment and
+      # unchanged actions are skipped (see release-node's orphan tag step).
       - name: Create orphan tags
+        if: github.ref == 'refs/heads/master'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           for action in $(echo '${{ needs.detect.outputs.composite }}' | jq -r '.[]'); do
-            version=$(yq '.version' "$action/action.yml")
-            if [ "$version" = "null" ] || [ -z "$version" ]; then
-              echo "::error::$action/action.yml is missing required 'version' field"
-              exit 1
-            fi
-            ./orphan-release/orphan-release.sh --source "$action" --version "$version" --include-branch
+            ./orphan-release/orphan-release.sh --source "$action"
           done
 
