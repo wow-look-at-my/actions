@@ -34,16 +34,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: ./.github/actions/setup-and-build
         with:
-          node-version: "22"
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
-      - uses: extractions/setup-just@v2
-      - name: Build no-scripts-action
-        working-directory: no-scripts-action
-        run: just build
+          action-dir: no-scripts-action
       - uses: ./no-scripts-action
 
   test-cache-rg:
@@ -63,13 +56,8 @@ jobs:
       actions: write # cache-cleanup deletes entries; nameless discovery lists them
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
-      - uses: extractions/setup-just@v2
+      # Toolchain only -- this job builds three directories itself below.
+      - uses: ./.github/actions/setup-and-build
       # The shared sources are a byte-identity convention; a drifted copy
       # would silently fork the wire format between upload and download.
       - name: Shared cache-xfer sources are byte-identical
@@ -161,17 +149,10 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
-      - uses: extractions/setup-just@v2
       # node24 action: dist/ is not committed, so build before `uses: ./...`.
-      - name: Build no-all-builds-job
-        working-directory: no-all-builds-job
-        run: just build
+      - uses: ./.github/actions/setup-and-build
+        with:
+          action-dir: no-all-builds-job
       - name: Guard passes on this repo
         uses: ./no-all-builds-job
       # The runner refuses to override GITHUB_* vars via step `env:`, so the
@@ -200,18 +181,11 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
-      - uses: extractions/setup-just@v2
       # typescript is a node24 action: its dist/ is not committed, so build it
       # before the dogfood harness invokes it via `uses: ./typescript`.
-      - name: Build typescript action
-        working-directory: typescript
-        run: just build
+      - uses: ./.github/actions/setup-and-build
+        with:
+          action-dir: typescript
       # Guard against the "fake string" branded-primitive footgun (boxed String
       # output streams) creeping back in. Type-aware ESLint config under
       # typescript/eslint.config.js; known existing cases carry scoped disables.
@@ -298,19 +272,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - uses: ./.github/actions/setup-and-build
         with:
-          node-version: "22"
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
-
-      - uses: extractions/setup-just@v2
-
-      - name: Build
-        working-directory: ${{ matrix.action }}
-        run: just build
+          action-dir: ${{ matrix.action }}
 
       - name: Test
         working-directory: ${{ matrix.action }}
