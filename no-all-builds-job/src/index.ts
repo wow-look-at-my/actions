@@ -2,7 +2,7 @@ import * as core from '@actions/core';
 import * as github from '@actions/github';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
-import {GUARDED_NAME, findCheckRunViolations, findJobViolations, formatViolation, scanWorkflowYaml} from './detect';
+import {ALREADY_RAN_ENV, GUARDED_NAME, findCheckRunViolations, findJobViolations, formatViolation, scanWorkflowYaml, shouldSkip} from './detect';
 
 // The org's required merge check `all-builds` is a commit STATUS posted by
 // the required-builds-manager app — not a workflow job. Naming a workflow job
@@ -29,6 +29,15 @@ function errorMessage(error: unknown): string {
 }
 
 async function run(): Promise<void> {
+	// Same-job run-once: a clean pass earlier in this job exported the
+	// sentinel (see below), so a second embed of this guard in the same job
+	// (e.g. the go-toolchain composite followed by buildhost-publish) is a
+	// near-zero-cost skip. Checked before any API client construction.
+	if (shouldSkip(process.env[ALREADY_RAN_ENV])) {
+		core.info('no-all-builds-job: guard already ran earlier in this job — skipping duplicate check');
+		return;
+	}
+
 	const token = core.getInput('token');
 	const octokit = token ? github.getOctokit(token) : undefined;
 	if (!octokit) {
@@ -111,6 +120,11 @@ async function run(): Promise<void> {
 			workflowFileCount === undefined ? 'no workflow files' : `${workflowFileCount} workflow file(s)`
 		];
 		core.info(`OK — nothing named ${GUARDED_NAME} (${scanned.join(', ')})`);
+		// Clean pass ONLY: mark the job so a later embed of this guard skips.
+		// Never exported on the violation path below — a failure suppressed
+		// with continue-on-error must not make a later invocation skip past
+		// the swallowed violation.
+		core.exportVariable(ALREADY_RAN_ENV, '1');
 		return;
 	}
 
