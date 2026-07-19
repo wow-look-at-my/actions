@@ -49,7 +49,9 @@ Actions using `runs.using: composite` are pure YAML - no build step needed.
 The release workflow (`release.yml`) handles Node.js actions by:
 1. Auto-detecting which directories (at any depth) contain a `package.json`
 2. Running `just build` to install deps, typecheck, and bundle
-3. Validating `action.yml` (version field, runs.main exists)
+3. Validating `action.yml` (runs.main exists)
 4. Publishing via orphan release tags (excluding `src/`, `node_modules/`, `tsconfig.json`, `justfile`, `package.json`, `pnpm-lock.yaml`)
 
 Composite actions are released directly without a build step.
+
+Tags are published from **master only** (branch pushes still build/test but never tag). Each action's numbered tag (`<name>#N`) auto-increments from the existing tags on each release, and `<name>#latest` is force-moved alongside it; an action whose content is unchanged since its `#latest` is skipped (no new tag). The `version:` field still present in some `action.yml` files is vestigial and no longer consumed.
