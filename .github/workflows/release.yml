@@ -151,6 +151,40 @@ jobs:
       - name: Assert cleanup deleted both hand-offs
         run: test "${{ steps.cleanup.outputs.deleted-count }}" -ge 2
 
+  # Dogfood the all-builds name guard: it must pass on this repo (no job is
+  # ever named all-builds here) and fail on the shadowed fixture. The token is
+  # deliberately narrow so the run also shows the API layers degrading to
+  # warnings under a scoped-down token (informational — not asserted).
+  test-no-all-builds-job:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      - uses: extractions/setup-just@v2
+      # node24 action: dist/ is not committed, so build before `uses: ./...`.
+      - name: Build no-all-builds-job
+        working-directory: no-all-builds-job
+        run: just build
+      - name: Guard passes on this repo
+        uses: ./no-all-builds-job
+      # The runner refuses to override GITHUB_* vars via step `env:`, so the
+      # failure path execs the built bundle with a shell-level assignment
+      # pointing GITHUB_WORKSPACE at the fixture — same entry point the action
+      # runs. The bogus token exercises the API layers' warn-and-skip path.
+      - name: Guard must fail on the shadowed fixture (file-scan layer)
+        id: shadowed
+        continue-on-error: true
+        run: GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/no-all-builds-job/test/fixtures/shadowed" INPUT_TOKEN=x node no-all-builds-job/dist/index.js
+      - name: Assert the shadowed fixture failed the guard
+        run: test "${{ steps.shadowed.outcome }}" = "failure"
+
   test-typescript:
     runs-on: ubuntu-latest
     # repro3.ts in the dogfood harness makes a real authenticated octokit call
