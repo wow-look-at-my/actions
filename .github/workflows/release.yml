@@ -17,7 +17,7 @@ jobs:
         run: ./orphan-release/orphan-cleanup.sh
 
   check-readme:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
       - name: Check README is up-to-date
@@ -31,7 +31,7 @@ jobs:
           rm README.md.tmp
 
   no-scripts:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-and-build
@@ -40,7 +40,7 @@ jobs:
       - uses: ./no-scripts-action
 
   test-cache-rg:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./cache-rg/test
@@ -174,7 +174,7 @@ jobs:
         run: NO_ALL_BUILDS_JOB_ALREADY_RAN=1 GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/no-all-builds-job/test/fixtures/shadowed" INPUT_TOKEN=x node no-all-builds-job/dist/index.js
 
   test-typescript:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     # repro3.ts in the dogfood harness makes a real authenticated octokit call
     # (repos.get) with the default github-token, so the job needs read access.
     permissions:
@@ -195,7 +195,7 @@ jobs:
       - uses: ./typescript/test
 
   validate-slugs:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
       - name: Validate action slugs
@@ -219,7 +219,7 @@ jobs:
           fi
 
   validate-workflows:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
       - name: Validate workflow YAML with action-validator
@@ -237,7 +237,7 @@ jobs:
 
   detect:
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     outputs:
       node: ${{ steps.find.outputs.node }}
       composite: ${{ steps.find.outputs.composite }}
