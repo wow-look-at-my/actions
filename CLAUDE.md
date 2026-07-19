@@ -53,3 +53,5 @@ The release workflow (`release.yml`) handles Node.js actions by:
 4. Publishing via orphan release tags (excluding `src/`, `node_modules/`, `tsconfig.json`, `justfile`, `package.json`, `pnpm-lock.yaml`)
 
 Composite actions are released directly without a build step.
+
+The Node/pnpm/just setup (+ optional `just build`) that release.yml's jobs share lives in the internal composite action `.github/actions/setup-and-build/` — under `.github/`, so the detect job never releases it; checkout stays in each job because a local `uses: ./...` only resolves after checkout.
