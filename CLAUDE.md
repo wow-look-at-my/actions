@@ -8,10 +8,15 @@ Each action lives in its own directory with an `action.yml` file:
 
 - `action-validator/` - Composite action (YAML only)
 - `branch-block/` - Composite action (shell script)
+- `cache-cleanup/` - Node.js action (deletes a run's cache hand-offs and sweeps aged ones)
+- `cache-download/` - Node.js action (restores files handed off by cache-upload in the same run)
+- `cache-upload/` - Node.js action (hands files to later jobs in the same run via the actions cache)
+- `cloudflare-pages/` - Composite action (publish a directory to Cloudflare Pages by wrangler direct upload; credentials from secret-server via OIDC, green-warn no-op when unentitled)
 - `download-release-binary/` - Node.js action (TypeScript compiled to JS)
 - `ghcr/` - Composite action (build, push, and prune container images on GHCR with 3 toggleable phases: login, build, push)
 - `ghcr-prune/` - Node.js action (prune old GHCR package versions)
 - `multicmd/` - Composite action (YAML only)
+- `no-all-builds-job/` - Node.js action (fails CI when any job is named all-builds — the recurring trick that shadows the org's required all-builds gate in the GitHub UI)
 - `orphan-release/` - Composite action (shell script)
 - `smart-cache/` - Node.js action (TypeScript compiled to JS)
 - `cache-size/` - Node.js action (TypeScript compiled to JS)
@@ -22,7 +27,8 @@ Each action lives in its own directory with an `action.yml` file:
 
 GitHub requires reusable workflows (`on: workflow_call`) to live in `.github/workflows/` (not in subdirectories, not elsewhere -- see [actions/runner#2102](https://github.com/actions/runner/issues/2102)). These are distinct from the repo's own CI workflows but share the same directory.
 
-- `.github/workflows/publish-ghcr.yml` - Builds a Docker image from a Dockerfile, pushes to GHCR on the push branch (default: master), and prunes old versions. Downloads a build artifact (default: `go-build`) before building. Used by docker-updater, auto-anywhere, and buildhost.
+- `.github/workflows/publish-ghcr.yml` - Builds a Docker image from a Dockerfile, pushes to GHCR on the push branch (default: master), and prunes old versions. Restores the build fileset (default hand-off name: `go-build`) via `cache-download` before building — the producer job must have handed it off with `cache-upload` in the same run. Used by docker-updater, auto-anywhere, and buildhost.
+- `.github/workflows/buildhost-preview.yml` - Deploys a pull-request preview to a [buildhost](https://github.com/wow-look-at-my/buildhost) static-site project and posts a sticky PR comment with the preview URL. Reuses `wow-look-at-my/buildhost/.github/actions/buildhost-publish-site@master` for the upload (tar.gz PUT, GitHub OIDC auth -- no static secret) and `wow-look-at-my/actions@typescript#latest` for the sticky comment (marker `<!-- pr-preview-buildhost -->`). PRs deploy to a `pr-<number>` branch, pushes to `branch/<ref-name>`; fork PRs are skipped (no OIDC token). This is the buildhost flavour of the PR-preview pair; the GitHub Pages flavour lives in `pr-preview.yml`. The extra README prose for this workflow lives in `.github/workflows/buildhost-preview.md` (appended verbatim by `generate-readme.sh`).
 
 ## Action Types
 

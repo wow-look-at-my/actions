@@ -40,3 +40,13 @@ runs:
           exit 1
         fi
         echo "repro2 OK: top-level return value reached the result output"
+
+    # repro3.ts: the injected `octokit` must be authenticated out of the box from
+    # the `github-token` input (default ${{ github.token }}) -- NO `github-token`
+    # override here, NO `secrets:` plumbing, NO `getOctokit(...)` call. It makes a
+    # real authenticated octokit.rest.repos.get call; an unauthenticated octokit
+    # throws "Parameter token or opts.auth is required" and fails this step.
+    - name: "repro3.ts: injected octokit authenticated with the default token"
+      uses: ./typescript
+      with:
+        file: typescript/test/repro3.ts
