@@ -140,13 +140,16 @@ jobs:
         run: test "${{ steps.cleanup.outputs.deleted-count }}" -ge 2
 
   # Dogfood the all-builds name guard: it must pass on this repo (no job is
-  # ever named all-builds here) and fail on the shadowed fixture. The token is
-  # deliberately narrow so the run also shows the API layers degrading to
-  # warnings under a scoped-down token (informational — not asserted).
+  # ever named all-builds here) and fail on the shadowed fixture. The API
+  # layers are hard-required: this job grants actions:/checks: read so the
+  # passing run exercises them for real, and a bogus-token step asserts that
+  # layers which cannot run fail the guard.
   test-no-all-builds-job:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: read # the guard's run-jobs layer must be able to run
+      checks: read # the guard's check-runs layer must be able to run
     steps:
       - uses: actions/checkout@v4
       # node24 action: dist/ is not committed, so build before `uses: ./...`.
@@ -158,16 +161,28 @@ jobs:
       # The runner refuses to override GITHUB_* vars via step `env:`, so the
       # failure path execs the built bundle with a shell-level assignment
       # pointing GITHUB_WORKSPACE at the fixture — same entry point the action
-      # runs. The bogus token exercises the API layers' warn-and-skip path.
-      # The success step above exported the run-once sentinel into the job
-      # env, so it is explicitly cleared here (empty = absent) — otherwise
-      # this run would skip instead of detecting the fixture violation.
+      # runs. The explicitly empty token takes the documented no-token skip of
+      # the API layers, so this step's failure is attributable to the file
+      # scan alone. The success step above exported the run-once sentinel into
+      # the job env, so it is explicitly cleared here (empty = absent) —
+      # otherwise this run would skip instead of detecting the fixture
+      # violation.
       - name: Guard must fail on the shadowed fixture (file-scan layer)
         id: shadowed
         continue-on-error: true
-        run: NO_ALL_BUILDS_JOB_ALREADY_RAN= GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/no-all-builds-job/test/fixtures/shadowed" INPUT_TOKEN=x node no-all-builds-job/dist/index.js
+        run: NO_ALL_BUILDS_JOB_ALREADY_RAN= GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/no-all-builds-job/test/fixtures/shadowed" INPUT_TOKEN= node no-all-builds-job/dist/index.js
       - name: Assert the shadowed fixture failed the guard
         run: test "${{ steps.shadowed.outcome }}" = "failure"
+      # Hard-fail proof: with a token whose API layers cannot run, the guard
+      # must fail even though this repo has no violations — a layer that
+      # cannot scan is itself a blocking error (both layers are reported
+      # before the failure).
+      - name: Guard must fail when the API layers cannot run
+        id: layers
+        continue-on-error: true
+        run: NO_ALL_BUILDS_JOB_ALREADY_RAN= INPUT_TOKEN=x node no-all-builds-job/dist/index.js
+      - name: Assert the unrunnable API layers failed the guard
+        run: test "${{ steps.layers.outcome }}" = "failure"
       # Run-once skip proof: with the sentinel set, the guard must exit 0 on
       # the same violating fixture — the skip wins before any check runs.
       - name: Guard skips when the run-once sentinel is set
