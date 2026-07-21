@@ -34,13 +34,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: ./.github/actions/setup-and-build
         with:
-          version: latest
-      - uses: extractions/setup-just@v2
-      - name: Build no-scripts-action
-        working-directory: no-scripts-action
-        run: just build
+          action-dir: no-scripts-action
       - uses: ./no-scripts-action
 
   test-cache-rg:
@@ -48,6 +44,170 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./cache-rg/test
+
+  # Dogfood round-trip for the cache hand-off trio against the REAL cache
+  # service: upload -> nameless discovery -> named download -> ambiguity
+  # hard-error -> cleanup. Entries are run-scoped, so parallel CI runs never
+  # interfere.
+  test-cache-xfer:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write # cache-cleanup deletes entries; nameless discovery lists them
+    steps:
+      - uses: actions/checkout@v4
+      # Toolchain only -- this job builds three directories itself below.
+      - uses: ./.github/actions/setup-and-build
+      # The shared sources are a byte-identity convention; a drifted copy
+      # would silently fork the wire format between upload and download.
+      - name: Shared cache-xfer sources are byte-identical
+        run: |
+          for f in lib.ts lib.test.ts xfer.ts xfer.test.ts; do
+            cmp "cache-upload/src/$f" "cache-download/src/$f"
+          done
+      # node24 actions: dist/ is not committed, so build before `uses: ./...`.
+      - name: Build the cache hand-off trio
+        run: |
+          for a in cache-upload cache-download cache-cleanup; do
+            (cd "$a" && just build)
+          done
+      - name: Create hand-off payload
+        run: |
+          mkdir -p handoff-src/sub
+          echo "round-trip ${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" > handoff-src/hello.txt
+          echo nested > handoff-src/sub/nested.txt
+      - name: Upload hand-off (dogfood-a)
+        uses: ./cache-upload
+        with:
+          name: dogfood-a
+          path: handoff-src
+      - name: Nameless download discovers the single hand-off
+        id: nameless
+        uses: ./cache-download
+        with:
+          path: restore-nameless
+      - name: Assert nameless discovery picked dogfood-a
+        run: |
+          test "${{ steps.nameless.outputs.name }}" = "dogfood-a"
+          diff handoff-src/hello.txt restore-nameless/hello.txt
+          diff handoff-src/sub/nested.txt restore-nameless/sub/nested.txt
+      - name: Named download still works
+        id: named
+        uses: ./cache-download
+        with:
+          name: dogfood-a
+          path: restore-named
+      - name: Assert named download restored the files
+        run: |
+          test "${{ steps.named.outputs.cache-hit }}" = "true"
+          test "${{ steps.named.outputs.name }}" = "dogfood-a"
+          diff handoff-src/hello.txt restore-named/hello.txt
+      - name: Upload a second hand-off (dogfood-b)
+        uses: ./cache-upload
+        with:
+          name: dogfood-b
+          path: handoff-src/hello.txt
+      # The REST cache list can lag the twirp finalize by a moment; wait
+      # until both entries are visible so the ambiguity assert is not flaky.
+      - name: Wait for both hand-offs to be listable
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 15); do
+            n=$(curl -sf -H "Authorization: Bearer ${GH_TOKEN}" \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/caches?key=cache-xfer-${GITHUB_RUN_ID}-&per_page=100" \
+              | jq '[.actions_caches[].key] | length')
+            echo "listed ${n:-0} run-scoped entries"
+            [ "${n:-0}" -ge 2 ] && exit 0
+            sleep 2
+          done
+          echo "::error::cache list never showed both hand-offs"
+          exit 1
+      - name: Nameless download must hard-fail on ambiguity
+        id: ambiguous
+        continue-on-error: true
+        uses: ./cache-download
+        with:
+          path: restore-ambiguous
+      - name: Assert the ambiguous nameless download failed without restoring
+        run: |
+          test "${{ steps.ambiguous.outcome }}" = "failure"
+          test ! -e restore-ambiguous/hello.txt
+      - name: Cleanup deletes this run's entries
+        id: cleanup
+        uses: ./cache-cleanup
+      - name: Assert cleanup deleted both hand-offs
+        run: test "${{ steps.cleanup.outputs.deleted-count }}" -ge 2
+
+  # Dogfood the all-builds name guard: it must pass on this repo (no job is
+  # ever named all-builds here) and fail on the shadowed fixture. The API
+  # layers are hard-required: this job grants actions:/checks: read so the
+  # passing run exercises them for real, and a bogus-token step asserts that
+  # layers which cannot run fail the guard.
+  test-no-all-builds-job:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read # the guard's run-jobs layer must be able to run
+      checks: read # the guard's check-runs layer must be able to run
+    steps:
+      - uses: actions/checkout@v4
+      # node24 action: dist/ is not committed, so build before `uses: ./...`.
+      - uses: ./.github/actions/setup-and-build
+        with:
+          action-dir: no-all-builds-job
+      - name: Guard passes on this repo
+        uses: ./no-all-builds-job
+      # The runner refuses to override GITHUB_* vars via step `env:`, so the
+      # failure path execs the built bundle with a shell-level assignment
+      # pointing GITHUB_WORKSPACE at the fixture — same entry point the action
+      # runs. The explicitly empty token takes the documented no-token skip of
+      # the API layers, so this step's failure is attributable to the file
+      # scan alone. The success step above exported the run-once sentinel into
+      # the job env, so it is explicitly cleared here (empty = absent) —
+      # otherwise this run would skip instead of detecting the fixture
+      # violation.
+      - name: Guard must fail on the shadowed fixture (file-scan layer)
+        id: shadowed
+        continue-on-error: true
+        run: NO_ALL_BUILDS_JOB_ALREADY_RAN= GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/no-all-builds-job/test/fixtures/shadowed" INPUT_TOKEN= node no-all-builds-job/dist/index.js
+      - name: Assert the shadowed fixture failed the guard
+        run: test "${{ steps.shadowed.outcome }}" = "failure"
+      # Hard-fail proof: with a token whose API layers cannot run, the guard
+      # must fail even though this repo has no violations — a layer that
+      # cannot scan is itself a blocking error (both layers are reported
+      # before the failure).
+      - name: Guard must fail when the API layers cannot run
+        id: layers
+        continue-on-error: true
+        run: NO_ALL_BUILDS_JOB_ALREADY_RAN= INPUT_TOKEN=x node no-all-builds-job/dist/index.js
+      - name: Assert the unrunnable API layers failed the guard
+        run: test "${{ steps.layers.outcome }}" = "failure"
+      # Run-once skip proof: with the sentinel set, the guard must exit 0 on
+      # the same violating fixture — the skip wins before any check runs.
+      - name: Guard skips when the run-once sentinel is set
+        run: NO_ALL_BUILDS_JOB_ALREADY_RAN=1 GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/no-all-builds-job/test/fixtures/shadowed" INPUT_TOKEN=x node no-all-builds-job/dist/index.js
+
+  test-typescript:
+    runs-on: ubuntu-latest
+    # repro3.ts in the dogfood harness makes a real authenticated octokit call
+    # (repos.get) with the default github-token, so the job needs read access.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      # typescript is a node24 action: its dist/ is not committed, so build it
+      # before the dogfood harness invokes it via `uses: ./typescript`.
+      - uses: ./.github/actions/setup-and-build
+        with:
+          action-dir: typescript
+      # Guard against the "fake string" branded-primitive footgun (boxed String
+      # output streams) creeping back in. Type-aware ESLint config under
+      # typescript/eslint.config.js; known existing cases carry scoped disables.
+      - name: Lint typescript action
+        working-directory: typescript
+        run: just lint
+      - uses: ./typescript/test
 
   validate-slugs:
     runs-on: ubuntu-latest
@@ -72,6 +232,23 @@ jobs:
           if [ "$errors" -gt 0 ]; then
             exit 1
           fi
+
+  validate-workflows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate workflow YAML with action-validator
+        uses: ./action-validator
+        with:
+          # Only the workflow files are validated here. The repo's action.yml
+          # files carry a non-standard `version:` field (vestigial -- release
+          # versions now auto-increment from the existing tags) and
+          # `using: node24`, both of which action-validator's bundled schema
+          # rejects -- so a non-matching glob skips them (nullglob -> zero
+          # iterations) while every workflow, including the reusable ones, is
+          # schema-checked.
+          actions: 'no-such-dir/*/action.yml'
+          workflows: '.github/workflows/*.yml'
 
   detect:
     if: github.event_name == 'push'
@@ -110,26 +287,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: ./.github/actions/setup-and-build
         with:
-          version: latest
+          action-dir: ${{ matrix.action }}
 
-      - uses: extractions/setup-just@v2
-
-      - name: Build
+      - name: Test
         working-directory: ${{ matrix.action }}
-        run: just build
+        run: |
+          if compgen -G "src/*.test.ts" > /dev/null; then
+            pnpm tsx --test src/*.test.ts
+          fi
 
       - name: Validate action.yml
         run: |
           action="${{ matrix.action }}"
-          version=$(yq '.version' "$action/action.yml")
-          if [ "$version" = "null" ] || [ -z "$version" ]; then
-            echo "::error::$action/action.yml is missing required 'version' field"
-            exit 1
-          fi
-          echo "version=$version" >> $GITHUB_OUTPUT
-
           main=$(yq '.runs.main' "$action/action.yml")
           if [ "$main" != "null" ] && [ -n "$main" ]; then
             if [ ! -f "$action/$main" ]; then
@@ -147,7 +318,6 @@ jobs:
               fi
             fi
           done
-        id: version
 
       - name: Validate JS files are parseable
         working-directory: ${{ matrix.action }}
@@ -160,15 +330,17 @@ jobs:
             fi
           done
 
+      # Tags are published from master only. The version auto-increments from
+      # the existing <action>#N tags (orphan-release.sh), and an action whose
+      # content is unchanged since <action>#latest is skipped entirely.
       - name: Create orphan tag
+        if: github.ref == 'refs/heads/master'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: >
           ./orphan-release/orphan-release.sh
           --source "${{ matrix.action }}"
-          --version "${{ steps.version.outputs.version }}"
-          --exclude "src node_modules tsconfig.json justfile package.json pnpm-lock.yaml"
-          --include-branch
+          --exclude "src node_modules tsconfig.json justfile package.json pnpm-lock.yaml pnpm-workspace.yaml"
 
   release-composite:
     needs: [cleanup, detect]
@@ -179,16 +351,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Tags are published from master only; versions auto-increment and
+      # unchanged actions are skipped (see release-node's orphan tag step).
       - name: Create orphan tags
+        if: github.ref == 'refs/heads/master'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           for action in $(echo '${{ needs.detect.outputs.composite }}' | jq -r '.[]'); do
-            version=$(yq '.version' "$action/action.yml")
-            if [ "$version" = "null" ] || [ -z "$version" ]; then
-              echo "::error::$action/action.yml is missing required 'version' field"
-              exit 1
-            fi
-            ./orphan-release/orphan-release.sh --source "$action" --version "$version" --include-branch
+            ./orphan-release/orphan-release.sh --source "$action"
           done
 
