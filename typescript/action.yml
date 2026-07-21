@@ -1,35 +1,20 @@
 name: TypeScript
-version: 1
+version: 4
 description: Run an inline TypeScript script, validated with tsc, with helpful globals pre-injected.
 
 inputs:
   script:
-    description: TypeScript source to execute. The body runs inside an async function with helpers like `core`, `context`, `octokit`, `fs`, `path` already in scope. Mutually exclusive with `file`.
+    description: TypeScript source to execute. Top-level `import`/`export`, `await`, and `return <value>` all work, with helpers like `core`, `context`, `octokit`, `fs`, `path` already in scope. Mutually exclusive with `file`.
     required: false
     default: ''
   file:
     description: Path to a .ts file to execute (resolved relative to $GITHUB_WORKSPACE). The file contents are treated like an inline `script`. Mutually exclusive with `script`.
     required: false
     default: ''
-
-  # Auto-derived from environment variables / event payload by default. Pass
-  # JSON only to override (e.g. for testing or to forward a different shape).
-  github:
-    description: 'Override for the `github` context. By default the action derives this from $GITHUB_* env vars and $GITHUB_EVENT_PATH.'
+  github-token:
+    description: Token used to authenticate the injected `octokit` instance (and the default token for `getOctokit()`). Defaults to the automatic GITHUB_TOKEN (the github.token expression). Override with a PAT for broader scope. The caller must still grant the matching `permissions:` for the token to be allowed to act.
     required: false
-    default: ''
-  runner:
-    description: 'Override for the `runner` context. By default derived from $RUNNER_* env vars.'
-    required: false
-    default: ''
-  env:
-    description: 'Override for the `env` context. Defaults to process.env (the runner does not separate the workflow `env:` block from system env vars in the action process).'
-    required: false
-    default: ''
-  job:
-    description: 'Override for the `job` context. Defaults to a minimal `{ status }` object — `job.container` and `job.services` are not exposed to action processes.'
-    required: false
-    default: ''
+    default: ${{ github.token }}
 
   # Contexts the runner only exposes via workflow-expression substitution —
   # never to action processes. Pass them through explicitly when needed:
@@ -40,10 +25,6 @@ inputs:
     default: '{}'
   secrets:
     description: 'secrets workflow context as JSON. Callers must pass toJSON(secrets) wrapped in an expression.'
-    required: false
-    default: '{}'
-  inputs:
-    description: 'inputs workflow context as JSON (reusable workflow / workflow_dispatch inputs).'
     required: false
     default: '{}'
   steps:
