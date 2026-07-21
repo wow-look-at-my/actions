@@ -1,0 +1,105 @@
+[private]
+help:
+	@just --list
+
+# Lint the action sources for the "fake string" branded-primitive footgun
+# (and the stock boxing guards). Config: eslint.config.js (type-aware).
+lint:
+	pnpm install
+	pnpm exec eslint .
+
+build:
+	#!/usr/bin/env bash
+	# Compiles src/, bundles via esbuild, then stages the type definitions and
+	# TypeScript lib files needed for tsc validation at runtime. Layout:
+	#   dist/index.js               (bundled action)
+	#   dist/lib.es*.d.ts           (TypeScript standard libs)
+	#   dist/types/node_modules/... (mirrored types for module resolution)
+	# The orphan release tag ships dist/ verbatim, so stage ONLY what the
+	# bundled tsc actually resolves at runtime — no blanket copies.
+	set -euo pipefail
+	pnpm install
+	pnpm tsc
+	pnpm esbuild dist/index.js --bundle --platform=node --target=node24 --outfile=dist/index.js --allow-overwrite
+	# transform.js is bundled into index.js above; drop the leftover tsc output
+	# so it doesn't ship in the orphan release tag.
+	rm -f dist/transform.js
+
+	dist="dist"
+	types_root="$dist/types/node_modules"
+	rm -rf "$dist/types"
+	find "$dist" -maxdepth 1 -name '*.d.ts' -delete
+	mkdir -p "$types_root/@types" "$types_root/@actions"
+
+	# Ambient declarations read at runtime by the action.
+	cp globals.d.ts "$dist/"
+
+	# @types/node + undici-types. pnpm keeps transitives under .pnpm/, so
+	# undici-types isn't at the top level — fish it out next to @types/node.
+	cp -rL node_modules/@types/node "$types_root/@types/"
+	undici_src=$(dirname "$(readlink -f node_modules/@types/node)")/../undici-types
+	if [ -d "$undici_src" ]; then
+		cp -rL "$undici_src" "$types_root/"
+	else
+		echo "warning: undici-types not found near @types/node" >&2
+	fi
+	# The ts5.6/ts5.7 fallback trees are selected via typesVersions only for
+	# TypeScript <= 5.7; the bundled compiler is pinned newer.
+	rm -rf "$types_root/@types/node/ts5.6" "$types_root/@types/node/ts5.7"
+
+	# @actions toolkit types (.d.ts files have no external module imports).
+	cp -rL node_modules/@actions/core "$types_root/@actions/"
+	cp -rL node_modules/@actions/exec "$types_root/@actions/"
+	cp -rL node_modules/@actions/io "$types_root/@actions/"
+
+	# Stripped @actions/github: the real Context + WebhookPayload declarations
+	# plus a hand-rolled lib/github.d.ts mirroring the module's real surface
+	# (`context`, `getOctokit`) with the octokit instance typed loosely — the
+	# real getOctokit signature drags in @octokit/* types (~7 MB).
+	mkdir -p "$types_root/@actions/github/lib"
+	cp node_modules/@actions/github/lib/context.d.ts "$types_root/@actions/github/lib/"
+	cp node_modules/@actions/github/lib/interfaces.d.ts "$types_root/@actions/github/lib/"
+	cat > "$types_root/@actions/github/lib/github.d.ts" <<-'DTS'
+		import { Context } from './context';
+		interface OctokitInstance {
+			rest: any;
+			graphql: any;
+			paginate: any;
+			request: any;
+			hook: any;
+			auth: any;
+			log: { debug: (...args: any[]) => any; info: (...args: any[]) => any; warn: (...args: any[]) => any; error: (...args: any[]) => any };
+		}
+		export declare const context: Context;
+		export declare function getOctokit(token: string, options?: Record<string, any>, ...additionalPlugins: any[]): OctokitInstance;
+	DTS
+	cat > "$types_root/@actions/github/package.json" <<-'JSON'
+		{
+			"name": "@actions/github",
+			"version": "0.0.0-stub",
+			"types": "lib/github.d.ts"
+		}
+	JSON
+
+	# Strip everything that isn't a declaration or a license from the staged
+	# packages — JS, source maps, READMEs. Only declarations matter to tsc.
+	find "$types_root" -type f \( -name '*.js' -o -name '*.js.map' -o -name '*.d.ts.map' -o -name 'README.md' \) -delete
+
+	# TypeScript standard libs: only the `/// <reference lib="..." />` closure
+	# of lib.es2022.d.ts (the action's `lib` compiler option), seeded with any
+	# lib the staged type packages reference (@types/node pulls in a couple of
+	# esnext.* libs). A blanket copy of typescript/lib would ship every unused
+	# lib variant plus the ~600 KB compiler API declarations.
+	libdir="node_modules/typescript/lib"
+	declare -A staged_libs
+	queue="es2022 $(grep -rhoP '(?<=<reference lib=")[^"]+' "$types_root" | sort -u || true)"
+	while [ -n "${queue//[[:space:]]/}" ]; do
+		next=""
+		for name in $queue; do
+			[ -n "${staged_libs[$name]:-}" ] && continue
+			staged_libs[$name]=1
+			cp "$libdir/lib.$name.d.ts" "$dist/"
+			next+=" $(grep -oP '(?<=<reference lib=")[^"]+' "$libdir/lib.$name.d.ts" || true)"
+		done
+		queue="$next"
+	done
