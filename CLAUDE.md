@@ -6,7 +6,7 @@ This repository contains reusable GitHub Actions.
 
 Each action lives in its own directory with an `action.yml` file:
 
-- `action-validator/` - Composite action (YAML only)
+- `action-validator/` - Composite action. `action.yml` files go through `action-validator`; **workflow files are validated against the LIVE schemastore `github-workflow.json`** (fetched per run, checked by `validate-workflows.mjs` via ajv) rather than action-validator's own. Its schema is vendored into a wasm blob (`@action-validator/core`, pinned at 0.6.0 with no newer release) that has fallen behind GitHub and rejects generally-available permission scopes -- `artifact-metadata` among them, which is what surfaced this. A fetch failure is a hard error, never a skipped check; an empty glob is a clean no-op.
 - `branch-block/` - Composite action (shell script)
 - `cache-cleanup/` - Node.js action (deletes a run's cache hand-offs and sweeps aged ones)
 - `cache-download/` - Node.js action (restores files handed off by cache-upload in the same run)
