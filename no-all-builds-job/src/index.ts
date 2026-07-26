@@ -2,7 +2,7 @@ import * as core from '@actions/core';
 import * as github from '@actions/github';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
-import {GUARDED_NAME, findCheckRunViolations, findJobViolations, formatViolation, scanWorkflowYaml} from './detect';
+import {ALREADY_RAN_ENV, GUARDED_NAME, findCheckRunViolations, findJobViolations, formatViolation, scanWorkflowYaml, shouldSkip} from './detect';
 
 // The org's required merge check `all-builds` is a commit STATUS posted by
 // the required-builds-manager app — not a workflow job. Naming a workflow job
@@ -17,18 +17,29 @@ import {GUARDED_NAME, findCheckRunViolations, findJobViolations, formatViolation
 //   2. Check runs on the head SHA (Checks API; needs `checks: read`) —
 //      catches all-builds jobs in OTHER workflows on the same commit.
 //   3. Workflow files under $GITHUB_WORKSPACE/.github/workflows — ALWAYS
-//      runs, needs no token. Load-bearing: org consumers' permissions blocks
-//      mostly zero out actions:/checks: read, so without the file scan the
-//      guard would be inert exactly where it is deployed.
-// API-layer errors degrade to warnings; the file scan is the enforcement
-// floor. Findings are NOT deduplicated across layers — a job caught twice is
-// reported twice, which is fine.
+//      runs, needs no token — the only layer that runs when the token input
+//      is explicitly emptied.
+// An API layer that cannot run (e.g. the token lacks the permission) is a
+// HARD FAILURE: the guard fails closed rather than degrading to a warning.
+// Both API layers are still attempted first, so a run missing both
+// permissions reports both errors — each naming the permission to grant —
+// before the action fails. Findings are NOT deduplicated across layers — a
+// job caught twice is reported twice, which is fine.
 
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
 async function run(): Promise<void> {
+	// Same-job run-once: a clean pass earlier in this job exported the
+	// sentinel (see below), so a second embed of this guard in the same job
+	// (e.g. the go-toolchain composite followed by buildhost-publish) is a
+	// near-zero-cost skip. Checked before any API client construction.
+	if (shouldSkip(process.env[ALREADY_RAN_ENV])) {
+		core.info('no-all-builds-job: guard already ran earlier in this job — skipping duplicate check');
+		return;
+	}
+
 	const token = core.getInput('token');
 	const octokit = token ? github.getOctokit(token) : undefined;
 	if (!octokit) {
@@ -36,6 +47,12 @@ async function run(): Promise<void> {
 	}
 
 	const messages: string[] = [];
+
+	// Layers that cannot run are hard failures. Each catch below emits its
+	// error immediately and bumps this count; the action fails only after ALL
+	// layers have been attempted, so a run missing both permissions reports
+	// both errors instead of dying on the first.
+	let layerErrorCount = 0;
 
 	// Layer 1: the current run's jobs.
 	let headSha = '';
@@ -54,7 +71,8 @@ async function run(): Promise<void> {
 				messages.push(formatViolation(subject, violation.url || runUrl));
 			}
 		} catch (error) {
-			core.warning(`run-jobs layer skipped (${errorMessage(error)}) — grant 'actions: read' to let this guard scan the run's jobs`);
+			layerErrorCount++;
+			core.error(`run-jobs layer failed (${errorMessage(error)}) — grant 'actions: read' to let this guard scan the run's jobs`);
 		}
 	}
 
@@ -75,7 +93,8 @@ async function run(): Promise<void> {
 				messages.push(formatViolation(subject, violation.url));
 			}
 		} catch (error) {
-			core.warning(`check-runs layer skipped (${errorMessage(error)}) — grant 'checks: read' to let this guard scan the head commit's check runs`);
+			layerErrorCount++;
+			core.error(`check-runs layer failed (${errorMessage(error)}) — grant 'checks: read' to let this guard scan the head commit's check runs`);
 		}
 	}
 
@@ -104,20 +123,29 @@ async function run(): Promise<void> {
 		}
 	}
 
-	if (messages.length === 0) {
+	if (messages.length === 0 && layerErrorCount === 0) {
 		const scanned = [
 			runJobCount === undefined ? 'run jobs skipped' : `${runJobCount} run job(s)`,
 			checkRunCount === undefined ? 'check runs skipped' : `${checkRunCount} check run(s)`,
 			workflowFileCount === undefined ? 'no workflow files' : `${workflowFileCount} workflow file(s)`
 		];
 		core.info(`OK — nothing named ${GUARDED_NAME} (${scanned.join(', ')})`);
+		// Clean pass ONLY: mark the job so a later embed of this guard skips.
+		// Never exported on the violation path below — a failure suppressed
+		// with continue-on-error must not make a later invocation skip past
+		// the swallowed violation.
+		core.exportVariable(ALREADY_RAN_ENV, '1');
 		return;
 	}
 
 	for (const message of messages) {
 		core.error(message);
 	}
-	core.setFailed(`found ${messages.length} job(s)/check run(s)/workflow definition(s) named ${GUARDED_NAME} — a known trick to fake the org's required ${GUARDED_NAME} gate. The required check is owned by the required-builds-manager app; a job with that name only shadows it in the GitHub UI. Rename the offending job(s); do not try to work around this check.`);
+	if (messages.length > 0) {
+		core.setFailed(`found ${messages.length} job(s)/check run(s)/workflow definition(s) named ${GUARDED_NAME} — a known trick to fake the org's required ${GUARDED_NAME} gate. The required check is owned by the required-builds-manager app; a job with that name only shadows it in the GitHub UI. Rename the offending job(s); do not try to work around this check.`);
+	} else {
+		core.setFailed(`${layerErrorCount} scanning layer(s) could not run — this guard fails when it cannot scan; grant the permission(s) named in the error(s) above`);
+	}
 }
 
 run().catch((error: unknown) => {

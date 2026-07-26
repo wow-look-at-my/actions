@@ -5,8 +5,10 @@ name: PR Preview (buildhost)
 # own buildhost-publish-site action for the upload (tar.gz PUT to
 # sites.<domain>/<project>/branch/<branch>, GitHub OIDC auth -- no static secret).
 #
-# This is the buildhost flavour. For the GitHub Pages flavour, use
-# .github/workflows/pr-preview.yml instead.
+# This is the buildhost flavour. The GitHub Pages flavour lives in
+# PazerOP/pr-preview-action (reusable workflow .github/workflows/preview.yml@master).
+# GitHub Pages is no longer available for wow-look-at-my org repos (shut off
+# org-wide 2026-07-20), so this workflow is the path for org repos.
 
 on:
   workflow_call:
@@ -61,6 +63,11 @@ permissions:
   actions: read
   pull-requests: write
   id-token: write
+  checks: read
+  # buildhost-publish-site records what it uploaded on the org's linked
+  # artifacts page; that recording is part of publishing, not optional,
+  # so the publish fails without this.
+  artifact-metadata: write
 
 jobs:
   preview:

@@ -11,6 +11,23 @@ export const GUARDED_NAME = 'all-builds';
 // everything else wearing the name is a violation.
 export const REQUIRED_BUILDS_MANAGER_APP_ID = 3007670;
 
+// Same-job run-once sentinel. After a CLEAN pass the action exports this env
+// var (via core.exportVariable → $GITHUB_ENV) so a second embed of the guard
+// later in the same job (e.g. the go-toolchain composite followed by
+// buildhost-publish) skips the duplicate check. Deliberately NOT exported when
+// violations were found: if the caller suppressed the failure with
+// continue-on-error, a later invocation must re-detect, not skip past a
+// swallowed violation. Cross-job dedupe is out of scope on purpose.
+export const ALREADY_RAN_ENV = 'NO_ALL_BUILDS_JOB_ALREADY_RAN';
+
+// True when the sentinel says the guard already completed a clean pass earlier
+// in this job. An empty string counts as absent — a shell-level
+// `NO_ALL_BUILDS_JOB_ALREADY_RAN=` assignment is an explicit reset (the
+// dogfood harness in release.yml relies on this).
+export function shouldSkip(value: string | undefined): boolean {
+	return value !== undefined && value !== '';
+}
+
 export interface JobLike {
 	name: string;
 	workflow_name?: string | null;

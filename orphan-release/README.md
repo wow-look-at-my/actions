@@ -17,6 +17,13 @@ Just specify the source - version auto-increments from existing tags:
 First release creates `my-action#1` and `my-action#latest`.
 Next release creates `my-action#2` and updates `my-action#latest`.
 
+In auto-increment mode, a release whose content is byte-identical to what
+`my-action#latest` already points at is skipped entirely (no new number, no
+tag movement), so re-running the release on an unchanged source is a no-op.
+Numbered tags are pushed without force (immutable once published); only
+`#latest` is force-moved. An explicit `version` keeps the historical
+force-overwrite semantics.
+
 ### Custom tag name
 
 Override the tag name (defaults to source directory):
