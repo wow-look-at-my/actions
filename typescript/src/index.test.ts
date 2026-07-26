@@ -10,7 +10,7 @@ const execFileAsync = promisify(execFile);
 const DIST = path.join(__dirname, '..', 'dist', 'index.js');
 
 interface RunResult {
-	/** Process stdout with the leading "Script source" echo group removed. */
+	/** Process stdout with the echoed script source removed. */
 	stdout: string;
 	/** Full process stdout, source echo included. */
 	rawStdout: string;
@@ -18,10 +18,12 @@ interface RunResult {
 	exitCode: number;
 }
 
-// The action opens the log by echoing the (highlighted) script source. Strip
-// that group from `stdout` so assertions about what actually executed aren't
-// satisfied by the mere echo of the script text; `rawStdout` keeps it.
-const SOURCE_ECHO = /^::group::Script source\n[\s\S]*?::endgroup::\n/;
+// The action opens the "Compiling script" group by echoing the (highlighted)
+// script source. Strip just that echo from `stdout` so assertions about what
+// actually executed aren't satisfied by the mere echo of the script text;
+// `rawStdout` keeps it. The rest of the group (the type-check/transpile lines
+// and any ::error:: diagnostics) stays -- tests assert on those.
+const SOURCE_ECHO = /^::group::Compiling script\n[\s\S]*?(?=^Type-check passed\.$|^::error::)/m;
 
 async function runAction(script: string, env: Record<string, string> = {}): Promise<RunResult> {
 	try {
@@ -74,14 +76,25 @@ describe('typescript action', () => {
 		assert.ok(stdout.includes('hello world'));
 	});
 
-	it('echoes the ANSI-highlighted script source before type-checking', async () => {
+	it('echoes the ANSI-highlighted script source in the single compile group', async () => {
 		const { rawStdout, exitCode } = await runAction('const n = 1; // note');
 		assert.equal(exitCode, 0);
 		const echo = rawStdout.match(SOURCE_ECHO)?.[0];
-		assert.ok(echo, `source echo group missing in:\n${rawStdout}`);
+		assert.ok(echo, `source echo missing in:\n${rawStdout}`);
 		assert.ok(echo.includes('\x1b[38;2;255;123;114mconst\x1b[39m'), `keyword not highlighted in:\n${JSON.stringify(echo)}`);
 		assert.ok(echo.includes('\x1b[38;2;139;148;158m// note\x1b[39m'), `comment not highlighted in:\n${JSON.stringify(echo)}`);
-		assert.ok(rawStdout.indexOf('::group::Script source') < rawStdout.indexOf('::group::Type-checking'), rawStdout);
+		// Source echo, type-check and transpile share one group, in that order,
+		// and the split-out groups they replaced are gone for good.
+		assert.ok(
+			rawStdout.indexOf('::group::Compiling script') < rawStdout.indexOf('Type-check passed.')
+				&& rawStdout.indexOf('Type-check passed.') < rawStdout.indexOf('Transpiled output:')
+				&& rawStdout.indexOf('Transpiled output:') < rawStdout.indexOf('::endgroup::'),
+			rawStdout,
+		);
+		assert.equal(rawStdout.match(/^::group::/gm)?.length, 2, `expected exactly 2 log groups in:\n${rawStdout}`);
+		for (const gone of ['::group::Script source', '::group::Type-checking', '::group::Transpiling']) {
+			assert.ok(!rawStdout.includes(gone), `${gone} should no longer exist:\n${rawStdout}`);
+		}
 	});
 
 	it('supports top-level await', async () => {
