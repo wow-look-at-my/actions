@@ -599,20 +599,17 @@ function readUserScript(): { script: string; label: string; dir: string } {
 async function run(): Promise<void> {
 	const { script: userScript, label, dir } = readUserScript();
 
-	// Show what is about to run, syntax-highlighted with raw ANSI escapes (the
-	// Actions log viewer renders 24-bit color; plain-text fallback on failure).
-	core.startGroup('Script source');
+	// Everything up to execution shares one group: the source echo plus a line
+	// each from the type-check and the transpile. Separate groups for two lines
+	// of "it worked" are three things to expand instead of one.
+	//
+	// The source is syntax-highlighted with raw ANSI escapes (the Actions log
+	// viewer renders 24-bit color; plain-text fallback on failure), and is
+	// echoed FIRST so a later throw still leaves the script in the log.
+	core.startGroup('Compiling script');
 	core.info(highlightSource(trimTrailingNewline(userScript)));
-	core.endGroup();
 
-	const ctx = readContexts();
-	// Token for the injected `octokit` (and the default getOctokit() token).
-	// Defaults to ${{ github.token }} via the action input, so the common case is
-	// authenticated with no caller plumbing.
-	const githubToken = core.getInput('github-token');
 	const { text: source, lineMap } = transformScript(userScript);
-
-	core.startGroup('Type-checking with tsc');
 	const diagnostics = typeCheck(source);
 	if (diagnostics.length > 0) {
 		for (const d of diagnostics) {
@@ -623,12 +620,16 @@ async function run(): Promise<void> {
 		return;
 	}
 	core.info('Type-check passed.');
-	core.endGroup();
 
-	core.startGroup('Transpiling');
 	const js = transpile(source);
 	core.info(`Transpiled output: ${js.length} bytes`);
 	core.endGroup();
+
+	const ctx = readContexts();
+	// Token for the injected `octokit` (and the default getOctokit() token).
+	// Defaults to ${{ github.token }} via the action input, so the common case is
+	// authenticated with no caller plumbing.
+	const githubToken = core.getInput('github-token');
 
 	core.startGroup('Executing script');
 	const result = await execute(js, ctx, dir, githubToken);
