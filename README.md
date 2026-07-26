@@ -238,6 +238,14 @@ Notes:
 - Fork PRs are skipped (they receive no OIDC token and cannot authenticate to buildhost).
 - The GitHub Pages flavour lives in [PazerOP/pr-preview-action](https://github.com/PazerOP/pr-preview-action) (reusable workflow `.github/workflows/preview.yml@master`). GitHub Pages is no longer available for wow-look-at-my org repos (shut off org-wide 2026-07-20), so this workflow is the path for org repos.
 
+### PR Preview
+
+```yml
+jobs:
+  pr-preview:
+    uses: wow-look-at-my/actions/.github/workflows/pr-preview.yml@master
+```
+
 ### Publish to GHCR
 
 ```yml
