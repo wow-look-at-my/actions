@@ -184,10 +184,12 @@ If the script needs contexts the runner doesn't expose to action processes (`var
 
 ## How it works
 
-1. The `script` is compiled as a TypeScript module: top-level `import`/`export` declarations stay at module scope, and the remaining statements become the body of an `async function` — so top-level `await` and `return` work without ceremony too. The transformed module is type-checked using the bundled TypeScript compiler with `strict: true`; any `tsc` error fails the step before any code runs.
-2. The validated source is transpiled to JavaScript.
-3. The module is evaluated in-process with the injected helpers in scope: imports/exports execute first (matching ESM import hoisting), then the rest of the script. The action runs as a fresh process per step, so nothing carries over between invocations.
-4. If the script returns a value (top-level `return <value>`), it is JSON-serialized and exposed as the `result` output.
+1. The step log has two collapsed groups: `Compiling script` (everything below) and `Executing script` (your script's own output).
+2. `Compiling script` opens by echoing the source, syntax-highlighted with ANSI color escapes (GitHub's log viewer renders them). If highlighting fails for any reason, the plain source is printed instead — it never fails the step.
+3. The `script` is compiled as a TypeScript module: top-level `import`/`export` declarations stay at module scope, and the remaining statements become the body of an `async function` — so top-level `await` and `return` work without ceremony too. The transformed module is type-checked using the bundled TypeScript compiler with `strict: true`; any `tsc` error fails the step before any code runs.
+4. The validated source is transpiled to JavaScript.
+5. The module is evaluated in-process with the injected helpers in scope: imports/exports execute first (matching ESM import hoisting), then the rest of the script. The action runs as a fresh process per step, so nothing carries over between invocations.
+6. If the script returns a value (top-level `return <value>`), it is JSON-serialized and exposed as the `result` output.
 
 ## Inputs
 
