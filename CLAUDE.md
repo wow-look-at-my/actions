@@ -18,6 +18,7 @@ Each action lives in its own directory with an `action.yml` file:
 - `multicmd/` - Composite action (YAML only)
 - `no-all-builds-job/` - Node.js action (fails CI when any job is named all-builds — the recurring trick that shadows the org's required all-builds gate in the GitHub UI)
 - `orphan-release/` - Composite action (shell script)
+- `pr-preview/` - Node.js action (backend steps for the `pr-preview` reusable workflow, selected by the `command` input: `setup`, `git-update`, `comment`, `status`)
 - `smart-cache/` - Node.js action (TypeScript compiled to JS)
 - `cache-size/` - Node.js action (TypeScript compiled to JS)
 - `tag-runner/` - Node.js action (TypeScript compiled to JS)
@@ -29,14 +30,7 @@ GitHub requires reusable workflows (`on: workflow_call`) to live in `.github/wor
 
 - `.github/workflows/publish-ghcr.yml` - Builds a Docker image from a Dockerfile, pushes to GHCR on the push branch (default: master), and prunes old versions. Restores the build fileset (default hand-off name: `go-build`) via `cache-download` before building — the producer job must have handed it off with `cache-upload` in the same run. Used by docker-updater, auto-anywhere, and buildhost.
 - `.github/workflows/buildhost-preview.yml` - Deploys a pull-request preview to a [buildhost](https://github.com/wow-look-at-my/buildhost) static-site project and posts a sticky PR comment with the preview URL. Reuses `wow-look-at-my/buildhost/.github/actions/buildhost-publish-site@master` for the upload (tar.gz PUT, GitHub OIDC auth -- no static secret) and `wow-look-at-my/actions@typescript#latest` for the sticky comment (marker `<!-- pr-preview-buildhost -->`). PRs deploy to a `pr-<number>` branch, pushes to `branch/<ref-name>`; fork PRs are skipped (no OIDC token). This is the buildhost flavour; the GitHub Pages flavour lives in `PazerOP/pr-preview-action` (reusable workflow `.github/workflows/preview.yml@master`). GitHub Pages is no longer available for wow-look-at-my org repos (shut off org-wide 2026-07-20), so this workflow is the path for org repos. The extra README prose for this workflow lives in `.github/workflows/buildhost-preview.md` (appended verbatim by `generate-readme.sh`).
-
-## Reusable Workflows
-
-### `pr-preview`
-
-The `pr-preview/` directory contains scripts for the reusable workflow at `.github/workflows/pr-preview.yml`. It is **not** a standard action (no `action.yml`) — callers use it via `uses: wow-look-at-my/actions/.github/workflows/pr-preview.yml@main`.
-
-Because the workflow self-checkouts `wow-look-at-my/actions` at `github.job_workflow_sha` to run its scripts, `pr-preview/dist/` must be committed (exempted from `.gitignore`). Run `just build` inside `pr-preview/` after editing TypeScript sources and commit the result.
+- `.github/workflows/pr-preview.yml` - Deploys a pull-request preview to **GitHub Pages** (the `gh-pages` flavour, ported from `PazerOP/pr-preview-action`), writing each preview under an umbrella directory on the preview branch and posting a sticky PR comment plus a commit status. Its steps are the `pr-preview` action (`wow-look-at-my/actions@pr-preview#latest`), selected per step by the `command` input — the workflow checks out nothing of its own, so no built output is committed. `concurrency: gh-pages` with `cancel-in-progress: false` serializes every deploy/remove against the shared branch. Prefer `buildhost-preview.yml` for org repos; GitHub Pages was shut off org-wide for wow-look-at-my on 2026-07-20, so this workflow is for repos still on Pages (e.g. under `PazerOP`).
 
 ## Action Types
 

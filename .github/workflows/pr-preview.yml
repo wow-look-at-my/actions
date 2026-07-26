@@ -100,25 +100,17 @@ jobs:
               with:
                   sparse-checkout: ${{ inputs.source-dir }}
 
-            - name: Checkout action source
-              uses: actions/checkout@v6
-              with:
-                  repository: wow-look-at-my/actions
-                  ref: ${{ github.job_workflow_sha }}
-                  path: .pr-preview-action
-
             - name: Setup preview environment
               id: setup
-              env:
-                  INPUT_ACTION: ${{ inputs.action }}
-                  INPUT_UMBRELLA_DIR: ${{ inputs.umbrella-dir }}
-                  INPUT_PAGES_BASE_URL: ${{ inputs.pages-base-url }}
-                  INPUT_PAGES_BASE_PATH: ${{ inputs.pages-base-path }}
-                  INPUT_PR_NUMBER: ${{ inputs.pr-number || github.event.number }}
-                  INPUT_ACTION_REF: ${{ github.job_workflow_sha }}
-                  GITHUB_SHA: ${{ github.sha }}
-              run: node .pr-preview-action/pr-preview/dist/index.js setup
-              shell: bash
+              uses: wow-look-at-my/actions@pr-preview#latest
+              with:
+                  command: setup
+                  action: ${{ inputs.action }}
+                  umbrella-dir: ${{ inputs.umbrella-dir }}
+                  pages-base-url: ${{ inputs.pages-base-url }}
+                  pages-base-path: ${{ inputs.pages-base-path }}
+                  pr-number: ${{ inputs.pr-number || github.event.number }}
+                  action-ref: ${{ github.job_workflow_sha }}
 
             - name: Download build artifact
               if: inputs.artifact-name != '' && env.deployment_action == 'deploy'
@@ -131,24 +123,28 @@ jobs:
 
             - name: Set pending commit status
               if: env.deployment_action == 'deploy' && github.event_name == 'pull_request'
-              env:
-                  INPUT_TOKEN: ${{ github.token }}
-                  INPUT_SHA: ${{ github.event.pull_request.head.sha }}
-                  INPUT_CONTEXT: ${{ inputs.commit-status-context }}
-              run: node .pr-preview-action/pr-preview/dist/index.js status pending "Deploying preview..." "${{ env.preview_url }}"
-              shell: bash
+              uses: wow-look-at-my/actions@pr-preview#latest
+              with:
+                  command: status
+                  token: ${{ github.token }}
+                  sha: ${{ github.event.pull_request.head.sha }}
+                  context: ${{ inputs.commit-status-context }}
+                  state: pending
+                  description: Deploying preview...
+                  target-url: ${{ env.preview_url }}
 
             - name: Deploy preview to branch
               if: env.deployment_action == 'deploy'
-              env:
-                  INPUT_BRANCH: ${{ inputs.preview-branch }}
-                  INPUT_TOKEN: ${{ github.token }}
-                  INPUT_SOURCE_DIR: ${{ inputs.artifact-name != '' && '__artifact-download' || inputs.source-dir }}
-                  INPUT_TARGET_PATH: ${{ env.preview_file_path }}
-                  INPUT_UMBRELLA_DIR: ${{ inputs.umbrella-dir }}
-                  INPUT_COMMIT_MESSAGE: ${{ inputs.deploy-commit-message || (github.event_name == 'pull_request' && format('Deploy preview for PR {0} 🛫', github.event.number)) || format('Deploy from {0}', github.sha) }}
-              run: node .pr-preview-action/pr-preview/dist/index.js git-update deploy
-              shell: bash
+              uses: wow-look-at-my/actions@pr-preview#latest
+              with:
+                  command: git-update
+                  mode: deploy
+                  branch: ${{ inputs.preview-branch }}
+                  token: ${{ github.token }}
+                  source-dir: ${{ inputs.artifact-name != '' && '__artifact-download' || inputs.source-dir }}
+                  target-path: ${{ env.preview_file_path }}
+                  umbrella-dir: ${{ inputs.umbrella-dir }}
+                  commit-message: ${{ inputs.deploy-commit-message || (github.event_name == 'pull_request' && format('Deploy preview for PR {0} 🛫', github.event.number)) || format('Deploy from {0}', github.sha) }}
 
             - name: Upload Pages artifact
               if: env.deployment_action == 'deploy' && inputs.deploy-to-pages
@@ -166,12 +162,15 @@ jobs:
                   env.deployment_action == 'deploy' &&
                   github.event_name == 'pull_request' &&
                   (steps.pages-deploy.outcome == 'success' || steps.pages-deploy.outcome == 'skipped')
-              env:
-                  INPUT_TOKEN: ${{ github.token }}
-                  INPUT_SHA: ${{ github.event.pull_request.head.sha }}
-                  INPUT_CONTEXT: ${{ inputs.commit-status-context }}
-              run: node .pr-preview-action/pr-preview/dist/index.js status success "Preview is live!" "${{ env.preview_url }}"
-              shell: bash
+              uses: wow-look-at-my/actions@pr-preview#latest
+              with:
+                  command: status
+                  token: ${{ github.token }}
+                  sha: ${{ github.event.pull_request.head.sha }}
+                  context: ${{ inputs.commit-status-context }}
+                  state: success
+                  description: Preview is live!
+                  target-url: ${{ env.preview_url }}
 
             - name: Post deploy comment
               if: |
@@ -179,37 +178,41 @@ jobs:
                   inputs.comment &&
                   github.event_name == 'pull_request' &&
                   (steps.pages-deploy.outcome == 'success' || steps.pages-deploy.outcome == 'skipped')
-              env:
-                  INPUT_TOKEN: ${{ github.token }}
-                  INPUT_PR_NUMBER: ${{ inputs.pr-number || github.event.number }}
-                  INPUT_PREVIEW_BRANCH: ${{ inputs.preview-branch }}
-                  INPUT_COMMENT: "true"
-              run: node .pr-preview-action/pr-preview/dist/index.js comment
-              shell: bash
+              uses: wow-look-at-my/actions@pr-preview#latest
+              with:
+                  command: comment
+                  token: ${{ github.token }}
+                  pr-number: ${{ inputs.pr-number || github.event.number }}
+                  preview-branch: ${{ inputs.preview-branch }}
+                  comment: "true"
 
             - name: Set failure commit status
               if: |
                   failure() &&
                   env.deployment_action == 'deploy' &&
                   github.event_name == 'pull_request'
-              env:
-                  INPUT_TOKEN: ${{ github.token }}
-                  INPUT_SHA: ${{ github.event.pull_request.head.sha }}
-                  INPUT_CONTEXT: ${{ inputs.commit-status-context }}
-              run: node .pr-preview-action/pr-preview/dist/index.js status failure "Preview deployment failed" "${{ env.preview_url }}"
-              shell: bash
+              uses: wow-look-at-my/actions@pr-preview#latest
+              with:
+                  command: status
+                  token: ${{ github.token }}
+                  sha: ${{ github.event.pull_request.head.sha }}
+                  context: ${{ inputs.commit-status-context }}
+                  state: failure
+                  description: Preview deployment failed
+                  target-url: ${{ env.preview_url }}
 
             # REMOVAL
 
             - name: Remove preview from branch
               if: env.deployment_action == 'remove'
-              env:
-                  INPUT_BRANCH: ${{ inputs.preview-branch }}
-                  INPUT_TOKEN: ${{ github.token }}
-                  INPUT_TARGET_PATH: ${{ env.preview_file_path }}
-                  INPUT_COMMIT_MESSAGE: ${{ inputs.remove-commit-message || (github.event_name == 'pull_request' && format('Remove preview for PR {0} 🛬', github.event.number)) || format('Remove deployment from {0}', github.sha) }}
-              run: node .pr-preview-action/pr-preview/dist/index.js git-update remove
-              shell: bash
+              uses: wow-look-at-my/actions@pr-preview#latest
+              with:
+                  command: git-update
+                  mode: remove
+                  branch: ${{ inputs.preview-branch }}
+                  token: ${{ github.token }}
+                  target-path: ${{ env.preview_file_path }}
+                  commit-message: ${{ inputs.remove-commit-message || (github.event_name == 'pull_request' && format('Remove preview for PR {0} 🛬', github.event.number)) || format('Remove deployment from {0}', github.sha) }}
 
             - name: Upload Pages artifact for removal
               if: env.deployment_action == 'remove' && inputs.deploy-to-pages
@@ -227,10 +230,10 @@ jobs:
                   env.deployment_action == 'remove' &&
                   inputs.comment &&
                   github.event_name == 'pull_request'
-              env:
-                  INPUT_TOKEN: ${{ github.token }}
-                  INPUT_PR_NUMBER: ${{ inputs.pr-number || github.event.number }}
-                  INPUT_PREVIEW_BRANCH: ${{ inputs.preview-branch }}
-                  INPUT_COMMENT: "true"
-              run: node .pr-preview-action/pr-preview/dist/index.js comment
-              shell: bash
+              uses: wow-look-at-my/actions@pr-preview#latest
+              with:
+                  command: comment
+                  token: ${{ github.token }}
+                  pr-number: ${{ inputs.pr-number || github.event.number }}
+                  preview-branch: ${{ inputs.preview-branch }}
+                  comment: "true"

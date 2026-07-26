@@ -8,6 +8,12 @@ function env(name: string): string {
   return process.env[name] || "";
 }
 
+// Mirrors @actions/core getInput(): the runner exports each `with:` key as
+// INPUT_<NAME>, uppercased with spaces (not hyphens) turned into underscores.
+function input(name: string): string {
+  return env(`INPUT_${name.replace(/ /g, "_").toUpperCase()}`);
+}
+
 function appendToFile(filePath: string, content: string): void {
   fs.appendFileSync(filePath, content);
 }
@@ -29,7 +35,7 @@ async function githubApi(
   endpoint: string,
   body?: Record<string, unknown>,
 ): Promise<unknown> {
-  const token = process.env.INPUT_TOKEN;
+  const token = input("token");
   const apiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
@@ -136,12 +142,12 @@ function determineAutoAction(eventName: string, eventPath: string): string {
 }
 
 function cmdSetup(): void {
-  const inputAction = env("INPUT_ACTION") || "auto";
-  const umbrellaDir = env("INPUT_UMBRELLA_DIR") || "pr-preview";
-  const pagesBaseUrlInput = env("INPUT_PAGES_BASE_URL");
-  const pagesBasePath = env("INPUT_PAGES_BASE_PATH");
-  const prNumber = env("INPUT_PR_NUMBER");
-  const actionRef = env("INPUT_ACTION_REF") || "unknown";
+  const inputAction = input("action") || "auto";
+  const umbrellaDir = input("umbrella-dir") || "pr-preview";
+  const pagesBaseUrlInput = input("pages-base-url");
+  const pagesBasePath = input("pages-base-path");
+  const prNumber = input("pr-number");
+  const actionRef = input("action-ref") || "unknown";
   const eventName = env("GITHUB_EVENT_NAME");
   const eventPath = env("GITHUB_EVENT_PATH");
   const repository = env("GITHUB_REPOSITORY");
@@ -226,12 +232,12 @@ function run(cmd: string, cwd?: string): void {
 }
 
 function cmdGitUpdate(mode: "deploy" | "remove"): void {
-  const branch = env("INPUT_BRANCH");
-  const token = env("INPUT_TOKEN");
+  const branch = input("branch");
+  const token = input("token");
   const repo = env("GITHUB_REPOSITORY");
-  const targetPath = env("INPUT_TARGET_PATH");
-  const commitMessage = env("INPUT_COMMIT_MESSAGE");
-  const sourceDir = env("INPUT_SOURCE_DIR");
+  const targetPath = input("target-path");
+  const commitMessage = input("commit-message");
+  const sourceDir = input("source-dir");
   const workspace = env("GITHUB_WORKSPACE");
   const runnerTemp = env("RUNNER_TEMP") || path.join(workspace, "..");
   const dir = path.join(runnerTemp, "__gh-pages-content");
@@ -254,7 +260,7 @@ function cmdGitUpdate(mode: "deploy" | "remove"): void {
 
   if (mode === "deploy") {
     if (targetPath === "") {
-      const umbrellaDir = env("INPUT_UMBRELLA_DIR") || "pr-preview";
+      const umbrellaDir = input("umbrella-dir") || "pr-preview";
       for (const entry of fs.readdirSync(dir)) {
         if (entry === ".git" || entry === umbrellaDir) continue;
         fs.rmSync(path.join(dir, entry), { recursive: true });
@@ -302,7 +308,7 @@ const COMMENT_HEADER = "<!-- Sticky Pull Request Comment pr-preview -->";
 function generateDeployComment(): string {
   const actionVersion = env("action_version");
   const previewUrl = env("preview_url");
-  const previewBranch = env("INPUT_PREVIEW_BRANCH") || "gh-pages";
+  const previewBranch = input("preview-branch") || "gh-pages";
   const serverUrl = env("GITHUB_SERVER_URL") || "https://github.com";
   const repository = env("GITHUB_REPOSITORY");
   const actionStartTime = env("action_start_time");
@@ -325,8 +331,8 @@ ${actionStartTime}`;
 
 async function cmdComment(): Promise<void> {
   const deploymentAction = env("deployment_action");
-  const commentEnabled = env("INPUT_COMMENT");
-  const prNumber = env("INPUT_PR_NUMBER");
+  const commentEnabled = input("comment");
+  const prNumber = input("pr-number");
   const repo = env("GITHUB_REPOSITORY");
   const dryRun = env("DRY_RUN") === "true";
 
@@ -372,8 +378,8 @@ async function cmdStatus(
   targetUrl: string,
 ): Promise<void> {
   const repo = env("GITHUB_REPOSITORY");
-  const sha = env("INPUT_SHA");
-  const context = env("INPUT_CONTEXT") || "Preview";
+  const sha = input("sha");
+  const context = input("context") || "Preview";
   await githubApi("POST", `/repos/${repo}/statuses/${sha}`, {
     state,
     description,
@@ -386,15 +392,15 @@ async function cmdStatus(
 // ── dispatch ──────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const [cmd, ...args] = process.argv.slice(2);
+  const cmd = input("command");
   switch (cmd) {
     case "setup":
       cmdSetup();
       break;
     case "git-update": {
-      const mode = args[0];
+      const mode = input("mode");
       if (mode !== "deploy" && mode !== "remove") {
-        console.error("Usage: index.js git-update <deploy|remove>");
+        console.error("Input 'mode' must be 'deploy' or 'remove' for command 'git-update'");
         process.exit(1);
       }
       cmdGitUpdate(mode);
@@ -404,17 +410,17 @@ async function main(): Promise<void> {
       await cmdComment();
       break;
     case "status": {
-      const [state, description, targetUrl] = args;
+      const state = input("state");
       if (!state) {
-        console.error("Usage: index.js status <state> <description> <target_url>");
+        console.error("Input 'state' is required for command 'status'");
         process.exit(1);
       }
-      await cmdStatus(state, description ?? "", targetUrl ?? "");
+      await cmdStatus(state, input("description"), input("target-url"));
       break;
     }
     default:
       console.error(`Unknown command: ${cmd}`);
-      console.error("Usage: index.js <setup|git-update|comment|status>");
+      console.error("Input 'command' must be one of: setup, git-update, comment, status");
       process.exit(1);
   }
 }

@@ -147,6 +147,15 @@ Reusable GitHub Actions.
 - uses: wow-look-at-my/actions@orphan-release#latest
 ```
 
+### [PR Preview Scripts](pr-preview/)
+
+```yml
+# Backend steps for the pr-preview reusable workflow (setup, git-update, comment, status).
+- uses: wow-look-at-my/actions@pr-preview#latest
+  with:
+    command: # Which step to run: setup, git-update, comment, or status
+```
+
 ### [Fetch Secrets](secret-server/)
 
 ```yml
