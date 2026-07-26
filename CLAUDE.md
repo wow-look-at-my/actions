@@ -7,7 +7,6 @@ This repository contains reusable GitHub Actions.
 Each action lives in its own directory with an `action.yml` file:
 
 - `action-validator/` - Composite action (YAML only)
-- `artifact-storage-record/` - Composite action (records an artifact's storage location on GitHub's artifact metadata API, so it appears on the org's linked artifacts page). Registry-agnostic; takes either scalar inputs or a `records` JSON array for batches. Needs `artifact-metadata: write` in the calling job; without it it warns and stays green (`on-error: fail` to make it red), because bookkeeping must never fail the publish it belongs to. The `artifact-url` must serve exactly the bytes `digest` covers -- for a registry that transforms artifacts on download, that means the untransformed original's URL, or no URL at all.
 - `branch-block/` - Composite action (shell script)
 - `cache-cleanup/` - Node.js action (deletes a run's cache hand-offs and sweeps aged ones)
 - `cache-download/` - Node.js action (restores files handed off by cache-upload in the same run)
