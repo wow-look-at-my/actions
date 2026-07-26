@@ -21,6 +21,10 @@ on:
                 description: Path to the directory containing all previews.
                 type: string
                 default: pr-preview
+            shared-dirs:
+                description: Comma-separated directory names kept once at the root of the preview branch instead of duplicated into each PR subdirectory. Merged additively on deploy; unreferenced files are garbage-collected when previews go away.
+                type: string
+                default: ""
             pages-base-url:
                 description: URL of the repo's GitHub Pages site.
                 type: string
@@ -144,6 +148,7 @@ jobs:
                   source-dir: ${{ inputs.artifact-name != '' && '__artifact-download' || inputs.source-dir }}
                   target-path: ${{ env.preview_file_path }}
                   umbrella-dir: ${{ inputs.umbrella-dir }}
+                  shared-dirs: ${{ inputs.shared-dirs }}
                   commit-message: ${{ inputs.deploy-commit-message || (github.event_name == 'pull_request' && format('Deploy preview for PR {0} 🛫', github.event.number)) || format('Deploy from {0}', github.sha) }}
 
             - name: Upload Pages artifact
@@ -212,6 +217,8 @@ jobs:
                   branch: ${{ inputs.preview-branch }}
                   token: ${{ github.token }}
                   target-path: ${{ env.preview_file_path }}
+                  umbrella-dir: ${{ inputs.umbrella-dir }}
+                  shared-dirs: ${{ inputs.shared-dirs }}
                   commit-message: ${{ inputs.remove-commit-message || (github.event_name == 'pull_request' && format('Remove preview for PR {0} 🛬', github.event.number)) || format('Remove deployment from {0}', github.sha) }}
 
             - name: Upload Pages artifact for removal

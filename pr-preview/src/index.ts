@@ -226,12 +226,148 @@ function cmdSetup(): void {
 
 // ── git-update ────────────────────────────────────────────────────────────────
 
+// ── shared dirs ───────────────────────────────────────────────────────────────
+// Directories kept once at the root of the preview branch instead of duplicated
+// into every PR subdirectory. Built for npm-registry-style previews where many
+// previews reference the same tarballs.
+
+function parseSharedDirs(): string[] {
+  return input("shared-dirs")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+// Additive: existing files of the same name are overwritten, others preserved.
+function mergeSharedDir(
+  sourceBase: string,
+  destRoot: string,
+  sharedName: string,
+): void {
+  const src = path.join(sourceBase, sharedName);
+  if (!fs.existsSync(src) || !fs.statSync(src).isDirectory()) return;
+  const dest = path.join(destRoot, sharedName);
+  fs.mkdirSync(dest, { recursive: true });
+  run(`cp -r "${src}"/. "${dest}/"`);
+}
+
+// Drop from the staging area so the per-PR copy doesn't duplicate it.
+function removeFromSource(sourceBase: string, dirName: string): void {
+  const p = path.join(sourceBase, dirName);
+  if (fs.existsSync(p)) fs.rmSync(p, { recursive: true });
+}
+
+// Collect tarball filenames referenced by any packument in a directory.
+function collectReferencedTarballs(packumentDir: string): Set<string> {
+  const refs = new Set<string>();
+  if (!fs.existsSync(packumentDir)) return refs;
+
+  for (const entry of fs.readdirSync(packumentDir)) {
+    if (entry.startsWith(".")) continue;
+    const fullPath = path.join(packumentDir, entry);
+    let stat;
+    try {
+      stat = fs.statSync(fullPath);
+    } catch {
+      continue;
+    }
+    if (stat.isDirectory()) continue;
+
+    try {
+      const data = JSON.parse(fs.readFileSync(fullPath, "utf8"));
+      if (!data.versions || typeof data.versions !== "object") continue;
+      for (const ver of Object.values(data.versions)) {
+        const url = (ver as { dist?: { tarball?: string } }).dist?.tarball;
+        if (url) refs.add(path.basename(url));
+      }
+    } catch {
+      // Not a packument -- skip.
+    }
+  }
+  return refs;
+}
+
+// Delete shared-dir files no longer referenced by any remaining packument.
+function gcSharedDirs(
+  ghPagesDir: string,
+  sharedDirs: string[],
+  umbrellaDir: string,
+): void {
+  if (sharedDirs.length === 0) return;
+
+  const allRefs = new Set<string>();
+  for (const name of collectReferencedTarballs(ghPagesDir)) allRefs.add(name);
+
+  const umbrella = path.join(ghPagesDir, umbrellaDir);
+  if (fs.existsSync(umbrella)) {
+    for (const prDir of fs.readdirSync(umbrella)) {
+      const prPath = path.join(umbrella, prDir);
+      if (!fs.statSync(prPath).isDirectory()) continue;
+      for (const name of collectReferencedTarballs(prPath)) allRefs.add(name);
+    }
+  }
+
+  for (const sharedName of sharedDirs) {
+    const sharedPath = path.join(ghPagesDir, sharedName);
+    if (!fs.existsSync(sharedPath) || !fs.statSync(sharedPath).isDirectory())
+      continue;
+
+    let removed = 0;
+    for (const file of fs.readdirSync(sharedPath)) {
+      if (!allRefs.has(file)) {
+        fs.rmSync(path.join(sharedPath, file), { recursive: true });
+        removed++;
+      }
+    }
+    if (removed > 0)
+      console.log(
+        `GC: removed ${removed} unreferenced file(s) from ${sharedName}/`,
+      );
+  }
+}
+
+async function isPrOpen(prNumber: string): Promise<boolean> {
+  const repo = env("GITHUB_REPOSITORY");
+  try {
+    const pr = (await githubApi("GET", `/repos/${repo}/pulls/${prNumber}`)) as {
+      state: string;
+    };
+    return pr.state === "open";
+  } catch {
+    // On an API failure, keep the preview rather than deleting it.
+    return true;
+  }
+}
+
+// Sweep previews whose PR has closed, then GC what they were holding onto.
+async function cleanupClosedPreviews(
+  ghPagesDir: string,
+  umbrellaDir: string,
+  sharedDirs: string[],
+): Promise<void> {
+  const umbrella = path.join(ghPagesDir, umbrellaDir);
+  if (!fs.existsSync(umbrella)) return;
+
+  let removedAny = false;
+  for (const entry of fs.readdirSync(umbrella)) {
+    const match = entry.match(/^pr-(\d+)$/);
+    if (!match) continue;
+    if (await isPrOpen(match[1])) continue;
+
+    console.log(`Removing stale preview for PR #${match[1]}`);
+    fs.rmSync(path.join(umbrella, entry), { recursive: true });
+    removedAny = true;
+  }
+
+  if (removedAny) gcSharedDirs(ghPagesDir, sharedDirs, umbrellaDir);
+}
+
 function run(cmd: string, cwd?: string): void {
   console.log(`$ ${cmd}`);
   execSync(cmd, { stdio: "inherit", cwd });
 }
 
-function cmdGitUpdate(mode: "deploy" | "remove"): void {
+async function cmdGitUpdate(mode: "deploy" | "remove"): Promise<void> {
   const branch = input("branch");
   const token = input("token");
   const repo = env("GITHUB_REPOSITORY");
@@ -258,14 +394,24 @@ function cmdGitUpdate(mode: "deploy" | "remove"): void {
     );
   }
 
+  const sharedDirs = parseSharedDirs();
+  const umbrellaDir = input("umbrella-dir") || "pr-preview";
+  const sourcePath = path.join(workspace, sourceDir);
+
   if (mode === "deploy") {
     if (targetPath === "") {
-      const umbrellaDir = input("umbrella-dir") || "pr-preview";
+      // Root deployment: keep .git, the umbrella, and any shared dirs.
+      const preserveSet = new Set([".git", umbrellaDir, ...sharedDirs]);
       for (const entry of fs.readdirSync(dir)) {
-        if (entry === ".git" || entry === umbrellaDir) continue;
+        if (preserveSet.has(entry)) continue;
         fs.rmSync(path.join(dir, entry), { recursive: true });
       }
-      run(`cp -r "${path.join(workspace, sourceDir)}"/. "${dir}/"`);
+      // Merge shared dirs to the root, then drop them from the source so the
+      // bulk copy below cannot overwrite what was just merged.
+      for (const sd of sharedDirs) mergeSharedDir(sourcePath, dir, sd);
+      for (const sd of sharedDirs) removeFromSource(sourcePath, sd);
+
+      run(`cp -r "${sourcePath}"/. "${dir}/"`);
       injectCacheBustScript(dir);
       const shortSha = env("short_sha");
       if (shortSha)
@@ -274,15 +420,23 @@ function cmdGitUpdate(mode: "deploy" | "remove"): void {
       const target = path.join(dir, targetPath);
       if (fs.existsSync(target)) fs.rmSync(target, { recursive: true });
       fs.mkdirSync(target, { recursive: true });
-      run(`cp -r "${path.join(workspace, sourceDir)}"/. "${target}/"`);
+
+      // Shared dirs live at the root, never inside the per-PR directory.
+      for (const sd of sharedDirs) mergeSharedDir(sourcePath, dir, sd);
+      for (const sd of sharedDirs) removeFromSource(sourcePath, sd);
+
+      run(`cp -r "${sourcePath}"/. "${target}/"`);
       injectCacheBustScript(target);
       const shortSha = env("short_sha");
       if (shortSha)
         fs.writeFileSync(path.join(target, "version.txt"), shortSha + "\n");
     }
+    await cleanupClosedPreviews(dir, umbrellaDir, sharedDirs);
   } else {
     const target = path.join(dir, targetPath);
     if (fs.existsSync(target)) fs.rmSync(target, { recursive: true });
+    // This preview may have been the last referencing some shared files.
+    gcSharedDirs(dir, sharedDirs, umbrellaDir);
   }
 
   run('git config user.name "pr-preview-action[bot]"', dir);
@@ -403,7 +557,7 @@ async function main(): Promise<void> {
         console.error("Input 'mode' must be 'deploy' or 'remove' for command 'git-update'");
         process.exit(1);
       }
-      cmdGitUpdate(mode);
+      await cmdGitUpdate(mode);
       break;
     }
     case "comment":

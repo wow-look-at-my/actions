@@ -53,6 +53,10 @@ inputs:
         description: Commit message for the preview branch update
         required: false
         default: ""
+    shared-dirs:
+        description: Comma-separated directory names kept once at the root of the preview branch instead of duplicated into each PR subdirectory. Merged additively on deploy; unreferenced files are garbage-collected when previews go away.
+        required: false
+        default: ""
 
     # comment
     preview-branch:
