@@ -12,6 +12,14 @@ Reusable GitHub Actions.
 - uses: wow-look-at-my/actions@action-validator#latest
 ```
 
+### [Artifact storage record](artifact-storage-record/)
+
+```yml
+# Record where a build artifact is stored on GitHub's artifact metadata API, so it appears on the organization's linked artifacts page tied back to the repo and commit that produced it. Registry-agnostic (buildhost, GHCR, Artifactory, anything with a URL and a digest). Needs `artifact-metadata: write` in the calling job's permissions block; without it the step warns and skips, so a publish is never failed by its own bookkeeping.
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/artifact-storage-record/README.md
+- uses: wow-look-at-my/actions@artifact-storage-record#latest
+```
+
 ### [Branch Block](branch-block/)
 
 ```yml

@@ -1,0 +1,226 @@
+name: Artifact storage record
+version: 1
+description: >-
+  Record where a build artifact is stored on GitHub's artifact metadata API, so
+  it appears on the organization's linked artifacts page tied back to the repo
+  and commit that produced it. Registry-agnostic (buildhost, GHCR, Artifactory,
+  anything with a URL and a digest). Needs `artifact-metadata: write` in the
+  calling job's permissions block; without it the step warns and skips, so a
+  publish is never failed by its own bookkeeping
+
+inputs:
+  records:
+    description: >-
+      JSON array of record objects, for posting several artifacts in one step
+      (e.g. every os/arch slot of a release). Each element takes the same keys
+      as the scalar inputs below, in snake_case: name, digest, registry_url,
+      version, artifact_url, path, repository, status, github_repository. When
+      set, the scalar inputs are ignored.
+    required: false
+    default: ''
+  name:
+    description: "The artifact's name (e.g. the package or image name)."
+    required: false
+    default: ''
+  digest:
+    description: >-
+      Digest of the artifact as `algorithm:hex` (e.g.
+      `sha256:1bb1e9...`). A bare hex digest is accepted and prefixed with
+      `sha256:`.
+    required: false
+    default: ''
+  registry-url:
+    description: 'Base URL of the registry the artifact is stored in.'
+    required: false
+    default: ''
+  version:
+    description: 'Version identifier of the artifact.'
+    required: false
+    default: ''
+  artifact-url:
+    description: >-
+      URL the artifact itself can be fetched from. It should serve exactly the
+      bytes `digest` covers -- a registry that transforms artifacts on download
+      (repackaging, stripping) needs the URL of the untransformed original.
+    required: false
+    default: ''
+  path:
+    description: "The artifact's path within the registry (e.g. `linux/amd64`)."
+    required: false
+    default: ''
+  repository:
+    description: 'Repository/namespace within the registry.'
+    required: false
+    default: ''
+  status:
+    description: "Artifact status: `active`, `eol`, or `deleted`."
+    required: false
+    default: 'active'
+  github-repository:
+    description: >-
+      `owner/repo` that produced the artifact (defaults to the calling repo).
+      Ignored by GitHub when a provenance attestation already links the digest.
+    required: false
+    default: ''
+  organization:
+    description: >-
+      Organization whose linked artifacts page receives the records (defaults
+      to the calling repository's owner).
+    required: false
+    default: ''
+  on-error:
+    description: >-
+      How to treat a failed record: `warn` (default) = warning annotation, step
+      stays green, the publish it belongs to is unaffected; `fail` = red.
+    required: false
+    default: 'warn'
+  github-token:
+    description: 'Token used to call the artifact metadata API.'
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  recorded:
+    description: 'Number of storage records successfully created.'
+    value: ${{ steps.record.outputs.recorded }}
+
+runs:
+  using: composite
+  steps:
+    - name: Create artifact storage records
+      id: record
+      uses: wow-look-at-my/actions@typescript#latest
+      env:
+        # Records ride an env var rather than a `${{ }}` interpolation: the
+        # JSON can be arbitrarily long and contains quotes, which would not
+        # survive being pasted into a TypeScript string literal.
+        STORAGE_RECORDS: ${{ inputs.records }}
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          await (async () => {
+            core.setOutput('recorded', '0');
+
+            type Record = {
+              name?: string;
+              digest?: string;
+              registry_url?: string;
+              version?: string;
+              artifact_url?: string;
+              path?: string;
+              repository?: string;
+              status?: string;
+              github_repository?: string;
+            };
+
+            // Interpolated inputs are string LITERALS by the time tsc sees
+            // them, so `x || fallback` is a constant-truthiness error under
+            // the action's validation; compare lengths instead.
+            const onErrorInput: string = "${{ inputs.on-error }}";
+            const onError: string = onErrorInput.length > 0 ? onErrorInput : 'warn';
+            const fail = (msg: string): void => {
+              if (onError === 'fail') core.setFailed(msg);
+              else core.warning(msg);
+            };
+
+            const orgInput: string = "${{ inputs.organization }}";
+            const org: string = orgInput.length > 0 ? orgInput : context.repo.owner;
+            const ghRepoInput: string = "${{ inputs.github-repository }}";
+            const defaultGHRepo: string = ghRepoInput.length > 0
+              ? ghRepoInput
+              : `${context.repo.owner}/${context.repo.repo}`;
+
+            // Batch mode (records JSON) or a single record from the scalars.
+            const raw = (env.STORAGE_RECORDS ?? '').trim();
+            let records: Record[];
+            if (raw !== '') {
+              let parsed: unknown;
+              try {
+                parsed = JSON.parse(raw);
+              } catch (e) {
+                fail(`The 'records' input is not valid JSON: ${e instanceof Error ? e.message : String(e)}`);
+                return;
+              }
+              if (!Array.isArray(parsed)) {
+                fail("The 'records' input must be a JSON array of record objects");
+                return;
+              }
+              records = parsed as Record[];
+            } else {
+              records = [{
+                name: "${{ inputs.name }}",
+                digest: "${{ inputs.digest }}",
+                registry_url: "${{ inputs.registry-url }}",
+                version: "${{ inputs.version }}",
+                artifact_url: "${{ inputs.artifact-url }}",
+                path: "${{ inputs.path }}",
+                repository: "${{ inputs.repository }}",
+                status: "${{ inputs.status }}",
+              }];
+            }
+
+            if (records.length === 0) {
+              core.info('No artifact storage records to create');
+              return;
+            }
+
+            // The API wants `algorithm:hex`; a bare hex digest is the common
+            // shape coming out of a `sha256sum`-style step, so normalize it
+            // rather than sending something the API will reject.
+            const normalizeDigest = (d: string): string =>
+              /^[0-9a-f]{64}$/i.test(d) ? `sha256:${d.toLowerCase()}` : d;
+
+            // A 403 here means exactly one thing in practice: the calling job
+            // did not grant `artifact-metadata: write`. Say so once, by name,
+            // instead of repeating an opaque HTTP error per record.
+            let permissionDenied = false;
+            let recorded = 0;
+
+            for (const rec of records) {
+              const name = (rec.name ?? '').trim();
+              const digest = normalizeDigest((rec.digest ?? '').trim());
+              const registryURL = (rec.registry_url ?? '').trim();
+              const label = `${name || '(unnamed)'}${rec.path ? ` ${rec.path}` : ''}`;
+
+              if (name === '' || digest === '' || registryURL === '') {
+                fail(`Skipping storage record ${label}: name, digest and registry_url are all required`);
+                continue;
+              }
+              if (permissionDenied) continue;
+
+              try {
+                await octokit.request('POST /orgs/{org}/artifacts/metadata/storage-record', {
+                  org,
+                  name,
+                  digest,
+                  registry_url: registryURL,
+                  ...(rec.version ? { version: rec.version } : {}),
+                  ...(rec.artifact_url ? { artifact_url: rec.artifact_url } : {}),
+                  ...(rec.path ? { path: rec.path } : {}),
+                  ...(rec.repository ? { repository: rec.repository } : {}),
+                  ...(rec.status ? { status: rec.status } : {}),
+                  github_repository: rec.github_repository ?? defaultGHRepo,
+                  return_records: false,
+                });
+                recorded++;
+                core.info(`Recorded ${label} ${digest} in ${registryURL}`);
+              } catch (e) {
+                const status = (e as { status?: number }).status;
+                const msg = e instanceof Error ? e.message : String(e);
+                if (status === 403 || status === 404) {
+                  permissionDenied = true;
+                  fail(
+                    `Skipping artifact storage records (HTTP ${status}: ${msg}). Grant ` +
+                    "'artifact-metadata: write' in the calling job's permissions block " +
+                    '(job-level permissions REPLACE workflow-level ones, so add it alongside ' +
+                    'the permissions the job already needs).',
+                  );
+                  continue;
+                }
+                fail(`Could not record ${label} (${msg})`);
+              }
+            }
+
+            core.setOutput('recorded', String(recorded));
+            if (recorded > 0) core.info(`Created ${recorded} artifact storage record(s) for ${org}`);
+          })();
