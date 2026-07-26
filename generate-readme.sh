@@ -40,3 +40,31 @@ while IFS= read -r action_yml; do
 
   echo '```'
 done < <(find . -name action.yml -not -path './.github/*' -not -path '*/test/*' -printf '%P\n' | sort)
+
+# Reusable workflows (workflow_call triggers in .github/workflows/)
+first_wf=true
+while IFS= read -r wf; do
+  grep -q 'workflow_call' ".github/workflows/$wf" || continue
+
+  if $first_wf; then
+    echo ""
+    echo "## Reusable Workflows"
+    first_wf=false
+  fi
+
+  name=$(yq -r '.name' ".github/workflows/$wf")
+
+  echo ""
+  echo "### $name"
+  echo ""
+  echo '```yml'
+  echo "jobs:"
+  echo "  ${wf%.yml}:"
+  echo "    uses: wow-look-at-my/actions/.github/workflows/${wf}@master"
+  echo '```'
+  extra=".github/workflows/${wf%.yml}.md"
+  if [ -f "$extra" ]; then
+    echo ""
+    cat "$extra"
+  fi
+done < <(find .github/workflows -maxdepth 1 -name '*.yml' -printf '%f\n' | sort)
