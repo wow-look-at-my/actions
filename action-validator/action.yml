@@ -27,11 +27,36 @@ runs:
           action-validator "$f"
         done
 
+    # Workflows are validated against the LIVE schema, not action-validator's.
+    # action-validator vendors its schema into a wasm blob (@action-validator/
+    # core, pinned at 0.6.0 with no newer release) that has fallen behind
+    # GitHub: it rejects generally-available permission scopes -- among them
+    # `artifact-metadata` -- so a correct workflow fails with "Additional
+    # property 'artifact-metadata' is not allowed". Fetching schemastore's
+    # github-workflow.json here keeps the check current instead of pinning it
+    # to whenever that wasm was last rebuilt. A fetch failure is a hard error,
+    # never a skipped check.
     - name: Validate workflows
       shell: bash
+      env:
+        WORKFLOW_GLOB: ${{ inputs.workflows }}
       run: |
+        set -euo pipefail
         shopt -s nullglob
-        for f in ${{ inputs.workflows }}; do
-          echo "Validating $f"
-          action-validator "$f"
-        done
+        files=(${WORKFLOW_GLOB})
+        if [ ${#files[@]} -eq 0 ]; then
+          echo "No workflow files matched '${WORKFLOW_GLOB}'; nothing to validate"
+          exit 0
+        fi
+        workdir="${RUNNER_TEMP}/action-validator-workflows"
+        mkdir -p "${workdir}"
+        curl -fsSL https://json.schemastore.org/github-workflow.json \
+          -o "${workdir}/github-workflow.json"
+        npm install --silent --no-fund --no-audit --prefix "${workdir}" \
+          ajv@8 ajv-formats@3 js-yaml@4
+        # The script must live NEXT TO the installed node_modules: ESM `import`
+        # ignores NODE_PATH and resolves by walking up from the script's own
+        # directory, so running it from the action path would not find ajv.
+        cp "${GITHUB_ACTION_PATH}/validate-workflows.mjs" "${workdir}/"
+        node "${workdir}/validate-workflows.mjs" \
+          "${workdir}/github-workflow.json" "${files[@]}"
