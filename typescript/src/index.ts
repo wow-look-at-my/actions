@@ -10,6 +10,7 @@ import * as util from 'util';
 import { createRequire } from 'module';
 import * as ts from 'typescript';
 import { MAIN_FN, transformScript } from './transform';
+import { highlightSource } from './highlight';
 
 type ShellArg = string | number | boolean | null | undefined | string[];
 
@@ -597,6 +598,13 @@ function readUserScript(): { script: string; label: string; dir: string } {
 
 async function run(): Promise<void> {
 	const { script: userScript, label, dir } = readUserScript();
+
+	// Show what is about to run, syntax-highlighted with raw ANSI escapes (the
+	// Actions log viewer renders 24-bit color; plain-text fallback on failure).
+	core.startGroup('Script source');
+	core.info(highlightSource(trimTrailingNewline(userScript)));
+	core.endGroup();
+
 	const ctx = readContexts();
 	// Token for the injected `octokit` (and the default getOctokit() token).
 	// Defaults to ${{ github.token }} via the action input, so the common case is
