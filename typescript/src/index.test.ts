@@ -10,10 +10,18 @@ const execFileAsync = promisify(execFile);
 const DIST = path.join(__dirname, '..', 'dist', 'index.js');
 
 interface RunResult {
+	/** Process stdout with the leading "Script source" echo group removed. */
 	stdout: string;
+	/** Full process stdout, source echo included. */
+	rawStdout: string;
 	stderr: string;
 	exitCode: number;
 }
+
+// The action opens the log by echoing the (highlighted) script source. Strip
+// that group from `stdout` so assertions about what actually executed aren't
+// satisfied by the mere echo of the script text; `rawStdout` keeps it.
+const SOURCE_ECHO = /^::group::Script source\n[\s\S]*?::endgroup::\n/;
 
 async function runAction(script: string, env: Record<string, string> = {}): Promise<RunResult> {
 	try {
@@ -21,9 +29,10 @@ async function runAction(script: string, env: Record<string, string> = {}): Prom
 			env: { ...process.env, INPUT_SCRIPT: script, ...env },
 			timeout: 15000,
 		});
-		return { stdout, stderr, exitCode: 0 };
+		return { stdout: stdout.replace(SOURCE_ECHO, ''), rawStdout: stdout, stderr, exitCode: 0 };
 	} catch (err: any) {
-		return { stdout: err.stdout ?? '', stderr: err.stderr ?? '', exitCode: err.code ?? 1 };
+		const stdout: string = err.stdout ?? '';
+		return { stdout: stdout.replace(SOURCE_ECHO, ''), rawStdout: stdout, stderr: err.stderr ?? '', exitCode: err.code ?? 1 };
 	}
 }
 
@@ -63,6 +72,16 @@ describe('typescript action', () => {
 		const { stdout, exitCode } = await runAction('core.info("hello world")');
 		assert.equal(exitCode, 0);
 		assert.ok(stdout.includes('hello world'));
+	});
+
+	it('echoes the ANSI-highlighted script source before type-checking', async () => {
+		const { rawStdout, exitCode } = await runAction('const n = 1; // note');
+		assert.equal(exitCode, 0);
+		const echo = rawStdout.match(SOURCE_ECHO)?.[0];
+		assert.ok(echo, `source echo group missing in:\n${rawStdout}`);
+		assert.ok(echo.includes('\x1b[38;2;255;123;114mconst\x1b[39m'), `keyword not highlighted in:\n${JSON.stringify(echo)}`);
+		assert.ok(echo.includes('\x1b[38;2;139;148;158m// note\x1b[39m'), `comment not highlighted in:\n${JSON.stringify(echo)}`);
+		assert.ok(rawStdout.indexOf('::group::Script source') < rawStdout.indexOf('::group::Type-checking'), rawStdout);
 	});
 
 	it('supports top-level await', async () => {
