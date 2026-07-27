@@ -1,9 +1,8 @@
 import * as crypto from 'crypto';
 
-// This file is intentionally BYTE-IDENTICAL in cache-upload/src/lib.ts and
-// cache-download/src/lib.ts (each action dir is a self-contained package —
-// repo convention). Keep them in sync; the constants below are additionally
-// pinned by tests in both packages.
+// The single copy of the cache-xfer wire format: key layout, envelope, and
+// the constant version seed. cache-upload, cache-download, and cache-cleanup
+// all import it from here -- a second copy would fork the format silently.
 
 /** Key prefix shared by cache-upload, cache-download, and cache-cleanup. */
 export const KEY_PREFIX = 'cache-xfer';
@@ -54,7 +53,7 @@ export function validateName(name: string): void {
 	}
 }
 
-function escapeRegExp(s: string): string {
+export function escapeRegExp(s: string): string {
 	return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 

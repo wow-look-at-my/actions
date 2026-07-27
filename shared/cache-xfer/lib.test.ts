@@ -3,8 +3,9 @@ import {createHash} from 'node:crypto';
 import {test} from 'node:test';
 import {ENVELOPE_MAGIC, EnvelopeHeader, KEY_PREFIX, LEGACY_VERSION_SEED, VERSION_SEED, encodeEnvelope, handoffKey, handoffRestorePrefix, handoffVersion, legacyHandoffKey, legacyHandoffRestorePrefix, legacyHandoffVersion, nameFromKey, parseEnvelope, runRestorePrefix, validateName} from './lib';
 
-// This file is intentionally BYTE-IDENTICAL in cache-upload and
-// cache-download: it pins the wire-level constants both sides must agree on.
+// Pins the wire-level constants every cache-xfer action must agree on. Run
+// once by release.yml's test-cache-xfer job -- shared/ has no package.json,
+// so the per-action test matrix never reaches it.
 
 test('pinned wire constants', () => {
 	assert.equal(KEY_PREFIX, 'cache-xfer');
