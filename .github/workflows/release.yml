@@ -58,19 +58,17 @@ jobs:
       - uses: actions/checkout@v4
       # Toolchain only -- this job builds three directories itself below.
       - uses: ./.github/actions/setup-and-build
-      # The shared sources are a byte-identity convention; a drifted copy
-      # would silently fork the wire format between upload and download.
-      - name: Shared cache-xfer sources are byte-identical
-        run: |
-          for f in lib.ts lib.test.ts xfer.ts xfer.test.ts; do
-            cmp "cache-upload/src/$f" "cache-download/src/$f"
-          done
       # node24 actions: dist/ is not committed, so build before `uses: ./...`.
       - name: Build the cache hand-off trio
         run: |
           for a in cache-upload cache-download cache-cleanup; do
             (cd "$a" && just build)
           done
+      # shared/cache-xfer has no package.json, so the per-action test matrix
+      # never reaches it; the wire format's own tests run here, once.
+      - name: Shared cache-xfer unit tests
+        working-directory: cache-download
+        run: pnpm tsx --test ../shared/cache-xfer/*.test.ts
       - name: Create hand-off payload
         run: |
           mkdir -p handoff-src/sub
