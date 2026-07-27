@@ -24,6 +24,10 @@ Each action lives in its own directory with an `action.yml` file:
 - `tag-runner/` - Node.js action (TypeScript compiled to JS)
 - `typescript/` - Node.js action (run an inline or file-based TypeScript script, tsc-validated, with injected helper globals)
 
+Not an action directory, and never released as one:
+
+- `shared/cache-xfer/` - NOT an action: the one copy of the cache-xfer wire format (key layout, envelope, pack/unpack), imported by cache-upload, cache-download, and cache-cleanup. See `docs/shared-sources.md`.
+
 ## Reusable Workflows
 
 GitHub requires reusable workflows (`on: workflow_call`) to live in `.github/workflows/` (not in subdirectories, not elsewhere -- see [actions/runner#2102](https://github.com/actions/runner/issues/2102)). These are distinct from the repo's own CI workflows but share the same directory.
@@ -38,7 +42,7 @@ GitHub requires reusable workflows (`on: workflow_call`) to live in `.github/wor
 Actions using `runs.using: node24` require:
 - `package.json` with dependencies — **no `scripts` section** (enforced by `no-scripts-action`)
 - TypeScript source in `src/`
-- A `justfile` with a `build` recipe that runs `pnpm install`, `pnpm tsc`, and `pnpm esbuild`
+- A `justfile` with a `build` recipe that runs `pnpm install`, `pnpm tsc`, and `pnpm esbuild` — `tsc` type-checks and emits the JavaScript, `esbuild` only bundles it (TypeScript is compiled once; esbuild never reads a `.ts` file)
 - **Do NOT commit `dist/` or built JS files.** CI builds these automatically via `just build` and publishes them through orphan release tags.
 
 ### Composite Actions
