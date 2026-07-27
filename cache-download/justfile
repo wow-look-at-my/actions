@@ -2,10 +2,11 @@
 help:
 	@just --list
 
+# esbuild bundles straight from the TypeScript entrypoint, so sources outside
+# this directory (../shared/cache-xfer) resolve like any other import and no
+# stray per-module .js is left in dist/ to ship in the release tag. tsc is the
+# typecheck only.
 build:
 	pnpm install
-	pnpm tsc
-	pnpm esbuild dist/index.js --bundle --platform=node --target=node24 --outfile=dist/index.js --allow-overwrite
-	# lib/miss/xfer/discovery are bundled into index.js above; drop the leftover
-	# tsc output so it does not ship in the orphan release tag.
-	rm -f dist/lib.js dist/miss.js dist/xfer.js dist/discovery.js dist/lib.test.js dist/miss.test.js dist/xfer.test.js dist/discovery.test.js
+	pnpm tsc --noEmit
+	pnpm esbuild src/index.ts --bundle --platform=node --target=node24 --outfile=dist/index.js
