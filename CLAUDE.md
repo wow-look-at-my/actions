@@ -41,7 +41,7 @@ GitHub requires reusable workflows (`on: workflow_call`) to live in `.github/wor
 Actions using `runs.using: node24` require:
 - `package.json` with dependencies — **no `scripts` section** (enforced by `no-scripts-action`)
 - TypeScript source in `src/`
-- A `justfile` with a `build` recipe that runs `pnpm install`, `pnpm tsc --noEmit`, and `pnpm esbuild src/index.ts --bundle` (esbuild bundles from the TS entrypoint, so an action may import sources from `shared/`)
+- A `justfile` with a `build` recipe that runs `pnpm install`, `pnpm tsc`, and `pnpm esbuild` — `tsc` type-checks and emits the JavaScript, `esbuild` only bundles it (TypeScript is compiled once; esbuild never reads a `.ts` file)
 - **Do NOT commit `dist/` or built JS files.** CI builds these automatically via `just build` and publishes them through orphan release tags.
 
 ### Composite Actions

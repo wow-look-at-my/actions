@@ -15,16 +15,28 @@ import {handoffKey} from '../../shared/cache-xfer/lib';
 
 ## What makes that work
 
-- **esbuild bundles from the TypeScript entrypoint** (`pnpm esbuild src/index.ts
-  --bundle`), so imports that leave the action directory resolve like any
-  other. `tsc` runs as `--noEmit` -- purely a typecheck -- and each action's
-  `tsconfig.json` adds `../shared/**/*` to `include`.
+The build is unchanged in shape from every other node action in this repo --
+`tsc` then `esbuild` -- and TypeScript is compiled exactly **once**:
+
+- **`tsc` is the only tool that ever reads TypeScript.** It type-checks and
+  emits JavaScript. `rootDir` is the repo root and `outDir` is `.tsc-out/`, so
+  an action's sources and the `shared/` sources it imports land side by side
+  at a deterministic path (`.tsc-out/<action>/src/index.js`).
+- **`esbuild` bundles that JavaScript**, never TypeScript. It is a bundler
+  here, not a second compiler, so the fact that esbuild does not type-check is
+  irrelevant -- nothing it consumes has types left in it. A type error, in
+  action code or shared code, fails `just build` at the `tsc` step and never
+  reaches esbuild.
 - **`dist/index.js` stays self-contained.** The bundle inlines the shared
   modules, so the orphan release tag ships exactly what it always did; nothing
-  needs `shared/` at runtime.
-- **`shared/` has no `package.json`**, so `release.yml`'s detect job never
-  treats it as an action and never publishes a tag for it. Type definitions
-  come from whichever action is being built.
+  needs `shared/` at runtime. `.tsc-out/` is deleted by the build recipe, so it
+  can never end up in a tag.
+- **`shared/` has no `action.yml`**, so `release.yml`'s detect job never treats
+  it as an action and never publishes a tag for it. Type definitions come from
+  whichever action is being built.
+
+Do NOT "simplify" this into `tsc --noEmit` plus `esbuild src/index.ts`: that
+compiles the TypeScript twice, once for checking and once for output.
 
 ## Tests
 
