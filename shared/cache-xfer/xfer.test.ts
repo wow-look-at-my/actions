@@ -3,11 +3,11 @@ import * as fsp from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {test} from 'node:test';
-import {packToFile, readEnvelope, unpackFromFile} from './xfer';
+import {spawn} from 'node:child_process';
+import {Readable} from 'node:stream';
+import {packToFile, pipeIntoStdin, readEnvelope, unpackFromFile} from './xfer';
 
 // Local pack/unpack round-trips (spawns real tar + zstd; no cache service).
-// This file is intentionally BYTE-IDENTICAL in cache-upload and
-// cache-download so a packer change cannot silently break the unpacker.
 
 async function tempDir(): Promise<string> {
 	return fsp.mkdtemp(path.join(os.tmpdir(), 'cache-xfer-test-'));
@@ -90,4 +90,62 @@ test('unpackFromFile rejects a non-envelope file', async () => {
 	await fsp.writeFile(bogus, 'this is not an envelope at all');
 	await assert.rejects(unpackFromFile(bogus, path.join(work, 'out')), /magic/);
 	await fsp.rm(work, {recursive: true, force: true});
+});
+
+// A child that exits 0 having read only a prefix of what we send closes its
+// stdin under the writer: EPIPE mid-write, or ERR_STREAM_PREMATURE_CLOSE when
+// the pipe's `close` beats the writable's `finish`. Both mean the child is
+// done, not that the transfer failed -- awaiting the raw pipeline here is what
+// failed ~2.5% of real 16 MB unpacks, with every byte extracted correctly.
+test('pipeIntoStdin resolves when the child exits 0 before draining its stdin', async () => {
+	for (let attempt = 0; attempt < 20; attempt++) {
+		const child = spawn('sh', ['-c', 'head -c 16 >/dev/null'], {stdio: ['pipe', 'ignore', 'ignore']});
+		const big = Readable.from([Buffer.alloc(4 * 1024 * 1024, 7), Buffer.alloc(4 * 1024 * 1024, 9)]);
+		await pipeIntoStdin(big, child.stdin!);
+	}
+});
+
+test('pipeIntoStdin rethrows failures that are not a child closing its stdin', async () => {
+	const child = spawn('cat', {stdio: ['pipe', 'ignore', 'ignore']});
+	const boom = new Readable({
+		read() {
+			this.destroy(Object.assign(new Error('disk fell off'), {code: 'EIO'}));
+		}
+	});
+	await assert.rejects(pipeIntoStdin(boom, child.stdin!), /disk fell off/);
+	child.kill();
+});
+
+// The race is scheduling-dependent, so one round-trip proves nothing; a batch
+// makes a reintroduced bare pipeline overwhelmingly likely to show up, and
+// every restore is checked byte-for-byte rather than just for absence of throw.
+test('repeated directory round-trips neither fail nor lose bytes', async t => {
+	const src = await tempDir();
+	const work = await tempDir();
+	t.after(async () => {
+		for (const dir of [src, work]) {
+			await fsp.rm(dir, {recursive: true, force: true});
+		}
+	});
+
+	// Big enough that tar/zstd stay busy across several pipe buffers; that is
+	// what opens the window between the child's exit and the writable's finish.
+	const bodies = new Map<string, Buffer>();
+	for (let i = 0; i < 4; i++) {
+		const body = Buffer.alloc(1024 * 1024, i + 1);
+		bodies.set(`blob${i}.bin`, body);
+		await fsp.writeFile(path.join(src, `blob${i}.bin`), body);
+	}
+
+	const archive = path.join(work, 'batch.wxfr');
+	await packToFile(src, archive, 'batch-handoff');
+
+	for (let i = 0; i < 25; i++) {
+		const dest = path.join(work, `out-${i}`);
+		await unpackFromFile(archive, dest);
+		for (const [name, body] of bodies) {
+			assert.deepEqual(await fsp.readFile(path.join(dest, name)), body, `iteration ${i}: ${name}`);
+		}
+		await fsp.rm(dest, {recursive: true, force: true});
+	}
 });
