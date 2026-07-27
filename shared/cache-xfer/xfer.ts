@@ -6,9 +6,6 @@ import {once} from 'events';
 import {pipeline} from 'stream/promises';
 import {EnvelopeHeader, MAX_HEADER_BYTES, encodeEnvelope, parseEnvelope} from './lib';
 
-// This file is intentionally BYTE-IDENTICAL in cache-upload/src/xfer.ts and
-// cache-download/src/xfer.ts (each action dir is a self-contained package).
-
 // zstd is the fastest codec preinstalled on ALL GitHub-hosted runners:
 // per the actions/runner-images software manifests (checked 2026-07-17),
 // ubuntu-24.04, macos-15 (arm64), and windows-2025 all ship zstd 1.5.7,
@@ -34,6 +31,45 @@ async function waitExit(proc: ChildProcess, name: string, stderr: {read: () => s
 	if (code !== 0) {
 		const detail = stderr.read();
 		throw new Error(`${name} exited with ${code === null ? `signal ${signal}` : `code ${code}`}${detail ? `: ${detail}` : ''}`);
+	}
+}
+
+/**
+ * Every way the runtime reports "the child's stdin went away", none of which
+ * means the transfer failed:
+ *
+ *   ERR_STREAM_PREMATURE_CLOSE — the pipe's `close` beat the writable's
+ *                                `finish`, so pipeline()'s completion check
+ *                                fired first
+ *   EPIPE                      — a write reached a pipe with no reader
+ *   ECANCELED                  — writes were still queued when the pipe was
+ *                                torn down, so the runtime cancelled them
+ *   ERR_STREAM_DESTROYED       — a write was issued after the teardown
+ */
+const STDIN_TEARDOWN_CODES = new Set(['ERR_STREAM_PREMATURE_CLOSE', 'EPIPE', 'ECANCELED', 'ERR_STREAM_DESTROYED']);
+
+/**
+ * Feed `source` into a child's stdin.
+ *
+ * The child's exit status is the authority on whether the transfer worked --
+ * NOT the pipeline's teardown. When a child exits, the runtime closes its
+ * stdin pipe, and any code above can surface even though every byte was
+ * delivered and the child exited 0. Which event wins is scheduling luck, so
+ * awaiting the pipeline verbatim fails a successful hand-off at random --
+ * measured at ~2.5% of unpacks of a 16 MB payload, which is what a downstream
+ * publish job hit on an otherwise green build.
+ *
+ * Swallowing them hides nothing: a child that really failed exits non-zero and
+ * waitExit() reports it, with its stderr attached. Failures on the SOURCE side
+ * (a truncated archive, a read error) carry other codes and still propagate.
+ */
+export async function pipeIntoStdin(source: NodeJS.ReadableStream, stdin: NodeJS.WritableStream): Promise<void> {
+	try {
+		await pipeline(source, stdin);
+	} catch (err) {
+		if (!STDIN_TEARDOWN_CODES.has(String((err as NodeJS.ErrnoException).code))) {
+			throw err;
+		}
 	}
 }
 
@@ -115,14 +151,14 @@ export async function packToFile(sourcePath: string, archivePath: string, name: 
 	const stages: Array<Promise<void>> = [pipeline(zstd.stdout, out), waitExit(zstd, 'zstd', zstdErr)];
 
 	if (header.mode === 'raw') {
-		stages.push(pipeline(fs.createReadStream(sourcePath), zstd.stdin));
+		stages.push(pipeIntoStdin(fs.createReadStream(sourcePath), zstd.stdin));
 	} else {
 		const tarSpec = await tarInvocation();
 		const tar = spawn(tarSpec.cmd, ['-cf', '-', ...tarSpec.extraArgs, '-C', tarSpec.fixPath(sourcePath), '.'], {
 			stdio: ['ignore', 'pipe', 'pipe']
 		});
 		const tarErr = collectStderr(tar);
-		stages.push(pipeline(tar.stdout, zstd.stdin), waitExit(tar, 'tar', tarErr));
+		stages.push(pipeIntoStdin(tar.stdout, zstd.stdin), waitExit(tar, 'tar', tarErr));
 	}
 
 	await awaitStages(stages);
@@ -152,7 +188,7 @@ export async function unpackFromFile(archivePath: string, destDir: string): Prom
 	const src = fs.createReadStream(archivePath, {start: dataOffset});
 	const zstd = spawn('zstd', ZSTD_DECOMPRESS_ARGS, {stdio: ['pipe', 'pipe', 'pipe']});
 	const zstdErr = collectStderr(zstd);
-	const stages: Array<Promise<void>> = [pipeline(src, zstd.stdin), waitExit(zstd, 'zstd', zstdErr)];
+	const stages: Array<Promise<void>> = [pipeIntoStdin(src, zstd.stdin), waitExit(zstd, 'zstd', zstdErr)];
 
 	if (header.mode === 'raw') {
 		const destFile = path.join(destDir, header.basename as string);
@@ -167,7 +203,7 @@ export async function unpackFromFile(archivePath: string, destDir: string): Prom
 			stdio: ['pipe', 'ignore', 'pipe']
 		});
 		const tarErr = collectStderr(tar);
-		stages.push(pipeline(zstd.stdout, tar.stdin), waitExit(tar, 'tar', tarErr));
+		stages.push(pipeIntoStdin(zstd.stdout, tar.stdin), waitExit(tar, 'tar', tarErr));
 		await awaitStages(stages);
 	}
 	return header;
