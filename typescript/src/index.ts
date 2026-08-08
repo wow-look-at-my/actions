@@ -11,6 +11,7 @@ import { createRequire } from 'module';
 import * as ts from 'typescript';
 import { MAIN_FN, transformScript } from './transform';
 import { highlightSource } from './highlight';
+import { CommentBlock, findCommentBlocks } from './comments';
 
 type ShellArg = string | number | boolean | null | undefined | string[];
 
@@ -472,6 +473,11 @@ function formatDiagnostic(d: ts.Diagnostic, label: string, lineMap: number[]): s
 	return `error TS${d.code}: ${message}`;
 }
 
+function formatCommentBlock(b: CommentBlock, label: string): string {
+	const count = b.endLine - b.startLine + 1;
+	return `${label}:${b.startLine}:1: error: ${count} consecutive \`//\` comment lines (${b.startLine}-${b.endLine}). Stacked line comments are prose, not code — delete it, or say it in a single line.`;
+}
+
 function transpile(source: string): string {
 	const result = ts.transpileModule(source, {
 		compilerOptions: {
@@ -573,7 +579,7 @@ async function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: str
 	}
 }
 
-function readUserScript(): { script: string; label: string; dir: string } {
+function readUserScript(): { script: string; label: string; dir: string; inline: boolean } {
 	const inline = core.getInput('script');
 	const file = core.getInput('file');
 
@@ -590,14 +596,14 @@ function readUserScript(): { script: string; label: string; dir: string } {
 		if (!fs.existsSync(resolved)) {
 			throw new Error(`File not found: ${resolved}`);
 		}
-		return { script: fs.readFileSync(resolved, 'utf-8'), label: file, dir: path.dirname(resolved) };
+		return { script: fs.readFileSync(resolved, 'utf-8'), label: file, dir: path.dirname(resolved), inline: false };
 	}
 
-	return { script: inline, label: 'script', dir: process.env.GITHUB_WORKSPACE ?? process.cwd() };
+	return { script: inline, label: 'script', dir: process.env.GITHUB_WORKSPACE ?? process.cwd(), inline: true };
 }
 
 async function run(): Promise<void> {
-	const { script: userScript, label, dir } = readUserScript();
+	const { script: userScript, label, dir, inline } = readUserScript();
 
 	// Everything up to execution shares one group: the source echo plus a line
 	// each from the type-check and the transpile. Separate groups for two lines
@@ -608,6 +614,19 @@ async function run(): Promise<void> {
 	// echoed FIRST so a later throw still leaves the script in the log.
 	core.startGroup('Compiling script');
 	core.info(highlightSource(trimTrailingNewline(userScript)));
+
+	// An inline `script:` may not carry a paragraph of commentary: two `//`-only
+	// lines in a row is an essay in progress, and a workflow file is not where
+	// prose belongs. A `file:` input is ordinary checked-in source and exempt.
+	const commentBlocks = inline ? findCommentBlocks(userScript) : [];
+	if (commentBlocks.length > 0) {
+		for (const b of commentBlocks) {
+			core.error(formatCommentBlock(b, label));
+		}
+		core.endGroup();
+		core.setFailed(`Comment check failed: ${commentBlocks.length} block(s) of consecutive \`//\` comment lines.`);
+		return;
+	}
 
 	const { text: source, lineMap } = transformScript(userScript);
 	const diagnostics = typeCheck(source);
