@@ -1,6 +1,14 @@
 name: PR Preview (buildhost)
 
-# Thin reusable workflow: deploy a PR preview to a buildhost static-site project (via buildhost's own buildhost-publish-site action, OIDC auth) and post a sticky PR comment with the URL -- the buildhost flavour; the GitHub Pages flavour (PazerOP/pr-preview-action) no longer applies since Pages was shut off org-wide 2026-07-20.
+# Thin reusable workflow: deploy a pull-request preview to a buildhost static-site
+# project and post a sticky PR comment with the preview URL. It reuses buildhost's
+# own buildhost-publish-site action for the upload (tar.gz PUT to
+# sites.<domain>/<project>/branch/<branch>, GitHub OIDC auth -- no static secret).
+#
+# This is the buildhost flavour. The GitHub Pages flavour lives in
+# PazerOP/pr-preview-action (reusable workflow .github/workflows/preview.yml@master).
+# GitHub Pages is no longer available for wow-look-at-my org repos (shut off
+# org-wide 2026-07-20), so this workflow is the path for org repos.
 
 on:
   workflow_call:
@@ -45,14 +53,20 @@ on:
         description: 'The deployed preview URL.'
         value: ${{ jobs.preview.outputs.preview_url }}
 
-# id-token: OIDC auth to buildhost (no static secret). pull-requests: write: the sticky comment. actions: read: artifact-name's Actions REST API download (listWorkflowRunArtifacts + downloadArtifact). Callers must grant at least these.
+# id-token: lets buildhost-publish-site authenticate to buildhost via OIDC (no
+# static secret). pull-requests: write is for the sticky comment. actions: read
+# is needed when artifact-name is used -- buildhost-publish-site downloads the
+# named artifact through the Actions REST API (listWorkflowRunArtifacts +
+# downloadArtifact), which both require it. Callers must grant at least these.
 permissions:
   contents: read
   actions: read
   pull-requests: write
   id-token: write
   checks: read
-  # buildhost-publish-site records what it uploaded on the org's linked artifacts page; that recording is part of publishing, not optional, so the publish fails without this.
+  # buildhost-publish-site records what it uploaded on the org's linked
+  # artifacts page; that recording is part of publishing, not optional,
+  # so the publish fails without this.
   artifact-metadata: write
   deployments: write
 
@@ -78,7 +92,9 @@ jobs:
           sparse-checkout: ${{ inputs.source-dir }}
           path: __caller
 
-      # Reuse buildhost's own publish-site action for the upload (tar.gz PUT to sites.<domain>/<project>/branch/<branch>, OIDC auth, project auto-provisioned from the repo identity).
+      # Reuse buildhost's own publish-site action for the upload (tar.gz PUT to
+      # sites.<domain>/<project>/branch/<branch>, OIDC auth, project
+      # auto-provisioned from the repo identity).
       - name: Publish preview to buildhost
         id: publish
         uses: wow-look-at-my/buildhost/.github/actions/buildhost-publish-site@master
