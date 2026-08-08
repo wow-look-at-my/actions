@@ -186,10 +186,23 @@ If the script needs contexts the runner doesn't expose to action processes (`var
 
 1. The step log has two collapsed groups: `Compiling script` (everything below) and `Executing script` (your script's own output).
 2. `Compiling script` opens by echoing the source, syntax-highlighted with ANSI color escapes (GitHub's log viewer renders them). If highlighting fails for any reason, the plain source is printed instead — it never fails the step.
-3. The `script` is compiled as a TypeScript module: top-level `import`/`export` declarations stay at module scope, and the remaining statements become the body of an `async function` — so top-level `await` and `return` work without ceremony too. The transformed module is type-checked using the bundled TypeScript compiler with `strict: true`; any `tsc` error fails the step before any code runs.
-4. The validated source is transpiled to JavaScript.
-5. The module is evaluated in-process with the injected helpers in scope: imports/exports execute first (matching ESM import hoisting), then the rest of the script. The action runs as a fresh process per step, so nothing carries over between invocations.
-6. If the script returns a value (top-level `return <value>`), it is JSON-serialized and exposed as the `result` output.
+3. An inline `script` is checked for comment blocks: two or more consecutive lines holding nothing but a `//` comment fail the step before anything is compiled or run (see below). A `file` input is exempt.
+4. The `script` is compiled as a TypeScript module: top-level `import`/`export` declarations stay at module scope, and the remaining statements become the body of an `async function` — so top-level `await` and `return` work without ceremony too. The transformed module is type-checked using the bundled TypeScript compiler with `strict: true`; any `tsc` error fails the step before any code runs.
+5. The validated source is transpiled to JavaScript.
+6. The module is evaluated in-process with the injected helpers in scope: imports/exports execute first (matching ESM import hoisting), then the rest of the script. The action runs as a fresh process per step, so nothing carries over between invocations.
+7. If the script returns a value (top-level `return <value>`), it is JSON-serialized and exposed as the `result` output.
+
+## No comment blocks
+
+Stacked `//` lines are prose, and prose does not belong in a workflow file. Two or more consecutive comment-only lines in an inline `script` fail the step, naming the span:
+
+```
+script:2:1: error: 3 consecutive `//` comment lines (2-4). Stacked line comments are prose, not code — delete it, or say it in a single line.
+```
+
+A single comment line is fine, as is a `// ...` trailing real code, or comment lines separated by code or a blank line. `//` inside a string, template literal or regex is not a comment and is never counted.
+
+This applies to the inline `script` input only. A `file` input is ordinary checked-in source, reviewed and commented like any other file in the repo — it is never comment-checked. There is no opt-out for an inline script.
 
 ## Inputs
 
