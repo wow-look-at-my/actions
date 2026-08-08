@@ -16,7 +16,7 @@ inputs:
     required: false
     default: ${{ github.token }}
 
-  # the runner exposes these only via workflow-expression substitution, e.g. `vars: ${{ toJSON(vars) }}`. Pass them explicitly when needed
+  # the runner does not give these to action processes. The caller must pass each one, for example `vars: ${{ toJSON(vars) }}`
   vars:
     description: 'vars workflow context as JSON. Callers must pass toJSON(vars) wrapped in an expression.'
     required: false

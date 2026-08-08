@@ -6,14 +6,14 @@ runs:
   using: composite
   steps:
     - name: "repro.ts: import + globals + await + fetch"
-      uses: ./typescript  # setFailed() stops this step on a tsc error or a runtime error
+      uses: ./typescript  # setFailed() stops this step. It reacts to a tsc error or a run-time error
       with:
-        file: typescript/test/repro.ts  # tests import, injected globals, await, and fetch together
+        file: typescript/test/repro.ts  # this step tests import, injected globals, await, and fetch together
 
-    # repro2.ts reads package.json from the workspace root
+    # repro2.ts reads the file package.json from the workspace root
     - name: Seed package.json for repro2 (readFile("package.json"))
       shell: bash
-      run: echo '{"version":"9.9.9-test"}' > "${GITHUB_WORKSPACE}/package.json"  # must differ from repro2.ts's own VERSION constant
+      run: echo '{"version":"9.9.9-test"}' > "${GITHUB_WORKSPACE}/package.json"  # this seeded version must differ from repro2.ts's own VERSION constant
 
     - name: "repro2.ts: export + import + top-level return"
       id: repro2
@@ -35,6 +35,6 @@ runs:
         echo "repro2 OK: top-level return value reached the result output"
 
     - name: "repro3.ts: injected octokit authenticated with the default token"
-      uses: ./typescript  # no github-token override, no secrets, no getOctokit() call here
+      uses: ./typescript  # this step sets no github-token. This step sets no secrets. This step does not call getOctokit()
       with:
-        file: typescript/test/repro3.ts  # makes a real octokit.rest.repos.get call; fails without a valid token
+        file: typescript/test/repro3.ts  # this step calls octokit.rest.repos.get. The call fails if the token is not valid
