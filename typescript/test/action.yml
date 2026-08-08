@@ -50,3 +50,24 @@ runs:
       uses: ./typescript
       with:
         file: typescript/test/repro3.ts
+
+    - name: Intentionally failing step (continue-on-error, for the outcome-gate test below)
+      id: outcome-gate-check
+      continue-on-error: true
+      shell: bash
+      run: exit 1
+
+    - name: "outcome-gate: fails the step when the checked step's outcome isn't success"
+      id: outcome-gate
+      continue-on-error: true
+      uses: ./typescript
+      with:
+        script: |
+          const outcome = "${{ steps.outcome-gate-check.outcome }}"; // outcome, not conclusion -- continue-on-error masks conclusion to "success"
+          if (outcome !== "success") {
+            core.setFailed(`checked step outcome was "${outcome}", not "success"`);
+          }
+
+    - name: Assert the outcome-gate step correctly failed
+      shell: bash
+      run: test "${{ steps.outcome-gate.outcome }}" = "failure"
