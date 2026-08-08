@@ -45,10 +45,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./cache-rg/test
 
-  # Dogfood round-trip for the cache hand-off trio against the REAL cache
-  # service: upload -> nameless discovery -> named download -> ambiguity
-  # hard-error -> cleanup. Entries are run-scoped, so parallel CI runs never
-  # interfere.
+  # Dogfood round-trip for the cache hand-off trio against the REAL cache service: upload -> nameless discovery -> named download -> ambiguity hard-error -> cleanup; entries are run-scoped, so parallel CI runs never interfere.
   test-cache-xfer:
     runs-on: ubuntu-latest
     permissions:
@@ -64,8 +61,7 @@ jobs:
           for a in cache-upload cache-download cache-cleanup; do
             (cd "$a" && just build)
           done
-      # shared/cache-xfer has no package.json, so the per-action test matrix
-      # never reaches it; the wire format's own tests run here, once.
+      # shared/cache-xfer has no package.json, so the per-action test matrix never reaches it; the wire format's own tests run here, once.
       - name: Shared cache-xfer unit tests
         working-directory: cache-download
         run: pnpm tsx --test ../shared/cache-xfer/*.test.ts
@@ -105,8 +101,7 @@ jobs:
         with:
           name: dogfood-b
           path: handoff-src/hello.txt
-      # The REST cache list can lag the twirp finalize by a moment; wait
-      # until both entries are visible so the ambiguity assert is not flaky.
+      # The REST cache list can lag the twirp finalize by a moment; wait until both entries are visible so the ambiguity assert is not flaky.
       - name: Wait for both hand-offs to be listable
         env:
           GH_TOKEN: ${{ github.token }}
@@ -137,11 +132,7 @@ jobs:
       - name: Assert cleanup deleted both hand-offs
         run: test "${{ steps.cleanup.outputs.deleted-count }}" -ge 2
 
-  # Dogfood the all-builds name guard: it must pass on this repo (no job is
-  # ever named all-builds here) and fail on the shadowed fixture. The API
-  # layers are hard-required: this job grants actions:/checks: read so the
-  # passing run exercises them for real, and a bogus-token step asserts that
-  # layers which cannot run fail the guard.
+  # Dogfood the all-builds name guard: passes on this repo (no job here is named all-builds), fails on the shadowed fixture; actions:/checks: read let the passing run exercise the API layers for real, and a bogus-token step proves layers that cannot run fail the guard.
   test-no-all-builds-job:
     runs-on: ubuntu-latest
     permissions:
@@ -156,52 +147,36 @@ jobs:
           action-dir: no-all-builds-job
       - name: Guard passes on this repo
         uses: ./no-all-builds-job
-      # The runner refuses to override GITHUB_* vars via step `env:`, so the
-      # failure path execs the built bundle with a shell-level assignment
-      # pointing GITHUB_WORKSPACE at the fixture — same entry point the action
-      # runs. The explicitly empty token takes the documented no-token skip of
-      # the API layers, so this step's failure is attributable to the file
-      # scan alone. The success step above exported the run-once sentinel into
-      # the job env, so it is explicitly cleared here (empty = absent) —
-      # otherwise this run would skip instead of detecting the fixture
-      # violation.
+      # The runner refuses to override GITHUB_* vars via step `env:`, so this execs the built bundle with a shell-level GITHUB_WORKSPACE assignment pointing at the fixture; the empty token takes the documented no-token API skip so the failure is attributable to the file scan alone, and the prior step's run-once sentinel is explicitly cleared (empty = absent) so this run doesn't skip instead of detecting the violation.
       - name: Guard must fail on the shadowed fixture (file-scan layer)
         id: shadowed
         continue-on-error: true
         run: NO_ALL_BUILDS_JOB_ALREADY_RAN= GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/no-all-builds-job/test/fixtures/shadowed" INPUT_TOKEN= node no-all-builds-job/dist/index.js
       - name: Assert the shadowed fixture failed the guard
         run: test "${{ steps.shadowed.outcome }}" = "failure"
-      # Hard-fail proof: with a token whose API layers cannot run, the guard
-      # must fail even though this repo has no violations — a layer that
-      # cannot scan is itself a blocking error (both layers are reported
-      # before the failure).
+      # Hard-fail proof: with a token whose API layers cannot run, the guard must fail even though this repo has no violations -- an unscannable layer is itself a blocking error (both layers are reported before the failure).
       - name: Guard must fail when the API layers cannot run
         id: layers
         continue-on-error: true
         run: NO_ALL_BUILDS_JOB_ALREADY_RAN= INPUT_TOKEN=x node no-all-builds-job/dist/index.js
       - name: Assert the unrunnable API layers failed the guard
         run: test "${{ steps.layers.outcome }}" = "failure"
-      # Run-once skip proof: with the sentinel set, the guard must exit 0 on
-      # the same violating fixture — the skip wins before any check runs.
+      # Run-once skip proof: with the sentinel set, the guard must exit 0 on the same violating fixture -- the skip wins before any check runs.
       - name: Guard skips when the run-once sentinel is set
         run: NO_ALL_BUILDS_JOB_ALREADY_RAN=1 GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/no-all-builds-job/test/fixtures/shadowed" INPUT_TOKEN=x node no-all-builds-job/dist/index.js
 
   test-typescript:
     runs-on: ubuntu-latest
-    # repro3.ts in the dogfood harness makes a real authenticated octokit call
-    # (repos.get) with the default github-token, so the job needs read access.
+    # repro3.ts in the dogfood harness makes a real authenticated octokit repos.get call with the default github-token, so the job needs read access.
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      # typescript is a node24 action: its dist/ is not committed, so build it
-      # before the dogfood harness invokes it via `uses: ./typescript`.
+      # typescript is a node24 action: its dist/ is not committed, so build it before the dogfood harness invokes it via `uses: ./typescript`.
       - uses: ./.github/actions/setup-and-build
         with:
           action-dir: typescript
-      # Guard against the "fake string" branded-primitive footgun (boxed String
-      # output streams) creeping back in. Type-aware ESLint config under
-      # typescript/eslint.config.js; known existing cases carry scoped disables.
+      # Guard against the "fake string" branded-primitive footgun (boxed String output streams) creeping back in -- type-aware ESLint config under typescript/eslint.config.js; known existing cases carry scoped disables.
       - name: Lint typescript action
         working-directory: typescript
         run: just lint
@@ -216,8 +191,7 @@ jobs:
           repo="${{ github.repository }}"
           errors=0
 
-          # Correct format:   repo@action-name#ref
-          # Wrong format:     repo/action-name@ref
+          # Correct format: repo@action-name#ref; wrong format: repo/action-name@ref
           while IFS= read -r line; do
             file=$(echo "$line" | cut -d: -f1)
             num=$(echo "$line" | cut -d: -f2)
@@ -238,13 +212,7 @@ jobs:
       - name: Validate workflow YAML with action-validator
         uses: ./action-validator
         with:
-          # Only the workflow files are validated here. The repo's action.yml
-          # files carry a non-standard `version:` field (vestigial -- release
-          # versions now auto-increment from the existing tags) and
-          # `using: node24`, both of which action-validator's bundled schema
-          # rejects -- so a non-matching glob skips them (nullglob -> zero
-          # iterations) while every workflow, including the reusable ones, is
-          # schema-checked.
+          # Only workflow files are validated here: action.yml files carry `version:` and `using: node24`, both rejected by action-validator's bundled schema, so a non-matching glob skips them (nullglob) while every workflow is schema-checked.
           actions: 'no-such-dir/*/action.yml'
           workflows: '.github/workflows/*.yml'
 
@@ -328,9 +296,7 @@ jobs:
             fi
           done
 
-      # Tags are published from master only. The version auto-increments from
-      # the existing <action>#N tags (orphan-release.sh), and an action whose
-      # content is unchanged since <action>#latest is skipped entirely.
+      # Tags are published from master only; the version auto-increments from the existing <action>#N tags (orphan-release.sh), and an action unchanged since <action>#latest is skipped entirely.
       - name: Create orphan tag
         if: github.ref == 'refs/heads/master'
         env:
@@ -349,8 +315,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Tags are published from master only; versions auto-increment and
-      # unchanged actions are skipped (see release-node's orphan tag step).
+      # Tags are published from master only; versions auto-increment and unchanged actions are skipped (see release-node's orphan tag step).
       - name: Create orphan tags
         if: github.ref == 'refs/heads/master'
         env:
