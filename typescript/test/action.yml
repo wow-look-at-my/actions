@@ -5,15 +5,22 @@ description: "Dogfood the typescript action via file: inputs exercising import/e
 runs:
   using: composite
   steps:
+    # repro.ts: top-level import + injected globals + top-level await + global
+    # fetch. A successful step proves it type-checks under strict tsc AND runs --
+    # the action setFailed()s (non-zero exit) on any tsc or runtime error, which
+    # fails this step and the job.
     - name: "repro.ts: import + globals + await + fetch"
-      uses: ./typescript  # setFailed() stops this step. It reacts to a tsc error or a run-time error
+      uses: ./typescript
       with:
-        file: typescript/test/repro.ts  # this step tests import, injected globals, await, and fetch together
+        file: typescript/test/repro.ts
 
-    # repro2.ts reads the file package.json from the workspace root
+    # repro2.ts reads package.json from the action's working directory (the
+    # workspace root) and returns its version. Seed a known one so the assertion
+    # below is deterministic and distinguishable from the script's `export
+    # const VERSION = "1.0.0"` (which must NOT be what reaches `result`).
     - name: Seed package.json for repro2 (readFile("package.json"))
       shell: bash
-      run: echo '{"version":"9.9.9-test"}' > "${GITHUB_WORKSPACE}/package.json"  # this seeded version must differ from repro2.ts's own VERSION constant
+      run: echo '{"version":"9.9.9-test"}' > "${GITHUB_WORKSPACE}/package.json"
 
     - name: "repro2.ts: export + import + top-level return"
       id: repro2
@@ -34,7 +41,12 @@ runs:
         fi
         echo "repro2 OK: top-level return value reached the result output"
 
+    # repro3.ts: the injected `octokit` must be authenticated out of the box from
+    # the `github-token` input (default ${{ github.token }}) -- NO `github-token`
+    # override here, NO `secrets:` plumbing, NO `getOctokit(...)` call. It makes a
+    # real authenticated octokit.rest.repos.get call; an unauthenticated octokit
+    # throws "Parameter token or opts.auth is required" and fails this step.
     - name: "repro3.ts: injected octokit authenticated with the default token"
-      uses: ./typescript  # this step sets no github-token. This step sets no secrets. This step does not call getOctokit()
+      uses: ./typescript
       with:
-        file: typescript/test/repro3.ts  # this step calls octokit.rest.repos.get. The call fails if the token is not valid
+        file: typescript/test/repro3.ts
