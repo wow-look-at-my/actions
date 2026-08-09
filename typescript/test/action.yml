@@ -57,18 +57,13 @@ runs:
       shell: bash
       run: exit 1
 
-    - name: "outcome-gate: fails the step when the checked step's outcome isn't success"
+    # outcome, not conclusion -- continue-on-error masks conclusion to "success"
+    - name: "outcome-gate: fails when the checked step's outcome isn't success"
       id: outcome-gate
+      if: steps.outcome-gate-check.outcome != 'success'
       continue-on-error: true
       shell: bash
-      env:
-        # outcome, not conclusion -- continue-on-error masks conclusion to "success"
-        OUTCOME: ${{ steps.outcome-gate-check.outcome }}
-      run: |
-        if [ "${OUTCOME}" != "success" ]; then
-          echo "::error::checked step outcome was '${OUTCOME}', not 'success'"
-          exit 1
-        fi
+      run: exit 1
 
     - name: Assert the outcome-gate step correctly failed
       shell: bash
