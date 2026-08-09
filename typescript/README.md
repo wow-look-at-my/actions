@@ -197,7 +197,7 @@ If the script needs contexts the runner doesn't expose to action processes (`var
 Stacked `//` lines are prose, and prose does not belong in a workflow file. Two or more consecutive comment-only lines in an inline `script` fail the step, naming the span:
 
 ```
-script:2:1: error: 3 consecutive `//` comment lines (2-4). Stacked line comments are prose, not code — delete it, or say it in a single line.
+script:2:1: error: 3 consecutive `//` comment lines (2-4). The limit is ONE: any two adjacent `//` lines fail, so shortening the block does not help. Stacked line comments are prose, not code — say it in a single line, or delete it.
 ```
 
 A single comment line is fine, as is a `// ...` trailing real code, or comment lines separated by code or a blank line. `//` inside a string, template literal or regex is not a comment and is never counted.
