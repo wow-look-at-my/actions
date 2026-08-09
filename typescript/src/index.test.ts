@@ -212,15 +212,27 @@ describe('typescript action', () => {
 		assert.ok(stdout.includes('TypeScript validation failed'));
 	});
 
-	it('fails on two consecutive `//` comment lines, before running anything', async () => {
+	it('fails on two consecutive `//` comment lines, but lets the step run to completion first', async () => {
 		const { stdout, exitCode } = await runAction(
 			'core.info("line one");\n// first\n// second\ncore.info("ran");'
 		);
 		assert.notEqual(exitCode, 0);
 		assert.ok(stdout.includes('script:2:1:'), `expected the block reported at line 2, got:\n${stdout}`);
 		assert.ok(stdout.includes('consecutive `//` comment lines (2-3)'), stdout);
+		assert.ok(stdout.includes('Type-check passed.'), `type-check must still run:\n${stdout}`);
+		assert.ok(stdout.includes('ran'), `script must still execute:\n${stdout}`);
 		assert.ok(stdout.includes('Comment check failed'), stdout);
-		assert.ok(!stdout.includes('ran'), `script must not execute:\n${stdout}`);
+		// the deferred failure message comes after the step actually ran
+		assert.ok(stdout.indexOf('ran') < stdout.indexOf('Comment check failed'), stdout);
+	});
+
+	it('still fails immediately on a type error, even alongside a comment-block violation', async () => {
+		const { stdout, exitCode } = await runAction(
+			'// first\n// second\nconst x: number = "not a number";\ncore.info("ran");'
+		);
+		assert.notEqual(exitCode, 0);
+		assert.ok(stdout.includes('TypeScript validation failed'), stdout);
+		assert.ok(!stdout.includes('ran'), `a type error must still block execution:\n${stdout}`);
 	});
 
 	it('exempts a file input from the comment check', async () => {
