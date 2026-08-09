@@ -618,14 +618,14 @@ async function run(): Promise<void> {
 	// An inline `script:` may not carry a paragraph of commentary: two `//`-only
 	// lines in a row is an essay in progress, and a workflow file is not where
 	// prose belongs. A `file:` input is ordinary checked-in source and exempt.
+	// A violation here defers the failure: the type-check and the script itself
+	// still run to completion (so a caller sees everything wrong in one pass,
+	// not one error per re-run), and the step only fails at the very end. A
+	// type-check or runtime error is unrelated and still fails immediately, same
+	// as before.
 	const commentBlocks = inline ? findCommentBlocks(userScript) : [];
-	if (commentBlocks.length > 0) {
-		for (const b of commentBlocks) {
-			core.error(formatCommentBlock(b, label));
-		}
-		core.endGroup();
-		core.setFailed(`Comment check failed: ${commentBlocks.length} block(s) of consecutive \`//\` comment lines.`);
-		return;
+	for (const b of commentBlocks) {
+		core.error(formatCommentBlock(b, label));
 	}
 
 	const { text: source, lineMap } = transformScript(userScript);
@@ -656,6 +656,12 @@ async function run(): Promise<void> {
 
 	if (result !== undefined) {
 		core.setOutput('result', JSON.stringify(result));
+	}
+
+	// The step ran to completion; a comment-block violation only fails it now,
+	// after the type-check and execution results are already visible.
+	if (commentBlocks.length > 0) {
+		core.setFailed(`Comment check failed: ${commentBlocks.length} block(s) of consecutive \`//\` comment lines.`);
 	}
 }
 
