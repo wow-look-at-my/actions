@@ -473,9 +473,11 @@ function formatDiagnostic(d: ts.Diagnostic, label: string, lineMap: number[]): s
 	return `error TS${d.code}: ${message}`;
 }
 
+// The count alone reads as a threshold: collapse a 3-line block to 2 and the
+// error repeats. Keep the sentence naming the real limit.
 function formatCommentBlock(b: CommentBlock, label: string): string {
 	const count = b.endLine - b.startLine + 1;
-	return `${label}:${b.startLine}:1: error: ${count} consecutive \`//\` comment lines (${b.startLine}-${b.endLine}). Stacked line comments are prose, not code — delete it, or say it in a single line.`;
+	return `${label}:${b.startLine}:1: error: ${count} consecutive \`//\` comment lines (${b.startLine}-${b.endLine}). The limit is ONE: any two adjacent \`//\` lines fail, so shortening the block does not help. Stacked line comments are prose, not code — say it in a single line, or delete it.`;
 }
 
 function transpile(source: string): string {
