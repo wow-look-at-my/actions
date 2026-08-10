@@ -219,6 +219,13 @@ describe('typescript action', () => {
 		assert.notEqual(exitCode, 0);
 		assert.ok(stdout.includes('script:2:1:'), `expected the block reported at line 2, got:\n${stdout}`);
 		assert.ok(stdout.includes('consecutive `//` comment lines (2-3)'), stdout);
+		// The count alone reads as a threshold: a two-line block reported as "2
+		// consecutive" invites shortening rather than collapsing, so the message
+		// must also state the real limit.
+		assert.ok(
+			stdout.includes('The limit is ONE'),
+			`the message must name the limit, not just the count:\n${stdout}`
+		);
 		assert.ok(stdout.includes('Type-check passed.'), `type-check must still run:\n${stdout}`);
 		assert.ok(stdout.includes('ran'), `script must still execute:\n${stdout}`);
 		assert.ok(stdout.includes('Comment check failed'), stdout);
