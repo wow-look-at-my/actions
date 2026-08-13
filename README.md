@@ -78,6 +78,16 @@ Reusable GitHub Actions.
     project-name: # Cloudflare Pages project name (auto-created on first use)
 ```
 
+### [Run dats](dats/)
+
+```yml
+# Download the dats binary from buildhost and run it, without a caller having to hand-roll the download.
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/dats/README.md
+- uses: wow-look-at-my/actions@dats#latest
+  with:
+    args: # Arguments to pass to dats (e.g. "test tests/", "--no-sandbox test tests/")
+```
+
 ### [Download Executable Artifact](download-exe/)
 
 ```yml
