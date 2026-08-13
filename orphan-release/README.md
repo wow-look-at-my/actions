@@ -24,6 +24,14 @@ Numbered tags are pushed without force (immutable once published); only
 `#latest` is force-moved. An explicit `version` keeps the historical
 force-overwrite semantics.
 
+`#latest` only ever moves from the `master`/`main` branch (`GITHUB_REF_NAME`,
+or the checkout's current branch outside CI). A push from any other branch
+still creates and pushes the next numbered tag -- so a feature branch's CI
+can build, install and smoke-test a real, freshly-published release -- but
+it never force-moves `#latest`, since that is one shared, mutable pointer
+every consumer resolves by default. This holds regardless of whether the
+caller also gates its own `if:` to the default branch.
+
 ### Custom tag name
 
 Override the tag name (defaults to source directory):
