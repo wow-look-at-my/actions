@@ -32,10 +32,14 @@ fi
 [ -z "$name" ] && name="$source"
 
 branch="${GITHUB_REF_NAME:-$(git rev-parse --abbrev-ref HEAD)}"
+is_default_branch=false
+if [ "$branch" = "master" ] || [ "$branch" = "main" ]; then
+	is_default_branch=true
+fi
 
 # Determine if we should use branch in tag names
 use_branch=false
-if [ "$include_branch" = true ] && [ "$branch" != "master" ] && [ "$branch" != "main" ]; then
+if [ "$include_branch" = true ] && [ "$is_default_branch" = false ]; then
 	use_branch=true
 fi
 
@@ -66,7 +70,12 @@ elif ! [[ "$version" =~ ^[0-9]+$ ]]; then
 	exit 1
 fi
 
-tags=("$prefix#$version" "$prefix#latest")
+tags=("$prefix#$version")
+# #latest is a shared, mutable pointer every consumer resolves by default --
+# moving it from a non-default branch would serve that branch's unreviewed
+# content to every caller. The numbered tag is immutable and globally
+# unique regardless of branch, so it always publishes.
+[ "$is_default_branch" = true ] && tags+=("$prefix#latest")
 first_tag="${tags[0]}"
 [ -z "$message" ] && message="Release $first_tag"
 
@@ -110,10 +119,16 @@ done
 if [ "$auto_version" = true ]; then
 	# Numbered releases are immutable: push the new number WITHOUT force so a
 	# stale/failed tag listing can only fail loudly, never rewrite history.
-	# Only #latest (a mutable pointer by contract) is force-moved.
-	git push origin "refs/tags/$prefix#$version" "+refs/tags/$prefix#latest:refs/tags/$prefix#latest"
+	# Only #latest (a mutable pointer by contract, and only on the default
+	# branch) is force-moved.
+	refspecs=("refs/tags/$prefix#$version")
+	[ "$is_default_branch" = true ] && refspecs+=("+refs/tags/$prefix#latest:refs/tags/$prefix#latest")
+	git push origin "${refspecs[@]}"
 else
-	# Explicit --version keeps the historical re-pin semantics.
-	git push --force origin "refs/tags/$prefix#$version" "refs/tags/$prefix#latest"
+	# Explicit --version keeps the historical re-pin semantics, still gated
+	# to the default branch for #latest.
+	refspecs=("refs/tags/$prefix#$version")
+	[ "$is_default_branch" = true ] && refspecs+=("refs/tags/$prefix#latest")
+	git push --force origin "${refspecs[@]}"
 fi
 echo "::endgroup::"
