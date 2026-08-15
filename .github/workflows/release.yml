@@ -45,6 +45,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./cache-rg/test
 
+  # Pushes to local bare repositories, so it needs no token and no network. It
+  # covers what a release does when it loses the race for #latest: the
+  # numbered tag must publish anyway.
+  test-orphan-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./orphan-release/test-orphan-release.sh
+
   # Dogfood round-trip for the cache hand-off trio against the REAL cache
   # service: upload -> nameless discovery -> named download -> ambiguity
   # hard-error -> cleanup. Entries are run-scoped, so parallel CI runs never
