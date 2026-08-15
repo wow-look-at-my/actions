@@ -17,9 +17,8 @@ Each action lives in its own directory with an `action.yml` file:
 - `ghcr-prune/` - Node.js action (prune old GHCR package versions)
 - `multicmd/` - Composite action (YAML only)
 - `no-all-builds-job/` - Node.js action (fails CI when any job is named all-builds — the recurring trick that shadows the org's required all-builds gate in the GitHub UI)
-- `orphan-release/` - Composite action (shell script)
-- `pr-preview/` - Node.js action (backend steps for the `pr-preview` reusable workflow, selected by the `command` input: `setup`, `git-update`, `comment`, `status`)
 - `orphan-release/` - Composite action (shell script). Its `dats/` suite covers the push behaviour: the numbered tag and `#latest` go in SEPARATE pushes, because GitHub applies one push in one ref transaction and a run that loses the race for that shared pointer would otherwise lose its own numbered tag with it. The suite pushes to local bare repositories, so it needs no token and no network
+- `pr-preview/` - Node.js action (backend steps for the `pr-preview` reusable workflow, selected by the `command` input: `setup`, `git-update`, `comment`, `status`)
 - `smart-cache/` - Node.js action (TypeScript compiled to JS)
 - `ste-lint/` - Node.js action (the mechanical subset of ASD-STE100 Simplified Technical English over prose files: sentence length, contractions and should/shall FAIL; passive voice and noun clusters only warn, because a heuristic that fails a build teaches people to route around the check; word choice is unenforceable here, since STE's approved-word dictionary is licensed with no machine-readable copy)
 - `cache-size/` - Node.js action (TypeScript compiled to JS)
