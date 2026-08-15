@@ -45,6 +45,28 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./cache-rg/test
 
+  # Pushes to local bare repositories, so it needs no token and no network. It
+  # covers what a release does when it loses the race for #latest: the
+  # numbered tag must publish anyway.
+  #
+  # dats is fetched directly rather than through go-toolchain, which bundles it
+  # but hard-requires a go.mod this repo does not have. bubblewrap is dats'
+  # native Linux backend, and ubuntu denies unprivileged user namespaces by
+  # default, which is what the sysctl re-enables. Without a backend dats fails
+  # rather than running the commands unsandboxed.
+  test-orphan-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dats
+        run: |
+          sudo apt-get update && sudo apt-get install -y bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          curl -fL --compressed "https://dl.pazer.build/dats?os=linux&arch=amd64" -o /usr/local/bin/dats
+          chmod +x /usr/local/bin/dats
+          dats --version
+      - run: dats test orphan-release/dats/
+
   # Dogfood round-trip for the cache hand-off trio against the REAL cache
   # service: upload -> nameless discovery -> named download -> ambiguity
   # hard-error -> cleanup. Entries are run-scoped, so parallel CI runs never

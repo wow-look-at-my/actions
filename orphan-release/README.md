@@ -24,6 +24,13 @@ Numbered tags are pushed without force (immutable once published); only
 `#latest` is force-moved. An explicit `version` keeps the historical
 force-overwrite semantics.
 
+The two tags go in separate pushes. GitHub applies one push in one ref
+transaction, and `#latest` is a pointer that every concurrent release moves,
+so a run that lost that race by milliseconds had its whole push rejected --
+including the numbered tag, which is unique to the run and was never
+contested. Separately, the numbered tag always lands, and `#latest` is
+last-writer-wins, which is what a moving pointer means.
+
 `#latest` only ever moves from the `master`/`main` branch (`GITHUB_REF_NAME`,
 or the checkout's current branch outside CI). A push from any other branch
 still creates and pushes the next numbered tag -- so a feature branch's CI

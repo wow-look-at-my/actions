@@ -174,6 +174,14 @@ Reusable GitHub Actions.
     key: # Cache key
 ```
 
+### [ste-lint](ste-lint/)
+
+```yml
+# Check prose against the mechanical subset of ASD-STE100 Simplified Technical English — sentence length, contractions, and should/shall.
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/ste-lint/README.md
+- uses: wow-look-at-my/actions@ste-lint#latest
+```
+
 ### [Tag Runner Image](tag-runner/)
 
 ```yml
