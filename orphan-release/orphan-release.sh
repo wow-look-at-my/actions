@@ -116,19 +116,30 @@ for tag in "${tags[@]}"; do
 	echo "Created tag: $tag"
 done
 
+# The numbered tag and #latest go in SEPARATE pushes, and this is the whole
+# reason the two lines below are not one line. GitHub applies one push in one
+# ref transaction. #latest is a pointer every concurrent run of this release
+# moves, so a run that loses that race by milliseconds used to have its
+# transaction rejected whole ("cannot lock ref") -- taking down the numbered
+# tag, which is unique to the run and was never contended. The release then
+# had no tag at all, and the caller papered over it with repeated attempts.
+#
+# Split, the numbered tag lands on its own and cannot be lost to someone
+# else's pointer move. #latest is a mutable pointer by contract: whichever
+# run moves it last wins, which is what "latest" means.
 if [ "$auto_version" = true ]; then
 	# Numbered releases are immutable: push the new number WITHOUT force so a
 	# stale/failed tag listing can only fail loudly, never rewrite history.
-	# Only #latest (a mutable pointer by contract, and only on the default
-	# branch) is force-moved.
-	refspecs=("refs/tags/$prefix#$version")
-	[ "$is_default_branch" = true ] && refspecs+=("+refs/tags/$prefix#latest:refs/tags/$prefix#latest")
-	git push origin "${refspecs[@]}"
+	git push origin "refs/tags/$prefix#$version"
+	if [ "$is_default_branch" = true ]; then
+		git push origin "+refs/tags/$prefix#latest:refs/tags/$prefix#latest"
+	fi
 else
 	# Explicit --version keeps the historical re-pin semantics, still gated
 	# to the default branch for #latest.
-	refspecs=("refs/tags/$prefix#$version")
-	[ "$is_default_branch" = true ] && refspecs+=("refs/tags/$prefix#latest")
-	git push --force origin "${refspecs[@]}"
+	git push --force origin "refs/tags/$prefix#$version"
+	if [ "$is_default_branch" = true ]; then
+		git push --force origin "refs/tags/$prefix#latest"
+	fi
 fi
 echo "::endgroup::"
