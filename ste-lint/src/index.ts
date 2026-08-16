@@ -47,12 +47,16 @@ function main(): void {
 	);
 
 	core.setOutput('files', names.length);
-	core.setOutput('violations', findings.hardLong.length + findings.contractions.length + findings.shouldShall.length);
+	core.setOutput(
+		'violations',
+		findings.hardLong.length + findings.contractions.length + findings.bannedModals.length + findings.semicolons.length,
+	);
 
 	if (hasFailures(findings)) {
 		core.setFailed(
 			'STE-style lint failed -- mechanical subset only, NOT full ASD-STE100 conformance ' +
-				'(the approved-word dictionary is a licensed standard, checked by convention):\n\n' +
+				'(several writing rules need real semantic judgment a pattern cannot do; ' +
+				'see docs/ste-lint-spec-mapping.md):\n\n' +
 				failureReport(findings, opts),
 		);
 	}
@@ -72,6 +76,25 @@ function main(): void {
 	if (findings.nounClusters.length) {
 		core.warning(
 			`Possible long noun cluster, heuristic only, not enforced (${findings.nounClusters.length} found): ${preview(findings.nounClusters, 20, ' | ')}`,
+		);
+	}
+	if (findings.complexTense.length) {
+		core.warning(
+			`Possible complex verb tense (STE allows only simple tenses), heuristic only, not enforced ` +
+				`(${findings.complexTense.length} found): ${preview(findings.complexTense, 20, ' | ')}`,
+		);
+	}
+	if (findings.bannedWords.length) {
+		core.warning(
+			`Word not approved in the ASD-STE100 dictionary, heuristic only, not enforced -- this checker ` +
+				`matches text, not part of speech or meaning, so it can miss a word's approved sense ` +
+				`(${findings.bannedWords.length} found): ${preview(findings.bannedWords, 20, ' | ')}`,
+		);
+	}
+	if (findings.longParagraphs.length) {
+		core.warning(
+			`Paragraph over 6 sentences, heuristic only, not enforced ` +
+				`(${findings.longParagraphs.length} found): ${preview(findings.longParagraphs)}`,
 		);
 	}
 }
