@@ -244,7 +244,6 @@ Notes:
 - `project` defaults to the repository name. buildhost derives the project as the **lowercase** repo name and rejects a mismatch, so pin `project:` explicitly if your repo name is not already lowercase.
 - `public: true` serves the preview without buildhost auth even when the source repo/project is private (opt-in; default `false` keeps a private repo's preview gated).
 - Fork PRs are skipped (they receive no OIDC token and cannot authenticate to buildhost).
-- The GitHub Pages flavour lives in [PazerOP/pr-preview-action](https://github.com/PazerOP/pr-preview-action) (reusable workflow `.github/workflows/preview.yml@master`). GitHub Pages is no longer available for wow-look-at-my org repos (shut off org-wide 2026-07-20), so this workflow is the path for org repos.
 
 
 ### Publish to GHCR
