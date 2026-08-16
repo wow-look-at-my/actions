@@ -177,7 +177,7 @@ Reusable GitHub Actions.
 ### [ste-lint](ste-lint/)
 
 ```yml
-# Check prose against the mechanical subset of ASD-STE100 Simplified Technical English — sentence length, contractions, and should/shall.
+# Check prose against the mechanical subset of ASD-STE100 Simplified Technical English — sentence length, contractions, banned modal verbs, semicolons, and dictionary word choice.
 # Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/ste-lint/README.md
 - uses: wow-look-at-my/actions@ste-lint#latest
 ```
