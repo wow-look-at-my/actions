@@ -1,6 +1,6 @@
 name: ste-lint
 version: 1
-description: Check prose against the mechanical subset of ASD-STE100 Simplified Technical English — sentence length, contractions, and should/shall
+description: Check prose against the mechanical subset of ASD-STE100 Simplified Technical English — sentence length, contractions, banned modal verbs, and semicolons
 
 inputs:
   files:

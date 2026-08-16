@@ -47,12 +47,15 @@ function main(): void {
 	);
 
 	core.setOutput('files', names.length);
-	core.setOutput('violations', findings.hardLong.length + findings.contractions.length + findings.shouldShall.length);
+	core.setOutput(
+		'violations',
+		findings.hardLong.length + findings.contractions.length + findings.bannedModals.length + findings.semicolons.length,
+	);
 
 	if (hasFailures(findings)) {
 		core.setFailed(
 			'STE-style lint failed -- mechanical subset only, NOT full ASD-STE100 conformance ' +
-				'(the approved-word dictionary is a licensed standard, checked by convention):\n\n' +
+				'(word choice against the approved dictionary is checked by convention, not by this tool):\n\n' +
 				failureReport(findings, opts),
 		);
 	}
@@ -72,6 +75,12 @@ function main(): void {
 	if (findings.nounClusters.length) {
 		core.warning(
 			`Possible long noun cluster, heuristic only, not enforced (${findings.nounClusters.length} found): ${preview(findings.nounClusters, 20, ' | ')}`,
+		);
+	}
+	if (findings.complexTense.length) {
+		core.warning(
+			`Possible complex verb tense (STE allows only simple tenses), heuristic only, not enforced ` +
+				`(${findings.complexTense.length} found): ${preview(findings.complexTense, 20, ' | ')}`,
 		);
 	}
 }

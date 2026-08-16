@@ -1,7 +1,8 @@
 # ste-lint
 
 Checks prose against the mechanical subset of ASD-STE100, Simplified Technical
-English: sentence length, contractions, and `should`/`shall`.
+English: sentence length, contractions, banned modal verbs, semicolons, and
+(as warnings) complex verb tenses, passive voice, and long noun clusters.
 
 ```yaml
 - uses: wow-look-at-my/actions@ste-lint#latest
@@ -11,23 +12,26 @@ English: sentence length, contractions, and `should`/`shall`.
 
 ## What fails the run
 
-- **A sentence over `hard-max-words` (25).** That is STE's own outer bound, for
-  a description. An instruction caps at 20, which is what `warn-max-words`
-  reports.
-- **A contraction.** STE bans every one.
-- **`should` or `shall`.** STE states an obligation with `must` and `must not`.
+A sentence over `hard-max-words` (25), a contraction, `should`/`shall`/
+`could`/`might`/`would` (use `must`/`must not` or `can`), and a semicolon.
 
 ## What only warns
 
-Sentence length in the band between the two caps, passive voice, and long noun
-clusters. Each is a heuristic with real false positives, and a check people
+Sentence length in the band between the two caps, passive voice, long noun
+clusters, and a complex verb tense (perfect, future perfect, or progressive --
+STE approves only the infinitive, the imperative, and the three simple
+tenses). Each is a heuristic with real false positives, and a check people
 learn to ignore is worse than no check at all.
 
 ## What it cannot check
 
-Word choice. STE's approved-word dictionary is a licensed commercial document
-with no free machine-readable copy, so a word outside it passes here. Treat
-that part as a convention.
+Word choice against the approved dictionary (a document you request from ASD,
+not a free machine-readable file) and every rule that needs real semantic
+judgment rather than a pattern -- see `docs/ste-lint-spec-mapping.md` for the
+full rule-by-rule mapping, including why each unchecked rule stays unchecked.
+
+ASD's own FAQ says it does not endorse a tool "claimed to be 'fully
+compliant'" with the standard. This action does not claim that either.
 
 ## What it does not read
 
