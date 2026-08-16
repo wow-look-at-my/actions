@@ -1,9 +1,11 @@
 // The mechanical subset of ASD-STE100 (Simplified Technical English): sentence
-// length, contractions, banned modal verbs, semicolons, and (as warnings) complex
-// verb tenses, passive voice, and long noun clusters. This is not full conformance --
-// the standard's own FAQ says ASD and the STEMG do not endorse a tool that claims to
-// be "fully compliant," and the approved-word dictionary is a document you request
-// from ASD, not a free machine-readable file, so word choice stays a convention.
+// length, contractions, banned modal verbs, semicolons, dictionary word choice, and
+// (as warnings) complex verb tenses, passive voice, and long noun clusters. This is
+// not full conformance -- the standard's own FAQ says ASD and the STEMG do not
+// endorse a tool that claims to be "fully compliant," and several writing rules
+// need real semantic judgment a pattern cannot do -- see docs/ste-lint-spec-mapping.md.
+
+import {BANNED_WORDS} from './ste100-banned-words';
 
 export interface Options {
 	hardMaxWords: number;
@@ -24,6 +26,8 @@ export interface Findings {
 	passive: string[];
 	nounClusters: string[];
 	complexTense: string[];
+	bannedWords: string[];
+	longParagraphs: string[];
 }
 
 export function emptyFindings(): Findings {
@@ -36,6 +40,8 @@ export function emptyFindings(): Findings {
 		passive: [],
 		nounClusters: [],
 		complexTense: [],
+		bannedWords: [],
+		longParagraphs: [],
 	};
 }
 
@@ -89,6 +95,11 @@ const PROGRESSIVE_TENSE_RE = new RegExp(
 	'gi',
 );
 
+// Rule 1.1-1.3: a word not in the dictionary, or used with an unapproved meaning,
+// is not STE. BANNED_WORDS covers only the words this checker can safely flag by
+// text alone (see ste100-banned-words.ts for what was excluded and why).
+const WORD_TOKEN_RE = /[a-z][a-z'-]*/gi;
+
 // Words too ordinary to be part of a noun cluster.
 const STOPWORDS = new Set([
 	'a', 'an', 'the', 'and', 'or', 'but', 'of', 'to', 'in', 'on', 'for', 'with', 'is', 'are', 'was',
@@ -132,9 +143,15 @@ export function isSkippableLine(line: string): boolean {
 	return false;
 }
 
+const LIST_MARKER_RE = /^\s*(?:[-*+]|\d+\.)\s+/;
+
+export function isListLine(line: string): boolean {
+	return LIST_MARKER_RE.test(line);
+}
+
 export function stripMarkup(line: string): string {
 	return line
-		.replace(/^\s*(?:[-*+]|\d+\.)\s+/, '')
+		.replace(LIST_MARKER_RE, '')
 		.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
 		.replace(/[*_]{1,3}/g, '')
 		.trim();
@@ -172,11 +189,38 @@ export function nounRuns(line: string): string[] {
 
 export function lintText(name: string, text: string, opts: Options = DEFAULTS, into = emptyFindings()): Findings {
 	const lines = stripQuotedSpans(stripCode(text)).split('\n');
+
+	// Rule 6.6: no more than six sentences in a paragraph. A paragraph is a run of
+	// non-blank, non-skippable lines; a list line never adds to the count, because
+	// the standard's own worked example counts an entire intro sentence plus its
+	// vertical list as ONE sentence -- the intro line supplies that one sentence.
+	let inParagraph = false;
+	let paragraphStartLine = 0;
+	let paragraphSentences = 0;
+	const flushParagraph = () => {
+		if (paragraphSentences > 6) {
+			into.longParagraphs.push(`${name}:${paragraphStartLine}: ${paragraphSentences} sentences in one paragraph`);
+		}
+		inParagraph = false;
+		paragraphSentences = 0;
+	};
+
 	for (let i = 0; i < lines.length; i++) {
 		const at = `${name}:${i + 1}`;
-		if (isSkippableLine(lines[i])) continue;
+		if (isSkippableLine(lines[i]) || !lines[i].trim()) {
+			flushParagraph();
+			continue;
+		}
 		const cleaned = stripMarkup(lines[i]);
-		if (!cleaned) continue;
+		if (!cleaned) {
+			flushParagraph();
+			continue;
+		}
+		if (!inParagraph) {
+			inParagraph = true;
+			paragraphStartLine = i + 1;
+		}
+		if (!isListLine(lines[i])) paragraphSentences += sentences(cleaned).length;
 
 		let m: RegExpExecArray | null;
 		CONTRACTION_RE.lastIndex = 0;
@@ -203,7 +247,15 @@ export function lintText(name: string, text: string, opts: Options = DEFAULTS, i
 
 		if (/\b(?:is|are|was|were|be|been|being)\s+\w+ed\b/i.test(cleaned)) into.passive.push(at);
 		for (const run of nounRuns(cleaned)) into.nounClusters.push(`${at}: "${run}"`);
+
+		WORD_TOKEN_RE.lastIndex = 0;
+		let w: RegExpExecArray | null;
+		while ((w = WORD_TOKEN_RE.exec(cleaned))) {
+			const alts = BANNED_WORDS[w[0].toLowerCase()];
+			if (alts) into.bannedWords.push(`${at}: "${w[0]}" -- use ${alts.join(' or ')}`);
+		}
 	}
+	flushParagraph();
 	return into;
 }
 

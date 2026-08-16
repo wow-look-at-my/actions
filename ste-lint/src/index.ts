@@ -55,7 +55,8 @@ function main(): void {
 	if (hasFailures(findings)) {
 		core.setFailed(
 			'STE-style lint failed -- mechanical subset only, NOT full ASD-STE100 conformance ' +
-				'(word choice against the approved dictionary is checked by convention, not by this tool):\n\n' +
+				'(several writing rules need real semantic judgment a pattern cannot do; ' +
+				'see docs/ste-lint-spec-mapping.md):\n\n' +
 				failureReport(findings, opts),
 		);
 	}
@@ -81,6 +82,19 @@ function main(): void {
 		core.warning(
 			`Possible complex verb tense (STE allows only simple tenses), heuristic only, not enforced ` +
 				`(${findings.complexTense.length} found): ${preview(findings.complexTense, 20, ' | ')}`,
+		);
+	}
+	if (findings.bannedWords.length) {
+		core.warning(
+			`Word not approved in the ASD-STE100 dictionary, heuristic only, not enforced -- this checker ` +
+				`matches text, not part of speech or meaning, so it can miss a word's approved sense ` +
+				`(${findings.bannedWords.length} found): ${preview(findings.bannedWords, 20, ' | ')}`,
+		);
+	}
+	if (findings.longParagraphs.length) {
+		core.warning(
+			`Paragraph over 6 sentences, heuristic only, not enforced ` +
+				`(${findings.longParagraphs.length} found): ${preview(findings.longParagraphs)}`,
 		);
 	}
 }

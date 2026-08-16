@@ -105,6 +105,61 @@ test('"have to" and "have" plus an ordinary object do not warn', () => {
 	assert.equal(f.complexTense.length, 0);
 });
 
+test('a word banned in the ASD-STE100 dictionary warns with its approved replacement', () => {
+	const f = lintText('a.md', 'Do not abandon the test procedure if the values are abnormal.');
+	assert.equal(f.bannedWords.length, 2);
+	assert.match(f.bannedWords[0], /a\.md:1: "abandon" -- use GO or STOP/);
+	assert.match(f.bannedWords[1], /a\.md:1: "abnormal" -- use INCORRECT or UNUSUAL/);
+	assert.equal(hasFailures(f), false);
+});
+
+test('a word with an approved sense elsewhere in the dictionary is not flagged', () => {
+	// "as" is banned as a conjunction but approved as a preposition; this checker
+	// cannot tell the senses apart by text alone, so it must not flag it at all.
+	const f = lintText('a.md', 'Install the plate as a spacer, as the drawing shows.');
+	assert.equal(f.bannedWords.length, 0);
+});
+
+test('should/shall/could/might/would/may are not double-flagged by the dictionary check', () => {
+	const f = lintText('a.md', 'This should work, and it might, but it may not.');
+	assert.equal(f.bannedWords.length, 0);
+});
+
+test('a paragraph over six sentences warns', () => {
+	const sevenSentences = Array.from({length: 7}, (_, i) => `Sentence number ${i}.`).join(' ');
+	const f = lintText('a.md', sevenSentences);
+	assert.equal(f.longParagraphs.length, 1);
+	assert.match(f.longParagraphs[0], /a\.md:1: 7 sentences in one paragraph/);
+	assert.equal(hasFailures(f), false);
+});
+
+test('a paragraph at six sentences does not warn', () => {
+	const sixSentences = Array.from({length: 6}, (_, i) => `Sentence number ${i}.`).join(' ');
+	const f = lintText('a.md', sixSentences);
+	assert.equal(f.longParagraphs.length, 0);
+});
+
+test('a blank line starts a new paragraph for the sentence count', () => {
+	const para = (n: number) => Array.from({length: n}, (_, i) => `Sentence number ${i}.`).join(' ');
+	const f = lintText('a.md', `${para(6)}\n\n${para(6)}`);
+	assert.equal(f.longParagraphs.length, 0);
+});
+
+test('a vertical list does not add to its paragraph\'s sentence count', () => {
+	const text = [
+		'The fuel manifold has these primary parts:',
+		'- A pressure transducer',
+		'- Three fittings',
+		'- A shut-off valve',
+		'- A spring',
+		'- A retaining ring',
+		'- A ball',
+		'- A seal',
+	].join('\n');
+	const f = lintText('a.md', text);
+	assert.equal(f.longParagraphs.length, 0);
+});
+
 test('a fenced block is exempt and does not shift line numbers', () => {
 	const text = ['Intro.', '```', "it doesn't matter here", '```', "It doesn't matter here."].join('\n');
 	const f = lintText('a.md', text);

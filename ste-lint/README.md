@@ -1,8 +1,9 @@
 # ste-lint
 
 Checks prose against the mechanical subset of ASD-STE100, Simplified Technical
-English: sentence length, contractions, banned modal verbs, semicolons, and
-(as warnings) complex verb tenses, passive voice, and long noun clusters.
+English: sentence length, contractions, banned modal verbs, and semicolons
+fail the run; complex verb tenses, passive voice, long noun clusters, and
+dictionary word choice only warn.
 
 ```yaml
 - uses: wow-look-at-my/actions@ste-lint#latest
@@ -18,16 +19,22 @@ A sentence over `hard-max-words` (25), a contraction, `should`/`shall`/
 ## What only warns
 
 Sentence length in the band between the two caps, passive voice, long noun
-clusters, and a complex verb tense (perfect, future perfect, or progressive --
+clusters, a complex verb tense (perfect, future perfect, or progressive --
 STE approves only the infinitive, the imperative, and the three simple
-tenses). Each is a heuristic with real false positives, and a check people
-learn to ignore is worse than no check at all.
+tenses), a paragraph over six sentences (a list line never counts, matching
+the standard's own convention), and a word the ASD-STE100 dictionary does
+not approve (extracted from the standard's free PDF -- see
+`docs/ste-lint-spec-mapping.md` for what was deliberately left out and why,
+including words this checker cannot safely flag because they are approved
+under one sense and banned under another, like "as"). Each of these is a
+heuristic with real false positives, and a check people learn to ignore is
+worse than no check at all.
 
 ## What it cannot check
 
-Word choice against the approved dictionary (a document you request from ASD,
-not a free machine-readable file) and every rule that needs real semantic
-judgment rather than a pattern -- see `docs/ste-lint-spec-mapping.md` for the
+Every writing rule that needs real semantic judgment rather than a pattern --
+for example, whether a sentence has one topic or two, or whether an omitted
+article is genuinely ambiguous. See `docs/ste-lint-spec-mapping.md` for the
 full rule-by-rule mapping, including why each unchecked rule stays unchecked.
 
 ASD's own FAQ says it does not endorse a tool "claimed to be 'fully
