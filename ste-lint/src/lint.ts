@@ -251,7 +251,12 @@ export function lintText(name: string, text: string, opts: Options = DEFAULTS, i
 		WORD_TOKEN_RE.lastIndex = 0;
 		let w: RegExpExecArray | null;
 		while ((w = WORD_TOKEN_RE.exec(cleaned))) {
-			const alts = BANNED_WORDS[w[0].toLowerCase()];
+			// Object.hasOwn, because a table written as an object literal answers
+			// for "constructor", "toString" and every other Object.prototype
+			// name with a function. That read as a banned word and threw on
+			// join, so one ordinary English word crashed the whole run.
+			const key = w[0].toLowerCase();
+			const alts = Object.hasOwn(BANNED_WORDS, key) ? BANNED_WORDS[key] : undefined;
 			if (alts) into.bannedWords.push(`${at}: "${w[0]}" -- use ${alts.join(' or ')}`);
 		}
 	}
