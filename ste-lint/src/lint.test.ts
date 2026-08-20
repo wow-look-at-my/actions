@@ -247,3 +247,11 @@ test('clean prose reports nothing', () => {
 	assert.equal(failureReport(f, DEFAULTS), '');
 	assert.equal(f.warnLong.length, 0);
 });
+
+test('a word that names an Object.prototype member is text, not a table entry', () => {
+	// The dictionary is an object literal, so BANNED_WORDS["constructor"] used to
+	// answer with a function. The run then died on alts.join rather than
+	// reporting anything, and one ordinary word took every file down with it.
+	const f = lintText('a.md', 'The constructor checks its own invariants.\nIts toString and valueOf do not.');
+	assert.equal(f.bannedWords.length, 0);
+});
