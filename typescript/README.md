@@ -204,12 +204,36 @@ A single comment line is fine, as is a `// ...` trailing real code, or comment l
 
 This applies to the inline `script` input only. A `file` input is ordinary checked-in source, reviewed and commented like any other file in the repo — it is never comment-checked. There is no opt-out for an inline script.
 
+## Browser-side code
+
+A script that drives a browser carries callbacks that run in the PAGE, and those
+name DOM types the action does not know:
+
+```yaml
+- uses: wow-look-at-my/actions@typescript#latest
+  with:
+    dom: true
+    file: .github/scripts/crawl.ts
+```
+
+It is off by default on purpose. `lib.dom` declares hundreds of browser globals,
+and the damaging ones are the short names -- `name`, `status`, `location`,
+`length`, `close`, `open`, `event`, `top`, `self`. Without it, a script that
+references an undeclared `name` is a compile error; with it, that typo quietly
+becomes `string` and fails at run time instead. Turn it on for the steps that
+need it, not repo-wide.
+
+Node's own globals keep working alongside it: `setTimeout`, `fetch` and `URL`
+resolve to the `@types/node` declarations, so an ordinary script does not change
+behaviour when the flag goes on.
+
 ## Inputs
 
 | Name | Required | Default | Description |
 |------|----------|---------|-------------|
 | `script` | No | — | TypeScript source to execute. Mutually exclusive with `file`. |
 | `file` | No | — | Path to a `.ts` file to execute (resolved relative to `$GITHUB_WORKSPACE`). Mutually exclusive with `script`. |
+| `dom` | No | `false` | Type-check against `lib.dom` as well as ES2022. See [Browser-side code](#browser-side-code). |
 | `github-token` | No | `${{ github.token }}` | Token the injected `octokit` authenticates with (and the default token for `getOctokit()`). Defaults to the automatic `GITHUB_TOKEN`; override with a PAT for broader scope. The caller must still declare the matching `permissions:` for the token to be allowed to act. |
 | `github` | No | auto | Override for the `github` context. By default derived from `$GITHUB_*` env vars + `$GITHUB_EVENT_PATH`. |
 | `runner` | No | auto | Override for the `runner` context. By default derived from `$RUNNER_*` env vars. |
