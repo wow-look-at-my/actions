@@ -97,6 +97,40 @@ describe('typescript action', () => {
 		}
 	});
 
+	it('does not know DOM types by default', async () => {
+		const { stdout, exitCode } = await runAction('const el: Element | null = null; core.info(String(el));');
+		assert.equal(exitCode, 1);
+		assert.ok(stdout.includes("Cannot find name 'Element'"), stdout);
+	});
+
+	it('type-checks against the DOM library when dom is true', async () => {
+		const { stdout, exitCode } = await runAction(
+			'const el: Element | null = null; core.info("dom-ok:" + String(el));',
+			{ INPUT_DOM: 'true' },
+		);
+		assert.equal(exitCode, 0, stdout);
+		assert.ok(stdout.includes('dom-ok:null'), stdout);
+	});
+
+	it('keeps Node globals working with dom enabled', async () => {
+		// lib.dom redeclares names @types/node also declares -- setTimeout,
+		// fetch, URL. A conflict here would break every ordinary script that
+		// turns the input on.
+		const { stdout, exitCode } = await runAction(
+			`const t = setTimeout(() => {}, 1); clearTimeout(t);
+			const u = new URL("https://example.com/x"); core.info("both-ok:" + u.pathname + ":" + process.pid.toString().length);`,
+			{ INPUT_DOM: 'true' },
+		);
+		assert.equal(exitCode, 0, stdout);
+		assert.ok(stdout.includes('both-ok:/x:'), stdout);
+	});
+
+	it('rejects a dom input that is neither true nor false', async () => {
+		const { stdout, stderr, exitCode } = await runAction('core.info("x")', { INPUT_DOM: 'yes' });
+		assert.equal(exitCode, 1);
+		assert.ok((stdout + stderr).includes("Input 'dom' must be 'true' or 'false'"), stdout + stderr);
+	});
+
 	it('supports top-level await', async () => {
 		const { stdout, exitCode } = await runAction(
 			'const x = await Promise.resolve(42); core.info("value:" + x)'
