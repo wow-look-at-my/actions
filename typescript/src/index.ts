@@ -392,6 +392,24 @@ function readContexts(): WorkflowContexts {
 	};
 }
 
+// lib.dom is opt-in per step. It declares hundreds of browser globals whose
+// names collide with ordinary identifiers, so a script that does not touch the
+// DOM type-checks more strictly without it.
+function domEnabled(): boolean {
+	const raw = core.getInput('dom').trim().toLowerCase();
+	if (raw === '' || raw === 'false') return false;
+	if (raw === 'true') return true;
+	throw new Error(`Input 'dom' must be 'true' or 'false', got '${core.getInput('dom')}'.`);
+}
+
+function libFiles(): string[] {
+	const libs = ['lib.es2022.d.ts'];
+	// dom.iterable comes with it: without it a NodeList is not iterable, which
+	// is the first thing browser-side code does with one.
+	if (domEnabled()) libs.push('lib.dom.d.ts', 'lib.dom.iterable.d.ts');
+	return libs;
+}
+
 function baseCompilerOptions(): ts.CompilerOptions {
 	return {
 		target: ts.ScriptTarget.ES2022,
@@ -403,7 +421,7 @@ function baseCompilerOptions(): ts.CompilerOptions {
 		forceConsistentCasingInFileNames: true,
 		resolveJsonModule: true,
 		allowSyntheticDefaultImports: true,
-		lib: ['lib.es2022.d.ts'],
+		lib: libFiles(),
 		types: ['node'],
 		typeRoots: [path.join(TYPES_DIR, 'node_modules', '@types')],
 		baseUrl: TYPES_DIR,
