@@ -12,6 +12,14 @@ Reusable GitHub Actions.
 - uses: wow-look-at-my/actions@action-validator#latest
 ```
 
+### [APE binfmt](ape-binfmt/)
+
+```yml
+# Register the Actually Portable Executable format with binfmt_misc, so the kernel execs an APE directly.
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/ape-binfmt/README.md
+- uses: wow-look-at-my/actions@ape-binfmt#latest
+```
+
 ### [Branch Block](branch-block/)
 
 ```yml
