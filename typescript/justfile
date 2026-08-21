@@ -86,13 +86,14 @@ build:
 	find "$types_root" -type f \( -name '*.js' -o -name '*.js.map' -o -name '*.d.ts.map' -o -name 'README.md' \) -delete
 
 	# TypeScript standard libs: only the `/// <reference lib="..." />` closure
-	# of lib.es2022.d.ts (the action's `lib` compiler option), seeded with any
-	# lib the staged type packages reference (@types/node pulls in a couple of
-	# esnext.* libs). A blanket copy of typescript/lib would ship every unused
+	# of the libs the action can select -- lib.es2022.d.ts always, and
+	# lib.dom.d.ts + lib.dom.iterable.d.ts when a step passes dom: true --
+	# seeded with any lib the staged type packages reference (@types/node pulls
+	# in a couple of esnext.* libs). A blanket copy of typescript/lib would ship every unused
 	# lib variant plus the ~600 KB compiler API declarations.
 	libdir="node_modules/typescript/lib"
 	declare -A staged_libs
-	queue="es2022 $(grep -rhoP '(?<=<reference lib=")[^"]+' "$types_root" | sort -u || true)"
+	queue="es2022 dom dom.iterable $(grep -rhoP '(?<=<reference lib=")[^"]+' "$types_root" | sort -u || true)"
 	while [ -n "${queue//[[:space:]]/}" ]; do
 		next=""
 		for name in $queue; do
