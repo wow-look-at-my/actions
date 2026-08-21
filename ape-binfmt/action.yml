@@ -1,0 +1,22 @@
+name: APE binfmt
+description: Register the Actually Portable Executable format with binfmt_misc, so the kernel execs an APE directly
+
+inputs:
+  verify:
+    description: Path to an APE to exec after registering, proving the handler works. Empty skips the proof.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Register the APE handler
+      shell: bash
+      run: "${{ github.action_path }}/register.sh"
+
+    - name: Prove the kernel execs an APE
+      if: inputs.verify != ''
+      shell: bash
+      env:
+        APE_VERIFY: ${{ inputs.verify }}
+      run: "${{ github.action_path }}/verify.sh"
