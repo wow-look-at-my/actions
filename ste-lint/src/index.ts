@@ -99,6 +99,40 @@ function main(): void {
 	}
 }
 
+// Local mode: `node dist/index.js '**/*.md'` lints the given patterns and
+// prints what CI prints. A finding count is then a command anyone can run, not
+// a number somebody remembers.
+function cli(patterns: string[]): number {
+	const opts: Options = {...DEFAULTS};
+	const names = [...new Set(patterns.flatMap((p) => globSync(p, {exclude: (n: string) => n.includes('node_modules')})))].sort();
+	if (names.length === 0) {
+		process.stderr.write(`ste-lint matched no files: ${patterns.join(' ')}\n`);
+		return 2;
+	}
+	const findings = lintFiles(
+		names.map((name) => ({name, text: readFileSync(name, 'utf-8')})),
+		opts,
+	);
+	process.stdout.write(`ste-lint: ${names.length} file(s)\n`);
+	for (const [label, list] of [
+		['sentences over the cap', findings.hardLong],
+		['contractions', findings.contractions],
+		['banned modals', findings.bannedModals],
+		['semicolons', findings.semicolons],
+		['comma splices', findings.commaSplices],
+	] as const) {
+		process.stdout.write(`${String(list.length).padStart(6)}  ${label}\n`);
+	}
+	if (!hasFailures(findings)) return 0;
+	process.stderr.write('\n' + failureReport(findings, opts) + '\n');
+	return 1;
+}
+
+const args = process.argv.slice(2);
+if (args.length > 0) {
+	process.exit(cli(args));
+}
+
 try {
 	main();
 } catch (err) {

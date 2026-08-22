@@ -5,7 +5,10 @@
 // endorse a tool that claims to be "fully compliant," and several writing rules
 // need real semantic judgment a pattern cannot do -- see docs/ste-lint-spec-mapping.md.
 
+import {blocks, isListLine, isSkippableLine, lineAt, stripMarkup} from './blocks';
 import {BANNED_WORDS} from './ste100-banned-words';
+
+export {blocks, isListLine, isSkippableLine, lineAt, stripMarkup};
 
 export interface Options {
 	hardMaxWords: number;
@@ -20,6 +23,7 @@ export interface Findings {
 	contractions: string[];
 	bannedModals: string[];
 	semicolons: string[];
+	commaSplices: string[];
 	// Each of these only warns: they are heuristics, and a heuristic that
 	// fails a build teaches people to route around the check.
 	warnLong: string[];
@@ -36,6 +40,7 @@ export function emptyFindings(): Findings {
 		contractions: [],
 		bannedModals: [],
 		semicolons: [],
+		commaSplices: [],
 		warnLong: [],
 		passive: [],
 		nounClusters: [],
@@ -46,7 +51,13 @@ export function emptyFindings(): Findings {
 }
 
 export function hasFailures(f: Findings): boolean {
-	return f.hardLong.length > 0 || f.contractions.length > 0 || f.bannedModals.length > 0 || f.semicolons.length > 0;
+	return (
+		f.hardLong.length > 0 ||
+		f.contractions.length > 0 ||
+		f.bannedModals.length > 0 ||
+		f.semicolons.length > 0 ||
+		f.commaSplices.length > 0
+	);
 }
 
 const CONTRACTION_RE =
@@ -60,6 +71,34 @@ const CONTRACTION_RE =
 const BANNED_MODAL_RE = /\b(should|shall|could|might|would)\b/gi;
 
 const SEMICOLON_RE = /;/g;
+
+// STE bans the semicolon (rule 8.5) because it bans welding two clauses into
+// one sentence: rule 5.3 allows one instruction per sentence. A comma put in
+// the semicolon's place breaks the same rule, so it fails the same way.
+// Without this, the semicolon rule is one search-and-replace away from
+// meaning nothing.
+//
+// The pattern stays narrow on purpose. An introductory phrase followed by a
+// clause is ordinary English ("Under the alt screen, there is no scrollback"),
+// so a comma only counts when the words BEFORE it already carry a finite verb
+// of their own, and the words after it open a new clause with a subject and a
+// finite verb.
+const CLAUSE_SUBJECT = 'it|they|he|she|we|you|this|that|these|those|nothing|everything|nobody|the|a|an';
+const FINITE_VERB =
+	'is|are|was|were|has|have|had|does|do|did|can|cannot|must|will|makes|make|means|gives|gets|goes|' +
+	'comes|stays|keeps|needs|wants|says|reads|holds|owns|carries|fires|runs|works|costs|counts|leaves|' +
+	'starts|stops|takes|tells|turns|lives|looks|sits|sends|renders|answers|reports|names|breaks|ends';
+const FINITE_VERB_RE = new RegExp(`\\b(?:${FINITE_VERB})\\b`, 'i');
+const COMMA_SPLICE_RE = new RegExp(
+	`,\\s+(?:(?:and|but|so|yet|then)\\s+)?(?:${CLAUSE_SUBJECT})\\s+(?:\\w+\\s+){0,2}?(?:not\\s+)?(?:${FINITE_VERB})\\b`,
+	'gi',
+);
+
+// True when the text before a comma is already a clause, which is what makes
+// the clause after it a second one rather than the sentence's first.
+export function isClause(before: string): boolean {
+	return FINITE_VERB_RE.test(before) && before.trim().split(/\s+/).length >= 3;
+}
 
 // Rule 3.2: STE approves only the infinitive, the imperative, the simple present,
 // simple past, simple future, and the past participle as an adjective. "has/have/had
@@ -100,6 +139,19 @@ const PROGRESSIVE_TENSE_RE = new RegExp(
 // text alone (see ste100-banned-words.ts for what was excluded and why).
 const WORD_TOKEN_RE = /[a-z][a-z'-]*/gi;
 
+// Rule 3.3: use the active voice. This matches "is deleted" and its family, and
+// it runs over a joined block, so a wrap between the verb and the participle no
+// longer hides it.
+const PASSIVE_RE = /\b(?:is|are|was|were|be|been|being)\s+\w+ed\b/gi;
+
+// The text from the start of the sentence up to `index`. The comma-splice rule
+// asks whether those words are already a clause.
+export function sentenceBefore(text: string, index: number): string {
+	const head = text.slice(0, index);
+	const stop = Math.max(head.lastIndexOf('. '), head.lastIndexOf('! '), head.lastIndexOf('? '));
+	return stop < 0 ? head : head.slice(stop + 2);
+}
+
 // Words too ordinary to be part of a noun cluster.
 const STOPWORDS = new Set([
 	'a', 'an', 'the', 'and', 'or', 'but', 'of', 'to', 'in', 'on', 'for', 'with', 'is', 'are', 'was',
@@ -136,27 +188,6 @@ export function stripQuotedSpans(text: string): string {
 	return text.replace(/"[^"]*"/g, (m) => m.replace(/[^\n]/g, ' '));
 }
 
-export function isSkippableLine(line: string): boolean {
-	if (/^\s{0,3}#{1,6}\s/.test(line)) return true; // a heading is a headline, not a sentence
-	if (/^\s*>/.test(line)) return true; // a blockquote is a verbatim quote
-	if (/^\s*\|/.test(line)) return true; // a table cell is a fragment
-	return false;
-}
-
-const LIST_MARKER_RE = /^\s*(?:[-*+]|\d+\.)\s+/;
-
-export function isListLine(line: string): boolean {
-	return LIST_MARKER_RE.test(line);
-}
-
-export function stripMarkup(line: string): string {
-	return line
-		.replace(LIST_MARKER_RE, '')
-		.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-		.replace(/[*_]{1,3}/g, '')
-		.trim();
-}
-
 export function sentences(text: string): string[] {
 	return text.split(/(?<=[.!?])\s+(?=[A-Z0-9(`'])/);
 }
@@ -188,76 +219,78 @@ export function nounRuns(line: string): string[] {
 }
 
 export function lintText(name: string, text: string, opts: Options = DEFAULTS, into = emptyFindings()): Findings {
-	const lines = stripQuotedSpans(stripCode(text)).split('\n');
+	const source = stripQuotedSpans(stripCode(text)).split('\n');
 
 	// Rule 6.6: no more than six sentences in a paragraph. A paragraph is a run of
-	// non-blank, non-skippable lines; a list line never adds to the count, because
+	// blocks that touch in the source; a list item never adds to the count, because
 	// the standard's own worked example counts an entire intro sentence plus its
 	// vertical list as ONE sentence -- the intro line supplies that one sentence.
-	let inParagraph = false;
 	let paragraphStartLine = 0;
 	let paragraphSentences = 0;
+	let previousEndLine = -1;
 	const flushParagraph = () => {
 		if (paragraphSentences > 6) {
 			into.longParagraphs.push(`${name}:${paragraphStartLine}: ${paragraphSentences} sentences in one paragraph`);
 		}
-		inParagraph = false;
 		paragraphSentences = 0;
 	};
 
-	for (let i = 0; i < lines.length; i++) {
-		const at = `${name}:${i + 1}`;
-		if (isSkippableLine(lines[i]) || !lines[i].trim()) {
+	for (const block of blocks(source)) {
+		const {text: joined} = block;
+		const at = (index: number) => `${name}:${lineAt(block, index)}`;
+
+		if (block.startLine !== previousEndLine + 1) {
 			flushParagraph();
-			continue;
+			paragraphStartLine = block.startLine;
 		}
-		const cleaned = stripMarkup(lines[i]);
-		if (!cleaned) {
-			flushParagraph();
-			continue;
-		}
-		if (!inParagraph) {
-			inParagraph = true;
-			paragraphStartLine = i + 1;
-		}
-		if (!isListLine(lines[i])) paragraphSentences += sentences(cleaned).length;
+		previousEndLine = block.starts[block.starts.length - 1].line;
+		if (!block.list) paragraphSentences += sentences(joined).length;
 
 		let m: RegExpExecArray | null;
 		CONTRACTION_RE.lastIndex = 0;
-		while ((m = CONTRACTION_RE.exec(cleaned))) into.contractions.push(`${at}: "${m[0]}"`);
+		while ((m = CONTRACTION_RE.exec(joined))) into.contractions.push(`${at(m.index)}: "${m[0]}"`);
 		BANNED_MODAL_RE.lastIndex = 0;
-		while ((m = BANNED_MODAL_RE.exec(cleaned))) into.bannedModals.push(`${at}: "${m[0]}"`);
+		while ((m = BANNED_MODAL_RE.exec(joined))) into.bannedModals.push(`${at(m.index)}: "${m[0]}"`);
 		SEMICOLON_RE.lastIndex = 0;
-		while ((m = SEMICOLON_RE.exec(cleaned))) into.semicolons.push(`${at}: ";"`);
+		while ((m = SEMICOLON_RE.exec(joined))) into.semicolons.push(`${at(m.index)}: ";"`);
+		COMMA_SPLICE_RE.lastIndex = 0;
+		while ((m = COMMA_SPLICE_RE.exec(joined))) {
+			if (isClause(sentenceBefore(joined, m.index))) into.commaSplices.push(`${at(m.index)}: "${m[0].trim()}"`);
+		}
 		PERFECT_TENSE_RE.lastIndex = 0;
-		while ((m = PERFECT_TENSE_RE.exec(cleaned))) into.complexTense.push(`${at}: "${m[0]}" (perfect tense; STE allows only simple tenses)`);
+		while ((m = PERFECT_TENSE_RE.exec(joined))) {
+			into.complexTense.push(`${at(m.index)}: "${m[0]}" (perfect tense, and STE allows only simple tenses)`);
+		}
 		PROGRESSIVE_TENSE_RE.lastIndex = 0;
-		while ((m = PROGRESSIVE_TENSE_RE.exec(cleaned))) {
-			into.complexTense.push(`${at}: "${m[0]}" (progressive tense; STE allows only simple tenses)`);
+		while ((m = PROGRESSIVE_TENSE_RE.exec(joined))) {
+			into.complexTense.push(`${at(m.index)}: "${m[0]}" (progressive tense, and STE allows only simple tenses)`);
 		}
 
-		for (const s of sentences(cleaned)) {
+		let offset = 0;
+		for (const s of sentences(joined)) {
 			const n = wordCount(s);
 			if (n > opts.hardMaxWords) {
-				into.hardLong.push(`${at}: ${n} words: "${s.slice(0, 100)}${s.length > 100 ? '...' : ''}"`);
+				into.hardLong.push(`${at(offset)}: ${n} words: "${s.slice(0, 100)}${s.length > 100 ? '...' : ''}"`);
 			} else if (n > opts.warnMaxWords) {
-				into.warnLong.push(`${at}: ${n} words`);
+				into.warnLong.push(`${at(offset)}: ${n} words`);
 			}
+			offset += s.length + 1;
 		}
 
-		if (/\b(?:is|are|was|were|be|been|being)\s+\w+ed\b/i.test(cleaned)) into.passive.push(at);
-		for (const run of nounRuns(cleaned)) into.nounClusters.push(`${at}: "${run}"`);
+		PASSIVE_RE.lastIndex = 0;
+		while ((m = PASSIVE_RE.exec(joined))) into.passive.push(at(m.index));
+		for (const run of nounRuns(joined)) into.nounClusters.push(`${name}:${block.startLine}: "${run}"`);
 
 		WORD_TOKEN_RE.lastIndex = 0;
 		let w: RegExpExecArray | null;
-		while ((w = WORD_TOKEN_RE.exec(cleaned))) {
+		while ((w = WORD_TOKEN_RE.exec(joined))) {
 			// Object.hasOwn, because a table written as an object literal answers
 			// for "constructor", "toString" and every other Object.prototype
 			// name with a function. That read as a banned word and threw on
 			// join, so one ordinary English word crashed the whole run.
 			const key = w[0].toLowerCase();
 			const alts = Object.hasOwn(BANNED_WORDS, key) ? BANNED_WORDS[key] : undefined;
-			if (alts) into.bannedWords.push(`${at}: "${w[0]}" -- use ${alts.join(' or ')}`);
+			if (alts) into.bannedWords.push(`${at(w.index)}: "${w[0]}" -- use ${alts.join(' or ')}`);
 		}
 	}
 	flushParagraph();
@@ -285,6 +318,12 @@ export function failureReport(f: Findings, opts: Options): string {
 	}
 	if (f.semicolons.length) {
 		problems.push(`STE bans the semicolon -- use a period and start a new sentence:\n${f.semicolons.join('\n')}`);
+	}
+	if (f.commaSplices.length) {
+		problems.push(
+			'A comma joining two clauses is the semicolon STE bans, spelled differently -- ' +
+				`use a period and start a new sentence:\n${f.commaSplices.join('\n')}`,
+		);
 	}
 	return problems.join('\n\n');
 }
