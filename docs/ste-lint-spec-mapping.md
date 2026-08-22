@@ -69,6 +69,10 @@ a clause is ordinary English and is not a splice:
   between them. A coordinating conjunction in between is allowed, because rule 5.3
   bans the joined sentence whether or not an "and" appears in it.
 
+A relative pronoun between the subject and the verb clears the finding.
+"The endpoint sends malformed SSE, a 200 that is not an event stream" lists noun
+phrases, and the comma separates them.
+
 Both lists are closed, so the check misses a splice built from verbs outside
 them. That is the intended trade: a rule that fails a build must not fire on
 correct prose.

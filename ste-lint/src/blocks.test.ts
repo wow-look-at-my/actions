@@ -111,3 +111,16 @@ test('a sentence opens on a section sign, a quote or a non-ASCII capital', () =>
 		assert.equal(sentences(`First sentence here. ${opener}`).length, 2, opener);
 	}
 });
+
+// A relative clause is not a second clause: "sends A, a B that is not C" lists
+// noun phrases, and the comma separates them.
+test('a relative clause after the comma is a list item, not a splice', () => {
+	for (const clean of [
+		'The endpoint sends malformed SSE, a 200 that is not an event stream, or a truncated tail.',
+		'It keeps the frame, the row that is focused, and the cursor.',
+	]) {
+		assert.deepEqual(lintText('a.md', clean).commaSplices, [], clean);
+	}
+	// Still caught: no relative pronoun, so the second half is its own clause.
+	assert.equal(lintText('a.md', 'The queue is a display, it never takes focus.').commaSplices.length, 1);
+});
