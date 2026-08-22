@@ -8,5 +8,6 @@ with no `expect:` header fails the run, so a fixture nobody asserts on cannot
 sit here looking like coverage.
 
 Every one of these came from linting a hard-wrapped specification, not from
-imagination. The two kinds are equally worth keeping: a rule that fired on
-correct prose, and a rule that stayed silent on prose it was written to catch.
+imagination. The two kinds are equally worth keeping. The first is a rule that
+fired on correct prose. The second is a rule that stayed silent on prose it was
+written to catch.

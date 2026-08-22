@@ -89,13 +89,8 @@ const FINITE_VERB =
 	'comes|stays|keeps|needs|wants|says|reads|holds|owns|carries|fires|runs|works|costs|counts|leaves|' +
 	'starts|stops|takes|tells|turns|lives|looks|sits|sends|renders|answers|reports|names|breaks|ends';
 const FINITE_VERB_RE = new RegExp(`\\b(?:${FINITE_VERB})\\b`, 'i');
-// A relative pronoun opens a clause that BELONGS to the noun before it, so the
-// gap between the subject and its verb may not cross one. Without this,
-// "malformed SSE, a 200 that is not an event stream" reads as two sentences.
-const RELATIVE_PRONOUN = 'that|which|who|whom|whose|where|when|why';
 const COMMA_SPLICE_RE = new RegExp(
-	`,\\s+(?:(?:and|but|so|yet|then)\\s+)?(?:${CLAUSE_SUBJECT})\\s+` +
-		`(?:(?!(?:${RELATIVE_PRONOUN})\\b)\\w+\\s+){0,2}?(?:not\\s+)?(?:${FINITE_VERB})\\b`,
+	`,\\s+(?:(?:and|but|so|yet|then)\\s+)?(?:${CLAUSE_SUBJECT})\\s+(?:\\w+\\s+){0,2}?(?:not\\s+)?(?:${FINITE_VERB})\\b`,
 	'gi',
 );
 

@@ -74,8 +74,7 @@ a clause is ordinary English and is not a splice:
   a phrase, not a clause. That comma is left alone.
 - The words **after** the comma must open a clause. That means a subject from a
   closed list, then a finite verb from a closed list. At most two words come
-  between them. Those words may not include a relative pronoun, because a
-  relative pronoun opens a clause that belongs to the noun in front of it. A coordinating conjunction in between is allowed, because rule 5.3
+  between them. A coordinating conjunction in between is allowed, because rule 5.3
   bans the joined sentence whether or not an "and" appears in it.
 
 Both lists are closed, so the check misses a splice built from verbs outside
