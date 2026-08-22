@@ -177,7 +177,7 @@ Reusable GitHub Actions.
 ### [ste-lint](ste-lint/)
 
 ```yml
-# Check prose against the mechanical subset of ASD-STE100 Simplified Technical English — sentence length, contractions, banned modal verbs, semicolons, and dictionary word choice.
+# Check prose against the mechanical subset of ASD-STE100 Simplified Technical English — sentence length measured over whole sentences rather than wrapped lines, contractions, banned modal verbs, semicolons, comma splices, and dictionary word choice.
 # Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/ste-lint/README.md
 - uses: wow-look-at-my/actions@ste-lint#latest
 ```
@@ -190,6 +190,13 @@ Reusable GitHub Actions.
 - uses: wow-look-at-my/actions@tag-runner#latest
   with:
     token: # GitHub token with packages:write and actions:write permissions
+```
+
+### [Install timeout (macOS)](timeout-macos/)
+
+```yml
+# Makes GNU timeout available on macOS runners by installing coreutils via Homebrew.
+- uses: wow-look-at-my/actions@timeout-macos#latest
 ```
 
 ### [TypeScript](typescript/)

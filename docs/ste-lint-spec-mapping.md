@@ -1,8 +1,8 @@
 # ste-lint's rule mapping (ASD-STE100, Issue 9, 2025-01-15)
 
 This is the full mapping from each check in `ste-lint/src/lint.ts` to the
-writing rule in Part 1 of ASD-STE100 that it enforces, and why the rules that
-are not checked are not checked. Source: the free PDF at
+writing rule in Part 1 of ASD-STE100 that it enforces. It also says why the
+rules that are not checked are not checked. Source: the free PDF at
 `https://www.asd-ste100.org/assets/files/ASD-STE100_ISSUE9.pdf`.
 
 ## Checked
@@ -14,6 +14,7 @@ are not checked are not checked. Source: the free PDF at
 | Contraction | fail | 4.2 | closed word list, zero ambiguity |
 | `should` / `shall` / `could` / `might` / `would` | fail | dictionary: MUST (v), and the "Do not use COULD (v)" note under CAN (v) | `should`/`shall`/`might`/`would` are simply absent from the dictionary; `may` is excluded on purpose (calendar month collision) |
 | Semicolon | fail | 8.1 | STE allows every standard punctuation mark except this one |
+| Comma splice | fail | 5.3, and 8.1 by extension | rule 8.1 bans the semicolon because rule 5.3 allows one instruction per sentence, so a comma put in its place breaks the same rule and must fail the same way -- see "The comma-splice check" below |
 | Parenthetical text counted as one word | correctness fix, not a new check | 8.5 | without this, `(refer to paragraphs 2 thru 5)` would inflate a sentence's word count against the 20/25 caps |
 | Noun cluster of 4+ content words | warn | 2.1 | "no more than three words"; warn because the stopword list is a heuristic |
 | Passive voice (`is`/`was`/... + `-ed`) | warn | 3.6 | warn because rule 3.6 itself permits passive voice when the agent is unknown, which this regex cannot tell |
@@ -22,58 +23,128 @@ are not checked are not checked. Source: the free PDF at
 | Word not approved in the dictionary (rule 1.1-1.3) | warn | Part 2 (Dictionary) | see "The dictionary check" below |
 | Paragraph over 6 sentences | warn | 6.6 | a list line never adds to the count -- see "The paragraph-length check" below |
 
+## The unit every rule is measured over
+
+Every rule reads a **block**: a paragraph with its wrapped lines rejoined into
+one string (`src/blocks.ts`). A blank line, a heading, a blockquote, and a
+table row each end a block, and a list item is a block of its own.
+
+The reason is rule 6.3. Prose files are hard-wrapped near 90 columns, so one
+25-word sentence normally spans two or three physical lines. A checker that
+reads one line at a time never sees that sentence. It sees three fragments of
+eight or nine words, and each fragment passes. That made the sentence cap
+unenforceable on precisely the documents this action is pointed at. It also
+made re-wrapping a paragraph a way to clear a finding without shortening
+anything. The same fix lets the tense rules see "has\nbeen", which a line
+split used to hide.
+
+Each block keeps an offset map back to its source lines. A finding still names
+the line its sentence starts on.
+
+## A blanked span is one word, not none
+
+A code span and a quotation are replaced rather than deleted. A finding still
+names its line. The replacement keeps the span's length and opens with one
+letter (`blankSpan`).
+
+The letter matters twice. A technical name is a word, and pure whitespace
+counted as none, which made every sentence around one measure short. A sentence
+that opens with a code span also needs a character to split on. Without one it
+joins the sentence before it, and the pair measures as one long sentence.
+
+## The comma-splice check
+
+A comma that joins two independent clauses is the semicolon rule 8.1 bans,
+written with a different character. Without this check, `A; B` becomes
+`A, B` in one search-and-replace and the semicolon rule means nothing.
+
+The pattern is deliberately narrow, because an introductory phrase in front of
+a clause is ordinary English and is not a splice:
+
+- The words **before** the comma must already carry a finite verb, and at
+  least three words. "Under the alt screen, there is no scrollback" opens with
+  a phrase, not a clause. That comma is left alone.
+- The words **after** the comma must open a clause. That means a subject from a
+  closed list, then a finite verb from a closed list. At most two words come
+  between them. A coordinating conjunction in between is allowed, because rule 5.3
+  bans the joined sentence whether or not an "and" appears in it.
+
+Both lists are closed, so the check misses a splice built from verbs outside
+them. That is the intended trade: a rule that fails a build must not fire on
+correct prose.
+
+## The caps only move downward
+
+`hard-max-words` and `warn-max-words` are refused above 25 (`src/inputs.ts`).
+Rule 6.3 sets that number, so `hard-max-words: 500` does not configure the
+rule, it removes it, in one line of YAML that reads like a setting. A smaller
+value is a stricter house style and is accepted, which is why the check is a
+ceiling rather than a fixed constant.
+
+## The step guard
+
+None of the rules above matter if the step is switched off, and neither way of
+switching it off leaves a trace in its output. So the action reports the ref it
+runs as on every run. That puts a moved or rolled-back `uses:` in the log. It
+also FAILS when it finds its own step wrapped in `continue-on-error: true`. A step
+that is allowed to fail is not a gate.
+
+It reads the workflow named by `GITHUB_WORKFLOW_REF` out of the checkout. When
+it cannot read that file it names the check it cannot make, at error level,
+rather than passing over it. A check that did not happen is never a check that
+passed.
+
 ## The dictionary check
 
 `src/ste100-banned-words.ts` is extracted from the free PDF at
 `asd-ste100.org/assets/files/ASD-STE100_ISSUE9.pdf` (no login, no paywall) --
 Part 2 of the standard, the ~2,100-entry alphabetical dictionary (about 900
 approved words, about 1,200 banned words each with a suggested replacement).
-Only the word and its suggested replacement(s) are extracted, never ASD's
-approved-meaning prose or STE/non-STE example sentences, which are their
-creative writing and not factual data.
+Only the word and its suggested replacement(s) are extracted. ASD's
+approved-meaning prose and its STE/non-STE example sentences are never taken.
+Those are their creative writing, not factual data.
 
 The extraction is narrowed on purpose:
 
 - **A word is dropped if it is also approved under some other sense.** For
   example "as" is banned as a conjunction ("do it as you go") but approved as
   a preposition ("used as a spacer"). This checker matches text, not part of
-  speech, so it cannot tell the senses apart, and a checker that cannot tell
-  the senses apart must not flag the word at all.
+  speech, so it cannot tell the senses apart. A checker that cannot tell the
+  senses apart must not flag the word at all.
 - **`should`/`shall`/`could`/`might`/`would`/`may` are excluded.** These are
   already covered precisely by the hand-coded modal-verb check above.
-- **Entries the parser could not confidently read are dropped, not guessed
+- **Entries the parser cannot confidently read are dropped, not guessed
   at.** A handful of multi-word headwords ("provided that", "so that") and a
   few entries whose alternative wording did not match a clean `WORD (pos)`
   pattern are left out. A silently-wrong "not approved" verdict is worse than
   a missed one.
 
-Even with that narrowing, this stays a warning, never a failure, for a
-concrete reason visible in this very repo: STE bans generic-English "action"
-in favor of "step"/"procedure"/"task", and this repository's own domain
-vocabulary is GitHub *Actions*. A context-blind word match cannot tell a
-banned generic noun from an approved technical noun (rule 1.5-1.9 explicitly
-allows company- and industry-specific technical nouns outside the general
-dictionary) -- so a repo full of "run the action" will see this warning
-often. That is expected, not a parsing bug.
+Even with that narrowing, this stays a warning and never a failure. The reason
+is visible in this very repo. STE bans generic-English "action" in favor of
+"step"/"procedure"/"task". This repository's own domain vocabulary is GitHub
+*Actions*. A context-blind word match cannot tell a banned generic noun from an
+approved technical noun. Rule 1.5-1.9 explicitly allows company- and
+industry-specific technical nouns outside the general dictionary. So a repo
+full of "run the action" sees this warning often. That is expected, not a parsing bug.
 
-To regenerate after a new ASD-STE100 issue: download the PDF, run
-`pdftotext -layout` on it, and parse the `Part 2 – Dictionary` section for
-lines that open at column 0 with `word (pos)` -- lowercase word = not
-approved, uppercase = approved -- collecting indented `WORD (pos)`
-continuation lines as suggested alternatives for a not-approved entry. Apply
+To regenerate after a new ASD-STE100 issue, download the PDF and run
+`pdftotext -layout` on it. Parse the `Part 2 – Dictionary` section for lines
+that open at column 0 with `word (pos)`. A lowercase word is not approved. An
+uppercase one is approved. Collect the indented `WORD (pos)` continuation
+lines as suggested alternatives for a not-approved entry. Apply
 the same narrowing as above before regenerating `ste100-banned-words.ts`.
 
 ## The paragraph-length check
 
 Rule 6.6's own worked example counts an entire introductory sentence plus its
 vertical list as ONE sentence, not one sentence per list line. This repo's
-Markdown is full of long bulleted lists, so naively counting one sentence per
-list line would make this warning fire constantly on ordinary, compliant
-docs. The fix: a line matching the list-marker pattern (`- `, `* `, `1. `,
-...) never adds to a paragraph's sentence count; the paragraph's own intro
-line (usually ending in a colon, with no `.`/`!`/`?` to split on) already
-supplies the one sentence the list belongs to, matching the standard's
-convention directly instead of approximating it.
+Markdown is full of long bulleted lists. Counting one sentence per list line
+makes this warning fire constantly on ordinary, compliant docs. So a line
+matching the list-marker pattern (`- `, `* `, `1. `, ...) never adds to a
+paragraph's sentence count. The paragraph's own intro line already supplies the
+one sentence the list belongs to. That line usually ends in a colon, with no
+`.`/`!`/`?` to split on. This matches the standard's convention directly,
+instead of approximating it.
 
 ## Not checked, and why
 
@@ -83,20 +154,20 @@ convention directly instead of approximating it.
   joining two instructions with "and" is CORRECT when the actions happen at
   the same time ("Hold the panel in its open position and install the
   fastener") and WRONG otherwise. A mechanical "flag every 'and' between two
-  verbs" check would fail the compliant examples in the standard itself.
+  verbs" check fails the compliant examples in the standard itself.
 - **Omitted words (rule 4.2, the non-contraction half).** Telling "a sentence
   is missing its subject" from "a sentence has no subject because it is an
   imperative" needs a parser this tool does not have.
 - **Articles (rule 4.5).** The rule gives worked examples where dropping an
   article is correct ("Solvents can cause damage to paint" -- no article,
   because it is a general statement) and examples where an article is
-  required. A missing-article heuristic would fail the standard's own
-  compliant examples.
+  required. A missing-article heuristic fails the standard's own compliant
+  examples.
 - **"Every word must be in the approved list" (rule 1.1-1.3, the other
   direction from the dictionary check above).** Rule 1.5-1.9 explicitly
   permits technical nouns specific to a company, industry, or subject field
-  outside the general dictionary. A blanket "not in the list" check would
-  flag exactly that permitted vocabulary -- this repo's own `action` (GitHub
-  Actions), `runner`, `workflow`, and so on -- so it would be actively wrong
-  per the standard, not just noisy. The banned-word-with-suggested-
+  outside the general dictionary. A blanket "not in the list" check flags
+  exactly that permitted vocabulary: this repo's own `action` (GitHub
+  Actions), `runner`, `workflow`, and so on. That is actively wrong per the
+  standard, not just noisy. The banned-word-with-suggested-
   replacement check above is the direction that stays accurate.
