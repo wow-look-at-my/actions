@@ -1,6 +1,8 @@
 import * as core from '@actions/core';
 import {globSync} from 'node:fs';
 import {readFileSync} from 'node:fs';
+import {guard} from './guard';
+import {capped, STE_MAX_WORDS} from './inputs';
 import {DEFAULTS, failureReport, hasFailures, lintFiles, type Options} from './lint';
 
 // A patterns input of "" would glob nothing and pass, which is the silent
@@ -12,23 +14,28 @@ function patternsOf(raw: string): string[] {
 		.filter(Boolean);
 }
 
-function numberInput(name: string, fallback: number): number {
-	const raw = core.getInput(name).trim();
-	if (raw === '') return fallback;
-	const n = Number(raw);
-	if (!Number.isInteger(n) || n <= 0) throw new Error(`${name} must be a positive whole number, got "${raw}"`);
-	return n;
-}
-
 function preview(items: string[], limit = 20, join = ', '): string {
 	return items.slice(0, limit).join(join) + (items.length > limit ? ', ...' : '');
 }
 
 function main(): void {
+	const gate = guard({
+		workspace: process.env.GITHUB_WORKSPACE,
+		workflowRef: process.env.GITHUB_WORKFLOW_REF,
+		actionRef: process.env.GITHUB_ACTION_REF,
+	});
+	for (const note of gate.notes) core.info(note);
+	// A check that did not happen is never a check that passed.
+	for (const u of gate.unknown) core.error(`ste-lint could not establish ${u}`);
+	if (gate.failure) {
+		core.setFailed(gate.failure);
+		return;
+	}
+
 	const patterns = patternsOf(core.getInput('files') || '**/*.md');
 	const opts: Options = {
-		hardMaxWords: numberInput('hard-max-words', DEFAULTS.hardMaxWords),
-		warnMaxWords: numberInput('warn-max-words', DEFAULTS.warnMaxWords),
+		hardMaxWords: capped('hard-max-words', core.getInput('hard-max-words'), DEFAULTS.hardMaxWords, STE_MAX_WORDS),
+		warnMaxWords: capped('warn-max-words', core.getInput('warn-max-words'), DEFAULTS.warnMaxWords, STE_MAX_WORDS),
 	};
 	if (opts.warnMaxWords > opts.hardMaxWords) {
 		throw new Error(`warn-max-words (${opts.warnMaxWords}) must not exceed hard-max-words (${opts.hardMaxWords})`);
@@ -97,6 +104,40 @@ function main(): void {
 				`(${findings.longParagraphs.length} found): ${preview(findings.longParagraphs)}`,
 		);
 	}
+}
+
+// Local mode: `node dist/index.js '**/*.md'` lints the given patterns and
+// prints what CI prints. A finding count is then a command anyone can run, not
+// a number somebody remembers.
+function cli(patterns: string[]): number {
+	const opts: Options = {...DEFAULTS};
+	const names = [...new Set(patterns.flatMap((p) => globSync(p, {exclude: (n: string) => n.includes('node_modules')})))].sort();
+	if (names.length === 0) {
+		process.stderr.write(`ste-lint matched no files: ${patterns.join(' ')}\n`);
+		return 2;
+	}
+	const findings = lintFiles(
+		names.map((name) => ({name, text: readFileSync(name, 'utf-8')})),
+		opts,
+	);
+	process.stdout.write(`ste-lint: ${names.length} file(s)\n`);
+	for (const [label, list] of [
+		['sentences over the cap', findings.hardLong],
+		['contractions', findings.contractions],
+		['banned modals', findings.bannedModals],
+		['semicolons', findings.semicolons],
+		['comma splices', findings.commaSplices],
+	] as const) {
+		process.stdout.write(`${String(list.length).padStart(6)}  ${label}\n`);
+	}
+	if (!hasFailures(findings)) return 0;
+	process.stderr.write('\n' + failureReport(findings, opts) + '\n');
+	return 1;
+}
+
+const args = process.argv.slice(2);
+if (args.length > 0) {
+	process.exit(cli(args));
 }
 
 try {
