@@ -26,8 +26,10 @@ rules that are not checked are not checked. Source: the free PDF at
 ## The unit every rule is measured over
 
 Every rule reads a **block**: a paragraph with its wrapped lines rejoined into
-one string (`src/blocks.ts`). A blank line, a heading, a blockquote, and a
-table row each end a block, and a list item is a block of its own.
+one string (`src/blocks.ts`). A block ends at a blank line, a heading, a
+blockquote, an HTML comment, or a table row. A list item is a block of its own.
+A heading is a headline rather than a sentence. A blockquote is somebody else's
+words. A comment is markup.
 
 The reason is rule 6.3. Prose files are hard-wrapped near 90 columns, so one
 25-word sentence normally spans two or three physical lines. A checker that
@@ -52,6 +54,12 @@ counted as none, which made every sentence around one measure short. A sentence
 that opens with a code span also needs a character to split on. Without one it
 joins the sentence before it, and the pair measures as one long sentence.
 
+A quotation ends at the next quotation mark or at the next blank line,
+whichever comes first. Prose contains unbalanced quotation marks: an opening
+one on a term, a possessive, a foot mark. Pairing across a whole document put
+every later span at the wrong place, and one of them swallowed a real
+semicolon.
+
 ## The comma-splice check
 
 A comma that joins two independent clauses is the semicolon rule 8.1 bans,
@@ -66,7 +74,8 @@ a clause is ordinary English and is not a splice:
   a phrase, not a clause. That comma is left alone.
 - The words **after** the comma must open a clause. That means a subject from a
   closed list, then a finite verb from a closed list. At most two words come
-  between them. A coordinating conjunction in between is allowed, because rule 5.3
+  between them. Those words may not include a relative pronoun, because a
+  relative pronoun opens a clause that belongs to the noun in front of it. A coordinating conjunction in between is allowed, because rule 5.3
   bans the joined sentence whether or not an "and" appears in it.
 
 Both lists are closed, so the check misses a splice built from verbs outside
@@ -145,6 +154,19 @@ paragraph's sentence count. The paragraph's own intro line already supplies the
 one sentence the list belongs to. That line usually ends in a colon, with no
 `.`/`!`/`?` to split on. This matches the standard's convention directly,
 instead of approximating it.
+
+## The fixtures
+
+`ste-lint/fixtures/` holds prose that broke this checker, kept as the document
+it broke on. Two kinds are equally worth keeping. The first is a rule that
+fired on correct prose. The second is a rule that stayed silent on prose it was
+written to catch.
+
+Each file opens with an `<!-- expect: ... -->` header naming the counts the
+checker must report for it. `src/fixtures.test.ts` walks the directory and
+compares. A file with no header fails the run, and a header that names a rule
+this checker does not report fails the run as well. So a fixture nobody
+asserts on cannot sit in the directory and look like coverage.
 
 ## Not checked, and why
 
