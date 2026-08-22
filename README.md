@@ -184,6 +184,13 @@ Reusable GitHub Actions.
     token: # GitHub token with packages:write and actions:write permissions
 ```
 
+### [Install timeout (macOS)](timeout-macos/)
+
+```yml
+# Makes GNU timeout available on macOS runners by installing coreutils via Homebrew.
+- uses: wow-look-at-my/actions@timeout-macos#latest
+```
+
 ### [TypeScript](typescript/)
 
 ```yml
