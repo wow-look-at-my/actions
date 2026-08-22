@@ -209,7 +209,7 @@ export function stripQuotedSpans(text: string): string {
 }
 
 export function sentences(text: string): string[] {
-	return text.split(/(?<=[.!?])\s+(?=[A-Z0-9(`'])/);
+	return text.split(/(?<=[.!?])\s+(?=[\p{Lu}0-9(`'"\u00a7\u00b6\u201c\u2018])/u);
 }
 
 // Rule 8.5: text in parentheses counts as one word, whatever it contains.

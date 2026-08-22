@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {blocks, lineAt} from './blocks';
-import {blankSpan, clauseBefore, lintText, stripCode, wordCount} from './lint';
+import {blankSpan, clauseBefore, lintText, sentences, stripCode, wordCount} from './lint';
 
 const lines = (s: string) => s.split('\n');
 
@@ -100,4 +100,14 @@ test('a code span counts as one word and can open a sentence', () => {
 test('a blanked span keeps its length, so a finding still names its line', () => {
 	const f = lintText('a.md', 'one\ntwo `code here`\nThis line would fail.');
 	assert.deepEqual(f.bannedModals, ['a.md:3: "would"']);
+});
+
+// A sentence that opens with one of these used to join the sentence before it,
+// and the pair then measured as one long sentence.
+test('a sentence opens on a section sign, a quote or a non-ASCII capital', () => {
+	for (const opener of ['§3a says so.', '"Quoted" is fine.', 'Ähnlich here.', '¶ 4 says so.']) {
+		const f = lintText('a.md', `First sentence here. ${opener}`);
+		assert.deepEqual(f.hardLong, []);
+		assert.equal(sentences(`First sentence here. ${opener}`).length, 2, opener);
+	}
 });
