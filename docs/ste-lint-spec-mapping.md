@@ -1,8 +1,8 @@
 # ste-lint's rule mapping (ASD-STE100, Issue 9, 2025-01-15)
 
 This is the full mapping from each check in `ste-lint/src/lint.ts` to the
-writing rule in Part 1 of ASD-STE100 that it enforces, and why the rules that
-are not checked are not checked. Source: the free PDF at
+writing rule in Part 1 of ASD-STE100 that it enforces. It also says why the
+rules that are not checked are not checked. Source: the free PDF at
 `https://www.asd-ste100.org/assets/files/ASD-STE100_ISSUE9.pdf`.
 
 ## Checked
@@ -31,15 +31,15 @@ table row each end a block, and a list item is a block of its own.
 
 The reason is rule 6.3. Prose files are hard-wrapped near 90 columns, so one
 25-word sentence normally spans two or three physical lines. A checker that
-reads one line at a time never sees that sentence: it sees three fragments of
+reads one line at a time never sees that sentence. It sees three fragments of
 eight or nine words, and each fragment passes. That made the sentence cap
-unenforceable on precisely the documents this action is pointed at, and it
+unenforceable on precisely the documents this action is pointed at. It also
 made re-wrapping a paragraph a way to clear a finding without shortening
 anything. The same fix lets the tense rules see "has\nbeen", which a line
 split used to hide.
 
-Each block keeps an offset map back to its source lines, so a finding still
-names the line its sentence starts on.
+Each block keeps an offset map back to its source lines. A finding still names
+the line its sentence starts on.
 
 ## The comma-splice check
 
@@ -52,10 +52,10 @@ a clause is ordinary English and is not a splice:
 
 - The words **before** the comma must already carry a finite verb, and at
   least three words. "Under the alt screen, there is no scrollback" opens with
-  a phrase, not a clause, so it is left alone.
-- The words **after** the comma must open a clause: a subject from a closed
-  list, then a finite verb from a closed list, with at most two words between
-  them. A coordinating conjunction in between is allowed, because rule 5.3
+  a phrase, not a clause. That comma is left alone.
+- The words **after** the comma must open a clause. That means a subject from a
+  closed list, then a finite verb from a closed list. At most two words come
+  between them. A coordinating conjunction in between is allowed, because rule 5.3
   bans the joined sentence whether or not an "and" appears in it.
 
 Both lists are closed, so the check misses a splice built from verbs outside
@@ -74,12 +74,12 @@ ceiling rather than a fixed constant.
 
 None of the rules above matter if the step is switched off, and neither way of
 switching it off leaves a trace in its output. So the action reports the ref it
-runs as on every run, which puts a moved or rolled-back `uses:` in the log, and
-it FAILS when it finds its own step wrapped in `continue-on-error: true`. A step
+runs as on every run. That puts a moved or rolled-back `uses:` in the log. It
+also FAILS when it finds its own step wrapped in `continue-on-error: true`. A step
 that is allowed to fail is not a gate.
 
 It reads the workflow named by `GITHUB_WORKFLOW_REF` out of the checkout. When
-it cannot read that file it names the check it could not make, at error level,
+it cannot read that file it names the check it cannot make, at error level,
 rather than passing over it. A check that did not happen is never a check that
 passed.
 
@@ -89,52 +89,51 @@ passed.
 `asd-ste100.org/assets/files/ASD-STE100_ISSUE9.pdf` (no login, no paywall) --
 Part 2 of the standard, the ~2,100-entry alphabetical dictionary (about 900
 approved words, about 1,200 banned words each with a suggested replacement).
-Only the word and its suggested replacement(s) are extracted, never ASD's
-approved-meaning prose or STE/non-STE example sentences, which are their
-creative writing and not factual data.
+Only the word and its suggested replacement(s) are extracted. ASD's
+approved-meaning prose and its STE/non-STE example sentences are never taken.
+Those are their creative writing, not factual data.
 
 The extraction is narrowed on purpose:
 
 - **A word is dropped if it is also approved under some other sense.** For
   example "as" is banned as a conjunction ("do it as you go") but approved as
   a preposition ("used as a spacer"). This checker matches text, not part of
-  speech, so it cannot tell the senses apart, and a checker that cannot tell
-  the senses apart must not flag the word at all.
+  speech, so it cannot tell the senses apart. A checker that cannot tell the
+  senses apart must not flag the word at all.
 - **`should`/`shall`/`could`/`might`/`would`/`may` are excluded.** These are
   already covered precisely by the hand-coded modal-verb check above.
-- **Entries the parser could not confidently read are dropped, not guessed
+- **Entries the parser cannot confidently read are dropped, not guessed
   at.** A handful of multi-word headwords ("provided that", "so that") and a
   few entries whose alternative wording did not match a clean `WORD (pos)`
   pattern are left out. A silently-wrong "not approved" verdict is worse than
   a missed one.
 
-Even with that narrowing, this stays a warning, never a failure, for a
-concrete reason visible in this very repo: STE bans generic-English "action"
-in favor of "step"/"procedure"/"task", and this repository's own domain
-vocabulary is GitHub *Actions*. A context-blind word match cannot tell a
-banned generic noun from an approved technical noun (rule 1.5-1.9 explicitly
-allows company- and industry-specific technical nouns outside the general
-dictionary) -- so a repo full of "run the action" will see this warning
-often. That is expected, not a parsing bug.
+Even with that narrowing, this stays a warning and never a failure. The reason
+is visible in this very repo. STE bans generic-English "action" in favor of
+"step"/"procedure"/"task". This repository's own domain vocabulary is GitHub
+*Actions*. A context-blind word match cannot tell a banned generic noun from an
+approved technical noun. Rule 1.5-1.9 explicitly allows company- and
+industry-specific technical nouns outside the general dictionary. So a repo
+full of "run the action" sees this warning often. That is expected, not a parsing bug.
 
-To regenerate after a new ASD-STE100 issue: download the PDF, run
-`pdftotext -layout` on it, and parse the `Part 2 – Dictionary` section for
-lines that open at column 0 with `word (pos)` -- lowercase word = not
-approved, uppercase = approved -- collecting indented `WORD (pos)`
-continuation lines as suggested alternatives for a not-approved entry. Apply
+To regenerate after a new ASD-STE100 issue, download the PDF and run
+`pdftotext -layout` on it. Parse the `Part 2 – Dictionary` section for lines
+that open at column 0 with `word (pos)`. A lowercase word is not approved. An
+uppercase one is approved. Collect the indented `WORD (pos)` continuation
+lines as suggested alternatives for a not-approved entry. Apply
 the same narrowing as above before regenerating `ste100-banned-words.ts`.
 
 ## The paragraph-length check
 
 Rule 6.6's own worked example counts an entire introductory sentence plus its
 vertical list as ONE sentence, not one sentence per list line. This repo's
-Markdown is full of long bulleted lists, so naively counting one sentence per
-list line would make this warning fire constantly on ordinary, compliant
-docs. The fix: a line matching the list-marker pattern (`- `, `* `, `1. `,
-...) never adds to a paragraph's sentence count; the paragraph's own intro
-line (usually ending in a colon, with no `.`/`!`/`?` to split on) already
-supplies the one sentence the list belongs to, matching the standard's
-convention directly instead of approximating it.
+Markdown is full of long bulleted lists. Counting one sentence per list line
+makes this warning fire constantly on ordinary, compliant docs. So a line
+matching the list-marker pattern (`- `, `* `, `1. `, ...) never adds to a
+paragraph's sentence count. The paragraph's own intro line already supplies the
+one sentence the list belongs to. That line usually ends in a colon, with no
+`.`/`!`/`?` to split on. This matches the standard's convention directly,
+instead of approximating it.
 
 ## Not checked, and why
 
@@ -144,20 +143,20 @@ convention directly instead of approximating it.
   joining two instructions with "and" is CORRECT when the actions happen at
   the same time ("Hold the panel in its open position and install the
   fastener") and WRONG otherwise. A mechanical "flag every 'and' between two
-  verbs" check would fail the compliant examples in the standard itself.
+  verbs" check fails the compliant examples in the standard itself.
 - **Omitted words (rule 4.2, the non-contraction half).** Telling "a sentence
   is missing its subject" from "a sentence has no subject because it is an
   imperative" needs a parser this tool does not have.
 - **Articles (rule 4.5).** The rule gives worked examples where dropping an
   article is correct ("Solvents can cause damage to paint" -- no article,
   because it is a general statement) and examples where an article is
-  required. A missing-article heuristic would fail the standard's own
-  compliant examples.
+  required. A missing-article heuristic fails the standard's own compliant
+  examples.
 - **"Every word must be in the approved list" (rule 1.1-1.3, the other
   direction from the dictionary check above).** Rule 1.5-1.9 explicitly
   permits technical nouns specific to a company, industry, or subject field
-  outside the general dictionary. A blanket "not in the list" check would
-  flag exactly that permitted vocabulary -- this repo's own `action` (GitHub
-  Actions), `runner`, `workflow`, and so on -- so it would be actively wrong
-  per the standard, not just noisy. The banned-word-with-suggested-
+  outside the general dictionary. A blanket "not in the list" check flags
+  exactly that permitted vocabulary: this repo's own `action` (GitHub
+  Actions), `runner`, `workflow`, and so on. That is actively wrong per the
+  standard, not just noisy. The banned-word-with-suggested-
   replacement check above is the direction that stays accurate.
