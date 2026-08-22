@@ -97,7 +97,9 @@ const COMMA_SPLICE_RE = new RegExp(
 // True when the text before a comma is already a clause, which is what makes
 // the clause after it a second one rather than the sentence's first.
 export function isClause(before: string): boolean {
-	return FINITE_VERB_RE.test(before) && before.trim().split(/\s+/).length >= 3;
+	const words = before.trim();
+	if (SUBORDINATOR_RE.test(words)) return false;
+	return FINITE_VERB_RE.test(words) && words.split(/\s+/).length >= 3;
 }
 
 // Rule 3.2: STE approves only the infinitive, the imperative, the simple present,
@@ -144,13 +146,25 @@ const WORD_TOKEN_RE = /[a-z][a-z'-]*/gi;
 // longer hides it.
 const PASSIVE_RE = /\b(?:is|are|was|were|be|been|being)\s+\w+ed\b/gi;
 
-// The text from the start of the sentence up to `index`. The comma-splice rule
-// asks whether those words are already a clause.
-export function sentenceBefore(text: string, index: number): string {
+// The words between the previous clause boundary and `index`. The comma-splice
+// rule asks whether THOSE words are a clause, so it must stop at the nearest
+// comma, colon or dash rather than run back to the last full stop: in "which is
+// why repaints matter: on a slow link, the diff is the frame rate", the words
+// before the comma are "on a slow link", not the whole sentence.
+export function clauseBefore(text: string, index: number): string {
 	const head = text.slice(0, index);
-	const stop = Math.max(head.lastIndexOf('. '), head.lastIndexOf('! '), head.lastIndexOf('? '));
-	return stop < 0 ? head : head.slice(stop + 2);
+	let stop = -1;
+	for (const mark of ['. ', '! ', '? ', ': ', '; ', ', ', ' -- ', '\u2014', '\u2013']) {
+		stop = Math.max(stop, head.lastIndexOf(mark) < 0 ? -1 : head.lastIndexOf(mark) + mark.length);
+	}
+	return stop < 0 ? head : head.slice(stop);
 }
+
+// A comma after a subordinate clause is correct English and not a splice: "If
+// the surface is wanted, it gets designed then" joins a dependent clause to its
+// main one. Only two independent clauses are the thing rule 5.3 bans.
+const SUBORDINATOR_RE =
+	/^(?:(?:and|but|so|or|yet)\s+)?(?:if|when|whenever|where|wherever|while|because|although|though|unless|since|after|before|until|once|whether|provided|assuming|given|for)\b/i;
 
 // Words too ordinary to be part of a noun cluster.
 const STOPWORDS = new Set([
@@ -255,7 +269,7 @@ export function lintText(name: string, text: string, opts: Options = DEFAULTS, i
 		while ((m = SEMICOLON_RE.exec(joined))) into.semicolons.push(`${at(m.index)}: ";"`);
 		COMMA_SPLICE_RE.lastIndex = 0;
 		while ((m = COMMA_SPLICE_RE.exec(joined))) {
-			if (isClause(sentenceBefore(joined, m.index))) into.commaSplices.push(`${at(m.index)}: "${m[0].trim()}"`);
+			if (isClause(clauseBefore(joined, m.index))) into.commaSplices.push(`${at(m.index)}: "${m[0].trim()}"`);
 		}
 		PERFECT_TENSE_RE.lastIndex = 0;
 		while ((m = PERFECT_TENSE_RE.exec(joined))) {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {blocks, lineAt} from './blocks';
-import {lintText, sentenceBefore} from './lint';
+import {clauseBefore, lintText} from './lint';
 
 const lines = (s: string) => s.split('\n');
 
@@ -69,7 +69,20 @@ test('an introductory phrase before a clause is not a comma splice', () => {
 	}
 });
 
-test('sentenceBefore returns the clause the comma follows', () => {
-	assert.equal(sentenceBefore('One is done. Two is next, and three', 30), 'Two is next, and ');
-	assert.equal(sentenceBefore('Only one clause here', 9), 'Only one ');
+test('clauseBefore stops at the nearest boundary, not the last full stop', () => {
+	assert.equal(clauseBefore('One is done. Two is next and three', 29), 'Two is next and ');
+	assert.equal(clauseBefore('Only one clause here', 9), 'Only one ');
+	// The comma follows a phrase, and the clause before it is two boundaries back.
+	assert.equal(clauseBefore('This matters: on a slow link, the diff', 28), 'on a slow link');
+});
+
+test('a comma after a subordinate clause is correct English, not a splice', () => {
+	for (const clean of [
+		'If a surface other than a terminal is wanted, it gets designed then.',
+		'When the run ends and nothing is queued, the hook is dispatched.',
+		'Because the value is unknown, it renders as a dash.',
+		'While the read is in flight, the pane shows what it has.',
+	]) {
+		assert.deepEqual(lintText('a.md', clean).commaSplices, [], clean);
+	}
 });
