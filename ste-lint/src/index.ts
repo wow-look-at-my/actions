@@ -1,6 +1,7 @@
 import * as core from '@actions/core';
 import {globSync} from 'node:fs';
 import {readFileSync} from 'node:fs';
+import {guard} from './guard';
 import {DEFAULTS, failureReport, hasFailures, lintFiles, type Options} from './lint';
 
 // A patterns input of "" would glob nothing and pass, which is the silent
@@ -25,6 +26,19 @@ function preview(items: string[], limit = 20, join = ', '): string {
 }
 
 function main(): void {
+	const gate = guard({
+		workspace: process.env.GITHUB_WORKSPACE,
+		workflowRef: process.env.GITHUB_WORKFLOW_REF,
+		actionRef: process.env.GITHUB_ACTION_REF,
+	});
+	for (const note of gate.notes) core.info(note);
+	// A check that did not happen is never a check that passed.
+	for (const u of gate.unknown) core.error(`ste-lint could not establish ${u}`);
+	if (gate.failure) {
+		core.setFailed(gate.failure);
+		return;
+	}
+
 	const patterns = patternsOf(core.getInput('files') || '**/*.md');
 	const opts: Options = {
 		hardMaxWords: numberInput('hard-max-words', DEFAULTS.hardMaxWords),
