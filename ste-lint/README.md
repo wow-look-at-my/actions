@@ -63,6 +63,13 @@ text inside double quotes. A quotation is another voice, and code is not
 prose. Blanking rather than deleting them keeps every finding pointing at the
 line it came from.
 
+## The step guard
+
+The action prints the ref it runs as, and it fails if its own step carries
+`continue-on-error: true`. A step allowed to fail is not a gate. When it cannot
+read the workflow file to check, it says so at error level rather than staying
+quiet.
+
 ## Running it locally
 
 Pass file patterns and the same code prints the same report, so a finding

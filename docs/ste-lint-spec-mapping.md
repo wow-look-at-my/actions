@@ -62,6 +62,20 @@ Both lists are closed, so the check misses a splice built from verbs outside
 them. That is the intended trade: a rule that fails a build must not fire on
 correct prose.
 
+## The step guard
+
+None of the rules above matter if the step is switched off, and neither way of
+switching it off leaves a trace in its output. So the action reports the ref it
+runs as on every run, which puts a moved or rolled-back `uses:` in the log, and
+it FAILS when it finds its own step wrapped in `continue-on-error: true`. A step
+that is allowed to fail is not a gate.
+
+It reads the workflow named by `GITHUB_WORKFLOW_REF` out of the checkout. When
+it cannot read that file it names the check it could not make, at error level,
+rather than passing over it. A check that did not happen is never a check that
+passed.
+
+## The dictionary check
 
 `src/ste100-banned-words.ts` is extracted from the free PDF at
 `asd-ste100.org/assets/files/ASD-STE100_ISSUE9.pdf` (no login, no paywall) --
