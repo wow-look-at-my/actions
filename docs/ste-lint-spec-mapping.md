@@ -14,6 +14,7 @@ are not checked are not checked. Source: the free PDF at
 | Contraction | fail | 4.2 | closed word list, zero ambiguity |
 | `should` / `shall` / `could` / `might` / `would` | fail | dictionary: MUST (v), and the "Do not use COULD (v)" note under CAN (v) | `should`/`shall`/`might`/`would` are simply absent from the dictionary; `may` is excluded on purpose (calendar month collision) |
 | Semicolon | fail | 8.1 | STE allows every standard punctuation mark except this one |
+| Comma splice | fail | 5.3, and 8.1 by extension | rule 8.1 bans the semicolon because rule 5.3 allows one instruction per sentence, so a comma put in its place breaks the same rule and must fail the same way -- see "The comma-splice check" below |
 | Parenthetical text counted as one word | correctness fix, not a new check | 8.5 | without this, `(refer to paragraphs 2 thru 5)` would inflate a sentence's word count against the 20/25 caps |
 | Noun cluster of 4+ content words | warn | 2.1 | "no more than three words"; warn because the stopword list is a heuristic |
 | Passive voice (`is`/`was`/... + `-ed`) | warn | 3.6 | warn because rule 3.6 itself permits passive voice when the agent is unknown, which this regex cannot tell |
@@ -22,7 +23,45 @@ are not checked are not checked. Source: the free PDF at
 | Word not approved in the dictionary (rule 1.1-1.3) | warn | Part 2 (Dictionary) | see "The dictionary check" below |
 | Paragraph over 6 sentences | warn | 6.6 | a list line never adds to the count -- see "The paragraph-length check" below |
 
-## The dictionary check
+## The unit every rule is measured over
+
+Every rule reads a **block**: a paragraph with its wrapped lines rejoined into
+one string (`src/blocks.ts`). A blank line, a heading, a blockquote, and a
+table row each end a block, and a list item is a block of its own.
+
+The reason is rule 6.3. Prose files are hard-wrapped near 90 columns, so one
+25-word sentence normally spans two or three physical lines. A checker that
+reads one line at a time never sees that sentence: it sees three fragments of
+eight or nine words, and each fragment passes. That made the sentence cap
+unenforceable on precisely the documents this action is pointed at, and it
+made re-wrapping a paragraph a way to clear a finding without shortening
+anything. The same fix lets the tense rules see "has\nbeen", which a line
+split used to hide.
+
+Each block keeps an offset map back to its source lines, so a finding still
+names the line its sentence starts on.
+
+## The comma-splice check
+
+A comma that joins two independent clauses is the semicolon rule 8.1 bans,
+written with a different character. Without this check, `A; B` becomes
+`A, B` in one search-and-replace and the semicolon rule means nothing.
+
+The pattern is deliberately narrow, because an introductory phrase in front of
+a clause is ordinary English and is not a splice:
+
+- The words **before** the comma must already carry a finite verb, and at
+  least three words. "Under the alt screen, there is no scrollback" opens with
+  a phrase, not a clause, so it is left alone.
+- The words **after** the comma must open a clause: a subject from a closed
+  list, then a finite verb from a closed list, with at most two words between
+  them. A coordinating conjunction in between is allowed, because rule 5.3
+  bans the joined sentence whether or not an "and" appears in it.
+
+Both lists are closed, so the check misses a splice built from verbs outside
+them. That is the intended trade: a rule that fails a build must not fire on
+correct prose.
+
 
 `src/ste100-banned-words.ts` is extracted from the free PDF at
 `asd-ste100.org/assets/files/ASD-STE100_ISSUE9.pdf` (no login, no paywall) --

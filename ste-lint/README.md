@@ -1,8 +1,8 @@
 # ste-lint
 
 Checks prose against the mechanical subset of ASD-STE100, Simplified Technical
-English: sentence length, contractions, banned modal verbs, and semicolons
-fail the run; complex verb tenses, passive voice, long noun clusters, and
+English: sentence length, contractions, banned modal verbs, semicolons, and
+comma splices fail the run. complex verb tenses, passive voice, long noun clusters, and
 dictionary word choice only warn.
 
 ```yaml
@@ -14,7 +14,23 @@ dictionary word choice only warn.
 ## What fails the run
 
 A sentence over `hard-max-words` (25), a contraction, `should`/`shall`/
-`could`/`might`/`would` (use `must`/`must not` or `can`), and a semicolon.
+`could`/`might`/`would` (use `must`/`must not` or `can`), a semicolon, and a
+comma that joins two clauses.
+
+**A sentence is measured as a sentence, not as a line.** Prose files are
+hard-wrapped, so one sentence normally spans two or three physical lines. A
+checker that reads one line at a time sees three short fragments and passes a
+30-word sentence, which makes the cap unenforceable on exactly the documents
+it is aimed at. Every rule here runs over a paragraph with its lines rejoined,
+and each finding still names the line its sentence starts on.
+
+**A comma splice is the banned semicolon, spelled differently.** STE bans the
+semicolon because rule 5.3 allows one instruction per sentence, so `A, B`
+breaks the same rule as `A; B` and fails the same way. The pattern is narrow
+on purpose: the words before the comma must already carry a finite verb, and
+the words after it must open a clause with a subject and a finite verb. An
+introductory phrase in front of a clause ("Under the alt screen, there is no
+scrollback") is ordinary English and is left alone.
 
 ## What only warns
 
@@ -46,6 +62,17 @@ A heading, a blockquote, a table row, a fenced or inline code span, and any
 text inside double quotes. A quotation is another voice, and code is not
 prose. Blanking rather than deleting them keeps every finding pointing at the
 line it came from.
+
+## Running it locally
+
+Pass file patterns and the same code prints the same report, so a finding
+count is a command rather than a number somebody remembers:
+
+```sh
+node dist/index.js '**/*.md'
+```
+
+It exits 1 on a failing finding, 2 when the patterns match nothing.
 
 ## Inputs
 
