@@ -1,6 +1,6 @@
 name: ste-lint
 version: 1
-description: Check prose against the mechanical subset of ASD-STE100 Simplified Technical English — sentence length, contractions, banned modal verbs, semicolons, and dictionary word choice
+description: Check prose against the mechanical subset of ASD-STE100 Simplified Technical English — sentence length measured over whole sentences rather than wrapped lines, contractions, banned modal verbs, semicolons, comma splices, and dictionary word choice
 
 inputs:
   files:
@@ -8,11 +8,11 @@ inputs:
     required: false
     default: '**/*.md'
   hard-max-words:
-    description: 'A sentence longer than this fails. STE caps a description at 25 words.'
+    description: 'A sentence longer than this fails. STE caps a sentence at 25 words, so a value above 25 is refused: it removes the rule rather than configuring it.'
     required: false
     default: '25'
   warn-max-words:
-    description: 'A sentence longer than this warns. STE caps an instruction at 20 words.'
+    description: 'A sentence longer than this warns. STE caps an instruction at 20 words. A value above 25 is refused, the same as hard-max-words.'
     required: false
     default: '20'
 
