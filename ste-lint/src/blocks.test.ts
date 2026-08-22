@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {blocks, lineAt} from './blocks';
-import {clauseBefore, lintText} from './lint';
+import {blankSpan, clauseBefore, lintText, stripCode, wordCount} from './lint';
 
 const lines = (s: string) => s.split('\n');
 
@@ -85,4 +85,19 @@ test('a comma after a subordinate clause is correct English, not a splice', () =
 	]) {
 		assert.deepEqual(lintText('a.md', clean).commaSplices, [], clean);
 	}
+});
+
+// A blanked span used to leave pure whitespace. A sentence that opened with a
+// code span then lost its capital and never split from the one before it, and a
+// technical name counted as zero words. Both made a sentence measure too long.
+test('a code span counts as one word and can open a sentence', () => {
+	assert.equal(blankSpan('`Foo.Bar`'), 'X        ');
+	assert.equal(wordCount(stripCode('`a` `b` `c`')), 3);
+	const f = lintText('a.md', 'The order is fixed. `02-contracts.md` fixes it there, and nothing else does.');
+	assert.deepEqual(f.hardLong, []);
+});
+
+test('a blanked span keeps its length, so a finding still names its line', () => {
+	const f = lintText('a.md', 'one\ntwo `code here`\nThis line would fail.');
+	assert.deepEqual(f.bannedModals, ['a.md:3: "would"']);
 });

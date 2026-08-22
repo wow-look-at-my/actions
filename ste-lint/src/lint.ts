@@ -175,8 +175,14 @@ const STOPWORDS = new Set([
 	'each', 'every', 'only', 'also', 'more', 'most', 'all', 'any', 'none', 'same',
 ]);
 
-// Blanks code instead of dropping it, so every finding still points at the
-// line it came from.
+// Replaces a span with one letter and then spaces. The length is unchanged, so
+// every finding still points at the line it came from. The letter is what makes
+// the span countable as the one word it is, and what lets a sentence that opens
+// with it still split from the sentence before.
+export function blankSpan(span: string): string {
+	return span.replace(/[^\n]/g, ' ').replace(' ', 'X');
+}
+
 export function stripCode(text: string): string {
 	const out: string[] = [];
 	let inFence = false;
@@ -190,7 +196,7 @@ export function stripCode(text: string): string {
 			out.push('');
 			continue;
 		}
-		out.push(line.replace(/`[^`]*`/g, (m) => m.replace(/[^\n]/g, ' ')));
+		out.push(line.replace(/`[^`]*`/g, blankSpan));
 	}
 	return out.join('\n');
 }
@@ -199,7 +205,7 @@ export function stripCode(text: string): string {
 // character class spans newlines, which keeps a quote wrapped across lines
 // intact.
 export function stripQuotedSpans(text: string): string {
-	return text.replace(/"[^"]*"/g, (m) => m.replace(/[^\n]/g, ' '));
+	return text.replace(/"[^"]*"/g, blankSpan);
 }
 
 export function sentences(text: string): string[] {

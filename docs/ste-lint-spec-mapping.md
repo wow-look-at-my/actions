@@ -41,6 +41,17 @@ split used to hide.
 Each block keeps an offset map back to its source lines. A finding still names
 the line its sentence starts on.
 
+## A blanked span is one word, not none
+
+A code span and a quotation are replaced rather than deleted. A finding still
+names its line. The replacement keeps the span's length and opens with one
+letter (`blankSpan`).
+
+The letter matters twice. A technical name is a word, and pure whitespace
+counted as none, which made every sentence around one measure short. A sentence
+that opens with a code span also needs a character to split on. Without one it
+joins the sentence before it, and the pair measures as one long sentence.
+
 ## The comma-splice check
 
 A comma that joins two independent clauses is the semicolon rule 8.1 bans,
