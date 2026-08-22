@@ -89,8 +89,13 @@ const FINITE_VERB =
 	'comes|stays|keeps|needs|wants|says|reads|holds|owns|carries|fires|runs|works|costs|counts|leaves|' +
 	'starts|stops|takes|tells|turns|lives|looks|sits|sends|renders|answers|reports|names|breaks|ends';
 const FINITE_VERB_RE = new RegExp(`\\b(?:${FINITE_VERB})\\b`, 'i');
+// A relative pronoun opens a clause that BELONGS to the noun before it, so the
+// gap between the subject and its verb may not cross one. Without this,
+// "malformed SSE, a 200 that is not an event stream" reads as two sentences.
+const RELATIVE_PRONOUN = 'that|which|who|whom|whose|where|when|why';
 const COMMA_SPLICE_RE = new RegExp(
-	`,\\s+(?:(?:and|but|so|yet|then)\\s+)?(?:${CLAUSE_SUBJECT})\\s+(?:\\w+\\s+){0,2}?(?:not\\s+)?(?:${FINITE_VERB})\\b`,
+	`,\\s+(?:(?:and|but|so|yet|then)\\s+)?(?:${CLAUSE_SUBJECT})\\s+` +
+		`(?:(?!(?:${RELATIVE_PRONOUN})\\b)\\w+\\s+){0,2}?(?:not\\s+)?(?:${FINITE_VERB})\\b`,
 	'gi',
 );
 
@@ -201,11 +206,16 @@ export function stripCode(text: string): string {
 	return out.join('\n');
 }
 
-// A quotation is someone else's voice, so the rules do not apply to it. The
-// character class spans newlines, which keeps a quote wrapped across lines
-// intact.
+// A quotation is someone else's voice, so the rules do not apply to it. A span
+// may cross a line break, which keeps a quote wrapped across lines intact, and
+// it stops at a blank line.
+//
+// The blank line is the important half. Pairing quotes across a whole document
+// means one unbalanced quote re-pairs every quote after it, and each of those
+// mis-paired spans blanks real prose. That is a false negative the reader
+// cannot see, on a checker whose findings fail a build.
 export function stripQuotedSpans(text: string): string {
-	return text.replace(/"[^"]*"/g, blankSpan);
+	return text.replace(/"(?:[^"\n]|\n(?!\s*\n))*?"/g, blankSpan);
 }
 
 export function sentences(text: string): string[] {
