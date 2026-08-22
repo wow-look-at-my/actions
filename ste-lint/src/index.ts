@@ -2,6 +2,7 @@ import * as core from '@actions/core';
 import {globSync} from 'node:fs';
 import {readFileSync} from 'node:fs';
 import {guard} from './guard';
+import {capped, STE_MAX_WORDS} from './inputs';
 import {DEFAULTS, failureReport, hasFailures, lintFiles, type Options} from './lint';
 
 // A patterns input of "" would glob nothing and pass, which is the silent
@@ -11,14 +12,6 @@ function patternsOf(raw: string): string[] {
 		.split(/[\s,]+/)
 		.map((p) => p.trim())
 		.filter(Boolean);
-}
-
-function numberInput(name: string, fallback: number): number {
-	const raw = core.getInput(name).trim();
-	if (raw === '') return fallback;
-	const n = Number(raw);
-	if (!Number.isInteger(n) || n <= 0) throw new Error(`${name} must be a positive whole number, got "${raw}"`);
-	return n;
 }
 
 function preview(items: string[], limit = 20, join = ', '): string {
@@ -41,8 +34,8 @@ function main(): void {
 
 	const patterns = patternsOf(core.getInput('files') || '**/*.md');
 	const opts: Options = {
-		hardMaxWords: numberInput('hard-max-words', DEFAULTS.hardMaxWords),
-		warnMaxWords: numberInput('warn-max-words', DEFAULTS.warnMaxWords),
+		hardMaxWords: capped('hard-max-words', core.getInput('hard-max-words'), DEFAULTS.hardMaxWords, STE_MAX_WORDS),
+		warnMaxWords: capped('warn-max-words', core.getInput('warn-max-words'), DEFAULTS.warnMaxWords, STE_MAX_WORDS),
 	};
 	if (opts.warnMaxWords > opts.hardMaxWords) {
 		throw new Error(`warn-max-words (${opts.warnMaxWords}) must not exceed hard-max-words (${opts.hardMaxWords})`);

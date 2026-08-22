@@ -62,6 +62,14 @@ Both lists are closed, so the check misses a splice built from verbs outside
 them. That is the intended trade: a rule that fails a build must not fire on
 correct prose.
 
+## The caps only move downward
+
+`hard-max-words` and `warn-max-words` are refused above 25 (`src/inputs.ts`).
+Rule 6.3 sets that number, so `hard-max-words: 500` does not configure the
+rule, it removes it, in one line of YAML that reads like a setting. A smaller
+value is a stricter house style and is accepted, which is why the check is a
+ceiling rather than a fixed constant.
+
 ## The step guard
 
 None of the rules above matter if the step is switched off, and neither way of

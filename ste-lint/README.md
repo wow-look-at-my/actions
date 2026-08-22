@@ -89,6 +89,11 @@ It exits 1 on a failing finding, 2 when the patterns match nothing.
 | `hard-max-words` | `25` | A sentence longer than this fails |
 | `warn-max-words` | `20` | A sentence longer than this warns |
 
+**Neither cap goes above 25.** Rule 6.3 sets that number, so a larger value does
+not configure the rule, it removes it from the calling workflow. Either input is
+refused above 25, by name. A smaller value is a stricter house style and is
+accepted.
+
 Matching no files fails the run. A check that reads nothing passes for the
 wrong reason.
 
