@@ -199,6 +199,14 @@ Reusable GitHub Actions.
 - uses: wow-look-at-my/actions@typescript#latest
 ```
 
+### [YAML Comment Block](yaml-comment-block/)
+
+```yml
+# Fail CI when a GitHub Actions YAML file in the local call chain carries more than 1 comment line in a row.
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/yaml-comment-block/README.md
+- uses: wow-look-at-my/actions@yaml-comment-block#latest
+```
+
 ## Reusable Workflows
 
 ### PR Preview (buildhost)
@@ -209,7 +217,7 @@ jobs:
     uses: wow-look-at-my/actions/.github/workflows/buildhost-preview.yml@master
 ```
 
-Deploys a pull-request preview to a [buildhost](https://github.com/wow-look-at-my/buildhost) static-site project and posts a sticky PR comment with the preview URL. Authenticates to buildhost via GitHub OIDC (no static secret). PRs deploy to a `pr-<number>` branch; pushes deploy to `branch/<ref-name>`.
+Deploys a pull-request preview to a [buildhost](https://github.com/wow-look-at-my/buildhost) static-site project. It posts a sticky PR comment with the preview URL. It authenticates to buildhost over GitHub OIDC, with no static secret. A PR deploys to a `pr-<number>` branch. A push deploys to `branch/<ref-name>`.
 
 The caller must declare the permissions the reusable workflow needs (a reusable workflow cannot escalate beyond its caller):
 
@@ -248,8 +256,10 @@ jobs:
 
 Notes:
 
-- `project` defaults to the repository name. buildhost derives the project as the **lowercase** repo name and rejects a mismatch, so pin `project:` explicitly if your repo name is not already lowercase.
-- `public: true` serves the preview without buildhost auth even when the source repo/project is private (opt-in; default `false` keeps a private repo's preview gated).
+- `project` defaults to the repository name. buildhost derives the project as the **lowercase** repo name, and it rejects a mismatch. Pin `project:` explicitly where the repo name is not already lowercase.
+- `public: true` serves the preview without buildhost auth, even where the source repo or project is private. It is opt-in. The default `false` keeps the preview of a private repo gated.
+- The upload is buildhost's own `buildhost-publish-site` action: a tar.gz PUT to `sites.<domain>/<project>/branch/<branch>`, authenticated with the workflow's OIDC token (`id-token: write`). `pull-requests: write` is for the sticky comment.
+- `actions: read` matters only with `artifact-name`: `buildhost-publish-site` fetches the named artifact through the Actions REST API (`listWorkflowRunArtifacts` and `downloadArtifact`), and both calls require it.
 - Fork PRs are skipped (they receive no OIDC token and cannot authenticate to buildhost).
 
 
@@ -261,7 +271,7 @@ jobs:
     uses: wow-look-at-my/actions/.github/workflows/publish-ghcr.yml@master
 ```
 
-To opt in to instant docker-updater notifications after a push (recommended for private images, which don't emit GitHub package webhooks), pass the secret. The URL defaults to `https://docker-updater-hook.pazer.io/`:
+Pass the secret to opt in to instant docker-updater notifications after a push. A private image does not emit a GitHub package webhook. This is recommended there. The URL defaults to `https://docker-updater-hook.pazer.io/`:
 
 ```yml
 jobs:
