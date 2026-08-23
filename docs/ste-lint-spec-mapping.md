@@ -15,6 +15,7 @@ rules that are not checked are not checked. Source: the free PDF at
 | `should` / `shall` / `could` / `might` / `would` | fail | dictionary: MUST (v), and the "Do not use COULD (v)" note under CAN (v) | `should`/`shall`/`might`/`would` are simply absent from the dictionary; `may` is excluded on purpose (calendar month collision) |
 | Semicolon | fail | 8.1 | STE allows every standard punctuation mark except this one |
 | Comma splice | fail | 5.3, and 8.1 by extension | rule 8.1 bans the semicolon because rule 5.3 allows one instruction per sentence, so a comma put in its place breaks the same rule and must fail the same way -- see "The comma-splice check" below |
+| Hard-wrapped paragraph | fail | none -- a house rule, see "The no-wrapping rule" below | a paragraph is one line, so the reader's window decides the width |
 | Parenthetical text counted as one word | correctness fix, not a new check | 8.5 | without this, `(refer to paragraphs 2 thru 5)` would inflate a sentence's word count against the 20/25 caps |
 | Noun cluster of 4+ content words | warn | 2.1 | "no more than three words"; warn because the stopword list is a heuristic |
 | Passive voice (`is`/`was`/... + `-ed`) | warn | 3.6 | warn because rule 3.6 itself permits passive voice when the agent is unknown, which this regex cannot tell |
@@ -26,8 +27,10 @@ rules that are not checked are not checked. Source: the free PDF at
 ## The unit every rule is measured over
 
 Every rule reads a **block**: a paragraph with its wrapped lines rejoined into
-one string (`src/blocks.ts`). A blank line, a heading, a blockquote, and a
-table row each end a block, and a list item is a block of its own.
+one string (`src/blocks.ts`). A block ends at a blank line, a heading, a
+blockquote, an HTML comment, or a table row. A list item is a block of its own.
+A heading is a headline rather than a sentence. A blockquote is somebody else's
+words. A comment is markup.
 
 The reason is rule 6.3. Prose files are hard-wrapped near 90 columns, so one
 25-word sentence normally spans two or three physical lines. A checker that
@@ -52,6 +55,12 @@ counted as none, which made every sentence around one measure short. A sentence
 that opens with a code span also needs a character to split on. Without one it
 joins the sentence before it, and the pair measures as one long sentence.
 
+A quotation ends at the next quotation mark or at the next blank line,
+whichever comes first. Prose contains unbalanced quotation marks: an opening
+one on a term, a possessive, a foot mark. Pairing across a whole document put
+every later span at the wrong place, and one of them swallowed a real
+semicolon.
+
 ## The comma-splice check
 
 A comma that joins two independent clauses is the semicolon rule 8.1 bans,
@@ -72,6 +81,25 @@ a clause is ordinary English and is not a splice:
 Both lists are closed, so the check misses a splice built from verbs outside
 them. That is the intended trade: a rule that fails a build must not fire on
 correct prose.
+
+## The no-wrapping rule
+
+This one is a house rule. ASD-STE100 governs the words in a sentence and says
+nothing about where a line ends in a file, so this check claims no rule number.
+It fails a build anyway, because a hard wrap costs more than it looks.
+
+A wrap is one author's guess at one reader's window, frozen into the file. Every
+later edit reflows the block, so a two-word change and a full rewrite produce
+the same diff, and a reviewer cannot tell them apart. A wrap also hides length:
+nobody writes twelve lines by accident, and everybody writes the same text as
+one wrapped paragraph by accident.
+
+The check reports every physical line that continues the line above it, inside a
+block (`src/blocks.ts` already finds these, because every rule reads a block with
+its wrapped lines rejoined). A code fence, a table, a heading, a blockquote and an
+HTML comment end a block, so none of them can report a wrap. A list item is a
+block of its own, so a second item is not a wrap and an indented continuation
+under one item is.
 
 ## The caps only move downward
 
@@ -145,6 +173,19 @@ paragraph's sentence count. The paragraph's own intro line already supplies the
 one sentence the list belongs to. That line usually ends in a colon, with no
 `.`/`!`/`?` to split on. This matches the standard's convention directly,
 instead of approximating it.
+
+## The fixtures
+
+`ste-lint/fixtures/` holds prose that broke this checker, kept as the document
+it broke on. Two kinds are equally worth keeping. The first is a rule that
+fired on correct prose. The second is a rule that stayed silent on prose it was
+written to catch.
+
+Each file opens with an `<!-- expect: ... -->` header naming the counts the
+checker must report for it. `src/fixtures.test.ts` walks the directory and
+compares. A file with no header fails the run, and a header that names a rule
+this checker does not report fails the run as well. So a fixture nobody
+asserts on cannot sit in the directory and look like coverage.
 
 ## Not checked, and why
 

@@ -77,6 +77,13 @@ It fails if its own step carries `continue-on-error: true`. A step allowed to
 fail is not a gate. When it cannot read the workflow file to check, it says so
 at error level rather than staying quiet.
 
+## The fixtures
+
+`fixtures/` holds prose that broke this checker. Each file names the counts it
+must report, and `src/fixtures.test.ts` walks the directory and compares. Add a
+file there for a rule that fires on correct prose. Add one for a rule that stays
+silent on prose it was written to catch.
+
 ## Running it locally
 
 Pass file patterns and the same code prints the same report. A finding count is
