@@ -1,0 +1,32 @@
+[
+  {
+    "id": "comment-limit-1",
+    "request": "Limit max comment lines to 1 line in GHA yml across the chain of callers.",
+    "proof": "GITHUB_WORKSPACE=$PWD node yaml-comment-block/dist/index.js",
+    "status": "done"
+  },
+  {
+    "id": "comment-limit-is-one",
+    "request": "The limit is 1, not 3, and no input raises it.",
+    "proof": "node check-requests-helpers/assert-limit.mjs",
+    "status": "done"
+  },
+  {
+    "id": "ste-on-all-md",
+    "request": "Enforce STE on all .md files in actions.",
+    "proof": "node ste-lint/dist/index.js '**/*.md'",
+    "status": "done"
+  },
+  {
+    "id": "wall-fixture-still-fails",
+    "request": "The guard must reject a wall, not only pass on clean files.",
+    "proof": "! GITHUB_WORKSPACE=$PWD/yaml-comment-block/test/fixtures/wall node yaml-comment-block/dist/index.js",
+    "status": "done"
+  },
+  {
+    "id": "requests-are-checked",
+    "request": "Produce and apply a provable method that shows a request was carried out.",
+    "proof": "node check-requests-helpers/assert-requests-job.mjs",
+    "status": "done"
+  }
+]

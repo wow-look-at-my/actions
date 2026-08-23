@@ -1,6 +1,6 @@
 # Cache Download
 
-Restore files handed off by [`cache-upload`](../cache-upload/) earlier in the same workflow run — an artifact-free replacement for `actions/download-artifact`. Artifact storage is billed; cache storage is not.
+Restore files handed off by [`cache-upload`](../cache-upload/) earlier in the same workflow run. It replaces `actions/download-artifact` without an artifact. Artifact storage is billed. Cache storage is not.
 
 ## Usage
 
@@ -28,21 +28,21 @@ The hand-off is looked up by key, not by path:
 - exact key: `cache-xfer-<run_id>-<name>-<run_attempt>`
 - restore-keys prefix: `cache-xfer-<run_id>-<name>-`
 
-with a **constant** entry version (sha256 of a fixed format-revision literal — not `actions/cache`'s path-spec hash, which is what would otherwise force byte-identical path strings on both sides). The **run id comes first** in the key, so every hand-off of one run shares the run-scoped prefix `cache-xfer-<run_id>-` — which is what makes nameless discovery safe: a prefix search scoped to the current run can never match another run's entry.
+The entry version is a **constant**, the sha256 of a fixed format-revision literal. It is not the path-spec hash of `actions/cache`, which forces byte-identical path strings on both sides. The **run id comes first** in the key. Every hand-off of one run therefore shares the run-scoped prefix `cache-xfer-<run_id>-`. That is what makes nameless discovery safe. A prefix search scoped to the current run can never match an entry of another run.
 
-The archive is self-describing: a directory hand-off extracts its tree into the destination (exec bits, symlinks, dotfiles intact); a single-file hand-off recreates `<dest>/<basename>` with its original permission bits; and the envelope header carries the hand-off **name**, so a nameless download can report exactly which hand-off it restored. zstd and tar come from the runner image (all GitHub-hosted images ship zstd 1.5.7), and everything is streamed — nothing is buffered whole in memory.
+The archive is self-describing. A directory hand-off extracts its tree into the destination, with exec bits, symlinks and dotfiles intact. A single-file hand-off recreates `<dest>/<basename>` with its original permission bits. The envelope header carries the hand-off **name**. A nameless download can therefore report exactly which hand-off it restored. zstd and tar come from the runner image. Every GitHub-hosted image ships zstd 1.5.7. Everything is streamed. Nothing is buffered whole in memory.
 
 ## Nameless discovery
 
 When `name` is omitted, the action restores **this run's** hand-off by the run-scoped prefix `cache-xfer-<run_id>-` and emits a `::notice` naming the hand-off it picked (read from the envelope header). This removes the need for consumers to know the producing job's hand-off name (e.g. per-job names like `go-build-<job id>`).
 
-**Ambiguity is a hard error, never a silent pick.** Before downloading, the action lists this run's entries via the documented REST cache API (`GET /repos/{owner}/{repo}/actions/caches`, prefix-scoped — the same endpoint [`cache-cleanup`](../cache-cleanup/) uses; the pinned `@actions/cache` twirp client has no list RPC). If the run saved **more than one** distinct hand-off name, the step fails, naming every candidate, so the fix is obvious: pass one of them as `name`, or stop uploading the extra hand-off. (Note: a producer that saves an extra alias hand-off — e.g. a deprecated compatibility name alongside the real one — makes every nameless download in that run fail until the alias is dropped; that is deliberate.)
+**Ambiguity is a hard error, never a silent pick.** Before the download, the action lists this run's entries with the documented REST cache API (`GET /repos/{owner}/{repo}/actions/caches`, prefix-scoped). [`cache-cleanup`](../cache-cleanup/) uses the same endpoint. The pinned `@actions/cache` twirp client has no list RPC. A run that saved **more than one** distinct hand-off name fails the step, and the failure names every candidate. The fix is to pass one of them as `name`, or to stop uploading the extra hand-off. A producer can save an extra alias hand-off, such as a deprecated compatibility name beside the real one. Every nameless download in that run then fails until the alias is dropped. That is deliberate.
 
-The listing needs the `github-token` input (defaults to `${{ github.token }}`) to have `actions: read`. If the token cannot list (restricted default permissions, transient API failure), discovery **degrades with a warning**: the newest run-scoped entry is restored and the notice still names what was picked — so **runs with multiple hand-offs must keep passing an explicit `name`** unless they can rely on the ambiguity check. Named downloads never touch the token.
+The listing needs `actions: read` on the `github-token` input, which defaults to `${{ github.token }}`. A token that cannot list makes discovery **degrade with a warning**. Restricted default permissions and a transient API failure both do this. The newest run-scoped entry is restored. The notice still names what was picked. **A run with several hand-offs must therefore keep passing an explicit `name`**, unless it can rely on the ambiguity check. A named download never touches the token.
 
-Attempts never create ambiguity: candidate names are deduplicated across `run_attempt`, and on "re-run failed jobs" (producer not re-run) the run-scoped prefix restores the newest earlier attempt's entry, exactly like a named download.
+Attempts never create ambiguity. Candidate names are deduplicated across `run_attempt`. On "re-run failed jobs", where the producer does not re-run, the run-scoped prefix restores the newest earlier attempt's entry. A named download does the same.
 
-**No legacy fallback in nameless mode**: entries saved by a pre-v2 `cache-upload` (name-first key layout) are invisible to discovery — a nameless old-layout prefix search is exactly the cross-run bug the run-id-first layout fixed. Pass an explicit `name` to reach them via the transition fallback below.
+**Nameless mode has no legacy fallback.** An entry saved by a pre-v2 `cache-upload`, in the name-first key layout, is invisible to discovery. A nameless old-layout prefix search is exactly the cross-run bug the run-id-first layout fixed. Pass an explicit `name` to reach such an entry through the transition fallback below.
 
 ## Transition fallback (pre-v2 producers)
 
@@ -50,17 +50,17 @@ Attempts never create ambiguity: candidate names are deduplicated across `run_at
 
 ## Re-runs
 
-- **Re-run failed jobs**: the run gets a new `run_attempt`, but the producer job (which succeeded) does not re-run — the exact key misses and the `<name>-` prefix (or the run-scoped prefix, nameless) restores the newest earlier attempt's files.
+- **Re-run failed jobs**: the run gets a new `run_attempt`. The producer job succeeded, so it does not re-run. The exact key misses, and the `<name>-` prefix restores the newest earlier attempt's files. A nameless download uses the run-scoped prefix for the same result.
 - **Re-run all jobs**: the producer re-uploads under the new attempt and the exact key matches it.
-- Caveat: if a [`cache-cleanup`](../cache-cleanup/) job already deleted the failed run's entries (it runs on failure too, by design), "re-run failed jobs" has nothing left to restore — use "Re-run all jobs".
+- Caveat: a [`cache-cleanup`](../cache-cleanup/) job deletes the failed run's entries, because it runs on failure too, by design. After that, "re-run failed jobs" has nothing left to restore. Use "Re-run all jobs".
 
-**A missing hand-off fails loudly by default**: `fail-if-missing` defaults to `true`, so the job aborts instead of silently continuing without its files — the failure names the hand-off (or the run-scoped prefix, nameless), the keys tried, and the restore prefix. Only an explicit `fail-if-missing: 'false'` lets a miss continue (for a genuinely optional hand-off); check the `cache-hit` / `cache-matched-key` outputs in that case.
+**A missing hand-off fails loudly by default.** `fail-if-missing` defaults to `true`, so the job aborts instead of continuing without its files. The failure names the hand-off, the keys tried, and the restore prefix. A nameless download names the run-scoped prefix instead of the hand-off. Only an explicit `fail-if-missing: 'false'` lets a miss continue, for a genuinely optional hand-off. Check the `cache-hit` and `cache-matched-key` outputs in that case.
 
 ## Stability note
 
-Upload and download drive the cache service's twirp v2 endpoints directly (with the job's own `ACTIONS_RUNTIME_TOKEN` / `ACTIONS_RESULTS_URL`, which the runner injects into every step — no `permissions:` needed). Driving these endpoints is established practice (docker buildx `--cache-from type=gha` and sccache's GHA backend do the same), but they are not a documented public API.
+Upload and download drive the twirp v2 endpoints of the cache service directly. They use the job's own `ACTIONS_RUNTIME_TOKEN` and `ACTIONS_RESULTS_URL`, which the runner injects into every step, so no `permissions:` entry is needed. Driving these endpoints is established practice. docker buildx `--cache-from type=gha` and the GHA backend of sccache do the same. The endpoints are still not a documented public API.
 
-Known risk, deliberately accepted rather than mitigated: GitHub has changed this protocol before — the legacy REST flavor was shut off in 2025 in favor of the twirp service — and a bundled pin cannot protect against a server-side shutdown. When the protocol moves again, these actions break **loudly** (RPC errors → failed jobs, never silent corruption) until `@actions/cache` is bumped here and the actions republished. The actual containment is the release model, not the pin: every consumer rides the moving `<name>#latest` tags, so the fix lands org-wide from this one repo without touching consumer workflows — unlike 2025, where every action pinning an old `@actions/cache` had to update independently. The pin/bundle itself just keeps releases hermetic and reviewable. GHES (v1 cache service) is not supported.
+This risk is accepted, not mitigated. GitHub has changed this protocol before. The legacy REST flavor was shut off in 2025 in favor of the twirp service. A bundled pin cannot protect against a server-side shutdown. The next protocol move breaks these actions **loudly**, with RPC errors and failed jobs, never silent corruption. They stay broken until `@actions/cache` is bumped here and the actions are republished. The containment is the release model, not the pin. Every consumer rides the moving `<name>#latest` tags, so the fix lands org-wide from this one repo, and no consumer workflow changes. In 2025 every action pinning an old `@actions/cache` had to update on its own. The pin and the bundle only keep releases hermetic and reviewable. GHES, which runs the v1 cache service, is not supported.
 
 ## Inputs
 
