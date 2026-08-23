@@ -14,31 +14,13 @@ Just specify the source - version auto-increments from existing tags:
     source: my-action
 ```
 
-First release creates `my-action#1` and `my-action#latest`.
-Next release creates `my-action#2` and updates `my-action#latest`.
+First release creates `my-action#1` and `my-action#latest`. Next release creates `my-action#2` and updates `my-action#latest`.
 
-In auto-increment mode, the action compares the release content to what
-`my-action#latest` already points at. A byte-identical release is skipped
-entirely, with no new number and no tag movement. Re-running the release on
-an unchanged source is therefore a no-op. Numbered tags are pushed without
-force. They are immutable once published. Only `#latest` is force-moved.
-An explicit `version` keeps the historical force-overwrite semantics.
+In auto-increment mode, the action compares the release content to what `my-action#latest` already points at. A byte-identical release is skipped entirely, with no new number and no tag movement. Re-running the release on an unchanged source is therefore a no-op. Numbered tags are pushed without force. They are immutable once published. Only `#latest` is force-moved. An explicit `version` keeps the historical force-overwrite semantics.
 
-The two tags go in separate pushes. GitHub applies one push in one ref
-transaction. `#latest` is a pointer that every concurrent release moves.
-A run that lost that race by milliseconds had its whole push rejected.
-The rejection included the numbered tag, which is unique to the run and was
-never contested. Separately, the numbered tag always lands. `#latest` is
-last-writer-wins, which is what a moving pointer means.
+The two tags go in separate pushes. GitHub applies one push in one ref transaction. `#latest` is a pointer that every concurrent release moves. A run that lost that race by milliseconds had its whole push rejected. The rejection included the numbered tag, which is unique to the run and was never contested. Separately, the numbered tag always lands. `#latest` is last-writer-wins, which is what a moving pointer means.
 
-`#latest` only ever moves from the `master`/`main` branch. The action reads
-`GITHUB_REF_NAME`, or the checkout's current branch outside CI. A push from
-any other branch still creates and pushes the next numbered tag. A feature
-branch's CI can therefore build, install and smoke-test a real,
-freshly-published release. Such a push never force-moves `#latest`. That tag
-is one shared, mutable pointer every consumer resolves by default. This
-holds regardless of whether the caller also gates its own `if:` to the
-default branch.
+`#latest` only ever moves from the `master`/`main` branch. The action reads `GITHUB_REF_NAME`, or the checkout's current branch outside CI. A push from any other branch still creates and pushes the next numbered tag. A feature branch's CI can therefore build, install and smoke-test a real, freshly-published release. Such a push never force-moves `#latest`. That tag is one shared, mutable pointer every consumer resolves by default. This holds regardless of whether the caller also gates its own `if:` to the default branch.
 
 ### Custom tag name
 
