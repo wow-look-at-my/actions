@@ -206,8 +206,7 @@ This applies to the inline `script` input only. A `file` input is ordinary check
 
 ## Browser-side code
 
-A script that drives a browser carries callbacks that run in the PAGE, and those
-name DOM types the action does not know:
+A script that drives a browser carries callbacks that run in the PAGE, and those name DOM types the action does not know:
 
 ```yaml
 - uses: wow-look-at-my/actions@typescript#latest
@@ -216,16 +215,9 @@ name DOM types the action does not know:
     file: .github/scripts/crawl.ts
 ```
 
-It is off by default on purpose. `lib.dom` declares hundreds of browser globals,
-and the damaging ones are the short names -- `name`, `status`, `location`,
-`length`, `close`, `open`, `event`, `top`, `self`. Without it, a script that
-references an undeclared `name` is a compile error. With it, that typo quietly
-becomes `string` and fails at run time instead. Turn it on for the steps that
-need it, not repo-wide.
+It is off by default on purpose. `lib.dom` declares hundreds of browser globals, and the damaging ones are the short names -- `name`, `status`, `location`, `length`, `close`, `open`, `event`, `top`, `self`. Without it, a script that references an undeclared `name` is a compile error. With it, that typo quietly becomes `string` and fails at run time instead. Turn it on for the steps that need it, not repo-wide.
 
-Node's own globals keep working alongside it. `setTimeout`, `fetch` and `URL`
-resolve to the `@types/node` declarations. An ordinary script does not change
-behaviour when the flag goes on.
+Node's own globals keep working alongside it. `setTimeout`, `fetch` and `URL` resolve to the `@types/node` declarations. An ordinary script does not change behaviour when the flag goes on.
 
 ## Inputs
 
