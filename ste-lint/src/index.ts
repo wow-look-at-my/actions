@@ -56,7 +56,12 @@ function main(): void {
 	core.setOutput('files', names.length);
 	core.setOutput(
 		'violations',
-		findings.hardLong.length + findings.contractions.length + findings.bannedModals.length + findings.semicolons.length,
+		findings.hardLong.length +
+			findings.contractions.length +
+			findings.bannedModals.length +
+			findings.semicolons.length +
+			findings.commaSplices.length +
+			findings.wrappedLines.length,
 	);
 
 	if (hasFailures(findings)) {
@@ -127,6 +132,7 @@ function cli(patterns: string[]): number {
 		['banned modals', findings.bannedModals],
 		['semicolons', findings.semicolons],
 		['comma splices', findings.commaSplices],
+		['hard-wrapped lines', findings.wrappedLines],
 	] as const) {
 		process.stdout.write(`${String(list.length).padStart(6)}  ${label}\n`);
 	}
