@@ -50,6 +50,8 @@ Each block is one annotation naming the file, the count, the span, and the limit
 .github/workflows/ci.yml: 9 comment lines in a row (lines 48-56) — the limit is 3.
 ```
 
+An empty scan — no workflow file and no `action.yml` under the workspace — enforces nothing, so it emits a warning naming the workspace instead of a quiet pass.
+
 ## Fixtures
 
 `test/fixtures/clean` sits at the limit and passes. `test/fixtures/wall` carries a four-line block and fails. `release.yml` runs both against the built bundle.

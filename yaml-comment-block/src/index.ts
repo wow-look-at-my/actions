@@ -154,6 +154,13 @@ async function run(): Promise<void> {
 	}
 
 	if (messages.length === 0 && chainErrors.length === 0) {
+		if (scanned.length === 0) {
+			// The check enforced nothing. Say so: a repo that runs this action
+			// has at least one workflow file, so an empty scan means the
+			// workspace is not the repo (usually a missing checkout).
+			core.warning(`nothing to scan under ${workspace} — no workflow file and no action.yml, so this run enforced nothing. Check the repo out first.`);
+			return;
+		}
 		core.info(`OK — no comment block longer than ${MAX_COMMENT_LINES} lines in ${scanned.length} file(s): ${scanned.join(', ')}`);
 		return;
 	}
