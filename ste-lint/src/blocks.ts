@@ -48,6 +48,20 @@ export function lineAt(block: Block, index: number): number {
 	return line;
 }
 
+const FRONTMATTER_FENCE_RE = /^---\s*$/;
+
+// The YAML frontmatter fence, if `lines` opens with one: the index of its closing
+// `---` line, or -1 if the file has no frontmatter. Frontmatter is data, not
+// prose, and it is not a paragraph a reader wraps -- one key per line is the
+// correct shape, so it is never read as an unjoined wrap.
+function frontmatterEnd(lines: string[]): number {
+	if (!FRONTMATTER_FENCE_RE.test(lines[0] ?? '')) return -1;
+	for (let i = 1; i < lines.length; i++) {
+		if (FRONTMATTER_FENCE_RE.test(lines[i])) return i;
+	}
+	return -1;
+}
+
 // Groups lines into the units a reader reads. A blank line, a heading, a
 // blockquote, and a table row all end a block. A list marker ends the previous
 // block and opens its own, so one item never runs into the next.
@@ -58,6 +72,7 @@ export function blocks(lines: string[]): Block[] {
 	let startLine = 0;
 	let list = false;
 	let length = 0;
+	const frontmatterEndLine = frontmatterEnd(lines);
 
 	const flush = () => {
 		if (parts.length) out.push({text: parts.join(' '), starts, startLine, list});
@@ -67,6 +82,7 @@ export function blocks(lines: string[]): Block[] {
 	};
 
 	for (let i = 0; i < lines.length; i++) {
+		if (i <= frontmatterEndLine) continue;
 		const line = lines[i];
 		if (!line.trim() || isSkippableLine(line)) {
 			flush();
