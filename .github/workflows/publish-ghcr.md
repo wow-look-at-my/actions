@@ -1,4 +1,4 @@
-To opt in to instant docker-updater notifications after a push (recommended for private images, which don't emit GitHub package webhooks), pass the secret. The URL defaults to `https://docker-updater-hook.pazer.io/`:
+Pass the secret to opt in to instant docker-updater notifications after a push. A private image does not emit a GitHub package webhook. This is recommended there. The URL defaults to `https://docker-updater-hook.pazer.io/`:
 
 ```yml
 jobs:

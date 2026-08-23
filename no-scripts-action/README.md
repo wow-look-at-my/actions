@@ -1,6 +1,6 @@
 # No Scripts Check Action
 
-Ensures package.json files don't contain `scripts` sections. Use justfiles instead for better transparency and tooling.
+Ensures package.json files do not contain `scripts` sections. Use justfiles instead for better transparency and tooling.
 
 ## Usage
 
@@ -16,7 +16,7 @@ Ensures package.json files don't contain `scripts` sections. Use justfiles inste
     path: ./packages
 ```
 
-### Don't fail on violations
+### Do not fail on violations
 
 ```yaml
 - uses: wow-look-at-my/actions@no-scripts-action#latest

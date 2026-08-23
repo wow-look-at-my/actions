@@ -17,27 +17,28 @@ Just specify the source - version auto-increments from existing tags:
 First release creates `my-action#1` and `my-action#latest`.
 Next release creates `my-action#2` and updates `my-action#latest`.
 
-In auto-increment mode, a release whose content is byte-identical to what
-`my-action#latest` already points at is skipped entirely (no new number, no
-tag movement), so re-running the release on an unchanged source is a no-op.
-Numbered tags are pushed without force (immutable once published); only
-`#latest` is force-moved. An explicit `version` keeps the historical
-force-overwrite semantics.
+In auto-increment mode, the action compares the release content to what
+`my-action#latest` already points at. A byte-identical release is skipped
+entirely, with no new number and no tag movement. Re-running the release on
+an unchanged source is therefore a no-op. Numbered tags are pushed without
+force. They are immutable once published. Only `#latest` is force-moved.
+An explicit `version` keeps the historical force-overwrite semantics.
 
 The two tags go in separate pushes. GitHub applies one push in one ref
-transaction, and `#latest` is a pointer that every concurrent release moves,
-so a run that lost that race by milliseconds had its whole push rejected --
-including the numbered tag, which is unique to the run and was never
-contested. Separately, the numbered tag always lands, and `#latest` is
+transaction. `#latest` is a pointer that every concurrent release moves.
+A run that lost that race by milliseconds had its whole push rejected.
+The rejection included the numbered tag, which is unique to the run and was
+never contested. Separately, the numbered tag always lands. `#latest` is
 last-writer-wins, which is what a moving pointer means.
 
-`#latest` only ever moves from the `master`/`main` branch (`GITHUB_REF_NAME`,
-or the checkout's current branch outside CI). A push from any other branch
-still creates and pushes the next numbered tag -- so a feature branch's CI
-can build, install and smoke-test a real, freshly-published release -- but
-it never force-moves `#latest`, since that is one shared, mutable pointer
-every consumer resolves by default. This holds regardless of whether the
-caller also gates its own `if:` to the default branch.
+`#latest` only ever moves from the `master`/`main` branch. The action reads
+`GITHUB_REF_NAME`, or the checkout's current branch outside CI. A push from
+any other branch still creates and pushes the next numbered tag. A feature
+branch's CI can therefore build, install and smoke-test a real,
+freshly-published release. Such a push never force-moves `#latest`. That tag
+is one shared, mutable pointer every consumer resolves by default. This
+holds regardless of whether the caller also gates its own `if:` to the
+default branch.
 
 ### Custom tag name
 
@@ -63,7 +64,7 @@ Creates `my-plugin#1` instead of `plugins/my-plugin#1`.
 
 ## Branch handling
 
-By default, tags don't include the branch name (for marketplace plugins).
+By default, tags do not include the branch name (for marketplace plugins).
 
 With `--include-branch`, non-main branches get branch-prefixed tags:
 - `my-action/feature-branch#1`

@@ -6,9 +6,9 @@ A composite GitHub Action that adds merged branches to a repository ruleset, pre
 
 When a branch is merged, this action adds its name to a GitHub repository ruleset with a `creation` rule. This blocks anyone from pushing a new branch with the same name, keeping the branch namespace clean.
 
-- If the ruleset doesn't exist yet, it creates one with the branch pattern.
+- If the ruleset does not exist yet, it creates one with the branch pattern.
 - If the ruleset already exists, it appends the new branch pattern to the existing include list.
-- If the branch pattern is already in the ruleset, it's a no-op.
+- If the branch pattern is already in the ruleset, it is a no-op.
 
 ## Usage
 

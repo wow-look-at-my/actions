@@ -1,6 +1,6 @@
 # Cache Size
 
-Shows what's consuming your GitHub Actions cache at a glance. Auto-detects Go build caches and breaks them down by module instead of showing useless hex shards.
+Shows what is consuming your GitHub Actions cache at a glance. Auto-detects Go build caches and breaks them down by module instead of showing useless hex shards.
 
 ## Usage
 
