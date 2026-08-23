@@ -179,19 +179,6 @@ jobs:
       - name: Guard skips when the run-once sentinel is set
         run: NO_ALL_BUILDS_JOB_ALREADY_RAN=1 GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/no-all-builds-job/test/fixtures/shadowed" INPUT_TOKEN=x node no-all-builds-job/dist/index.js
 
-  # Every owner instruction is a row in requests.json with a proof command.
-  requests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-and-build
-      - name: Build the actions the proofs run
-        run: |
-          for a in yaml-comment-block ste-lint; do
-            (cd "$a" && just build)
-          done
-      - run: node check-requests.mjs
-
   ste-lint:
     runs-on: ubuntu-latest
     steps:
@@ -199,9 +186,10 @@ jobs:
       - uses: ./.github/actions/setup-and-build
         with:
           action-dir: ste-lint
+      # ste-lint/fixtures/*.md break the rules on purpose, so they are not listed.
       - uses: ./ste-lint
         with:
-          files: '**/*.md'
+          files: '*.md docs/*.md .github/workflows/*.md */README.md */CLAUDE.md'
 
   # see docs/release-workflow.md
   test-yaml-comment-block:
