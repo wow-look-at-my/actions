@@ -15,6 +15,7 @@ rules that are not checked are not checked. Source: the free PDF at
 | `should` / `shall` / `could` / `might` / `would` | fail | dictionary: MUST (v), and the "Do not use COULD (v)" note under CAN (v) | `should`/`shall`/`might`/`would` are simply absent from the dictionary; `may` is excluded on purpose (calendar month collision) |
 | Semicolon | fail | 8.1 | STE allows every standard punctuation mark except this one |
 | Comma splice | fail | 5.3, and 8.1 by extension | rule 8.1 bans the semicolon because rule 5.3 allows one instruction per sentence, so a comma put in its place breaks the same rule and must fail the same way -- see "The comma-splice check" below |
+| Hard-wrapped paragraph | fail | none -- a house rule, see "The no-wrapping rule" below | a paragraph is one line, so the reader's window decides the width |
 | Parenthetical text counted as one word | correctness fix, not a new check | 8.5 | without this, `(refer to paragraphs 2 thru 5)` would inflate a sentence's word count against the 20/25 caps |
 | Noun cluster of 4+ content words | warn | 2.1 | "no more than three words"; warn because the stopword list is a heuristic |
 | Passive voice (`is`/`was`/... + `-ed`) | warn | 3.6 | warn because rule 3.6 itself permits passive voice when the agent is unknown, which this regex cannot tell |
@@ -80,6 +81,25 @@ a clause is ordinary English and is not a splice:
 Both lists are closed, so the check misses a splice built from verbs outside
 them. That is the intended trade: a rule that fails a build must not fire on
 correct prose.
+
+## The no-wrapping rule
+
+This one is a house rule. ASD-STE100 governs the words in a sentence and says
+nothing about where a line ends in a file, so this check claims no rule number.
+It fails a build anyway, because a hard wrap costs more than it looks.
+
+A wrap is one author's guess at one reader's window, frozen into the file. Every
+later edit reflows the block, so a two-word change and a full rewrite produce
+the same diff, and a reviewer cannot tell them apart. A wrap also hides length:
+nobody writes twelve lines by accident, and everybody writes the same text as
+one wrapped paragraph by accident.
+
+The check reports every physical line that continues the line above it, inside a
+block (`src/blocks.ts` already finds these, because every rule reads a block with
+its wrapped lines rejoined). A code fence, a table, a heading, a blockquote and an
+HTML comment end a block, so none of them can report a wrap. A list item is a
+block of its own, so a second item is not a wrap and an indented continuation
+under one item is.
 
 ## The caps only move downward
 

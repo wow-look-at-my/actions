@@ -24,6 +24,7 @@ export interface Findings {
 	bannedModals: string[];
 	semicolons: string[];
 	commaSplices: string[];
+	wrappedLines: string[];
 	// Each of these only warns: they are heuristics, and a heuristic that
 	// fails a build teaches people to route around the check.
 	warnLong: string[];
@@ -41,6 +42,7 @@ export function emptyFindings(): Findings {
 		bannedModals: [],
 		semicolons: [],
 		commaSplices: [],
+		wrappedLines: [],
 		warnLong: [],
 		passive: [],
 		nounClusters: [],
@@ -56,7 +58,8 @@ export function hasFailures(f: Findings): boolean {
 		f.contractions.length > 0 ||
 		f.bannedModals.length > 0 ||
 		f.semicolons.length > 0 ||
-		f.commaSplices.length > 0
+		f.commaSplices.length > 0 ||
+		f.wrappedLines.length > 0
 	);
 }
 
@@ -271,6 +274,16 @@ export function lintText(name: string, text: string, opts: Options = DEFAULTS, i
 		previousEndLine = block.starts[block.starts.length - 1].line;
 		if (!block.list) paragraphSentences += sentences(joined).length;
 
+		// A paragraph is one line. A hard wrap is one author's guess at one
+		// reader's window, frozen into the file, and every later edit reflows
+		// the block and buries the real change in the diff. It also hides
+		// length: nobody writes twelve lines by accident, and everybody
+		// writes the same text as one wrapped paragraph by accident.
+		for (let i = 1; i < block.starts.length; i++) {
+			const line = block.starts[i].line;
+			into.wrappedLines.push(`${name}:${line}: continues line ${block.starts[i - 1].line}`);
+		}
+
 		let m: RegExpExecArray | null;
 		CONTRACTION_RE.lastIndex = 0;
 		while ((m = CONTRACTION_RE.exec(joined))) into.contractions.push(`${at(m.index)}: "${m[0]}"`);
@@ -348,6 +361,12 @@ export function failureReport(f: Findings, opts: Options): string {
 		problems.push(
 			'A comma joining two clauses is the semicolon STE bans, spelled differently -- ' +
 				`use a period and start a new sentence:\n${f.commaSplices.join('\n')}`,
+		);
+	}
+	if (f.wrappedLines.length) {
+		problems.push(
+			'A paragraph is one line -- join these back up and let the reader\'s window do the wrapping:\n' +
+				f.wrappedLines.join('\n'),
 		);
 	}
 	return problems.join('\n\n');

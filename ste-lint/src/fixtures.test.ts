@@ -57,7 +57,14 @@ test('every failing rule is named by at least one fixture', () => {
 	for (const file of files) {
 		for (const rule of Object.keys(expectations(readFileSync(join(DIR, file), 'utf8')))) named.add(rule);
 	}
-	const failing: (keyof Findings)[] = ['hardLong', 'contractions', 'bannedModals', 'semicolons', 'commaSplices'];
+	const failing: (keyof Findings)[] = [
+		'hardLong',
+		'contractions',
+		'bannedModals',
+		'semicolons',
+		'commaSplices',
+		'wrappedLines',
+	];
 	for (const rule of failing) {
 		assert.ok(named.has(rule), `no fixture asserts on ${rule}`);
 	}
