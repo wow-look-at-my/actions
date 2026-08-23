@@ -25,6 +25,8 @@ Each action lives in its own directory with an `action.yml` file:
 - `yaml-comment-block/` - Node.js action (fails CI when a GHA YAML file carries more than 1 comment line in a row. It scans the whole local call chain. That means every workflow file, every `action.yml` at any depth, and everything they reach through `uses: ./...`. A `uses:` into another repository is listed in the log and checked where it lives. A block is a maximal group of comment lines separated only by blank lines. Paragraph breaks therefore do not split a wall, and a `#` inside a `run:` script counts. The limit is a constant with NO input that raises it. A settable maximum removes the rule instead of configuring it)
 - `typescript/` - Node.js action. It runs an inline or file-based TypeScript script, tsc-validated, with injected helper globals. An inline `script:` carrying two or more consecutive `//`-only lines fails the step. A `file:` input is exempt.
 
+`requests.json` records each owner instruction with a command that proves it, and `check-requests.mjs` runs them in the `requests` CI job. See `docs/requests.md`.
+
 `docs/release-workflow.md` holds the reasoning behind release.yml's job comments. Those comments stay to one line and point at it.
 
 Not an action directory, and never released as one:
