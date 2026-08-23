@@ -1,6 +1,6 @@
 # Fetch Secrets
 
-A composite GitHub Action that fetches secrets from a self-hosted secret server using GitHub Actions OIDC, exports them as masked environment variables, and returns them as a JSON output.
+A composite GitHub Action that fetches secrets from a self-hosted secret server. It authenticates with GitHub Actions OIDC. It exports the secrets as masked environment variables. It also returns them as a JSON output.
 
 ## How It Works
 

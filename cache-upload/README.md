@@ -1,6 +1,6 @@
 # Cache Upload
 
-Hand a file or directory to later jobs in the same workflow run via the GitHub Actions cache — an artifact-free replacement for `actions/upload-artifact`. Artifact storage is billed; cache storage is not.
+Hand a file or directory to later jobs in the same workflow run through the GitHub Actions cache. It replaces `actions/upload-artifact` without an artifact. Artifact storage is billed. Cache storage is not.
 
 ## Usage
 
@@ -21,34 +21,34 @@ The payload is packed locally and stored through the cache service under a run-u
 cache-xfer-<run_id>-<name>-<run_attempt>
 ```
 
-The **run id comes first**, so every hand-off of one run shares the run-scoped prefix `cache-xfer-<run_id>-` — that is what lets a nameless [`cache-download`](../cache-download/) discover this run's hand-off without knowing its name, with no risk of matching another run's entry.
+The **run id comes first**. Every hand-off of one run therefore shares the run-scoped prefix `cache-xfer-<run_id>-`. That is what lets a nameless [`cache-download`](../cache-download/) find this run's hand-off without its name. It can never match the entry of another run.
 
 - A **directory** is captured as its **contents**: `tar -C <dir> .` streamed through `zstd --fast=2` (exec bits, symlinks, and dotfiles preserved by tar).
-- A **single file** takes a raw fast path — no tar process at all; the file streams straight through zstd, and the archive records its basename and permission bits so the download side recreates `<dest>/<basename>` exactly.
-- The archive is self-describing (a small `WXFR1` envelope header names the mode, codec, and the hand-off `name`), so the download side needs nothing at all — a nameless `cache-download` discovers the run's hand-off and reports which name it picked.
-- Nothing is buffered whole in memory — packing is pure child-process streaming.
+- A **single file** takes a raw fast path, with no tar process at all. The file streams straight through zstd. The archive records its basename and permission bits, so the download side recreates `<dest>/<basename>` exactly.
+- The archive is self-describing. A small `WXFR1` envelope header names the mode, the codec, and the hand-off `name`. The download side therefore needs nothing at all. A nameless `cache-download` finds the run's hand-off and reports which name it picked.
+- Nothing is buffered whole in memory. Packing is pure child-process streaming.
 
-Unlike `actions/cache`, the entry's **version** is a constant (sha256 of a fixed format-revision literal), not a hash of the path spec — which is why upload and download have **no path contract at all**. The version literal is bumped when the payload format changes, so mixed-revision producers/consumers get a clean miss instead of a misparse.
+The entry **version** is a constant, the sha256 of a fixed format-revision literal. `actions/cache` hashes the path spec instead. That is why upload and download have **no path contract at all**. A change to the payload format bumps the version literal. A mixed-revision producer and consumer then get a clean miss instead of a misparse.
 
 ### Why zstd
 
-The fastest codec preinstalled on **all** GitHub-hosted runners: per the actions/runner-images software manifests, ubuntu-24.04, macos-15 (arm64), and windows-2025 all ship zstd 1.5.7, while lz4 is preinstalled only on ubuntu. Negative compression levels (`--fast=2`) trade ratio for speed — the right trade for a hand-off that lives minutes. A hand-off saved on ubuntu restores fine on macOS/Windows jobs.
+zstd is the fastest codec preinstalled on **all** GitHub-hosted runners. The actions/runner-images software manifests show zstd 1.5.7 on ubuntu-24.04, macos-15 (arm64), and windows-2025. lz4 is preinstalled only on ubuntu. A negative compression level (`--fast=2`) trades ratio for speed. That is the right trade for a hand-off that lives minutes. A hand-off saved on ubuntu restores correctly on a macOS or Windows job.
 
 ## Why cache instead of artifacts
 
-GitHub bills artifact storage; cache storage is free. For files that only travel from one job to a later job of the **same run**, the cache does the same work at no cost.
+GitHub bills artifact storage. Cache storage is free. For files that only travel from one job to a later job of the **same run**, the cache does the same work at no cost.
 
-Caches are branch-scoped and LRU-evicted (unused for 7 days, or when the repo exceeds its cache cap) — irrelevant for an intra-run hand-off, where the consumer runs minutes later on the same ref. Use [`cache-cleanup`](../cache-cleanup/) as a terminal job to delete the run's entries rather than waiting for the service GC.
+Caches are branch-scoped, and LRU eviction removes an entry after 7 unused days or when the repo exceeds its cache cap. Neither matters for an intra-run hand-off, where the consumer runs minutes later on the same ref. Use [`cache-cleanup`](../cache-cleanup/) as a terminal job to delete the run's entries rather than waiting for the service GC.
 
 ## Stability note
 
-Upload and download drive the cache service's twirp v2 endpoints directly (with the job's own `ACTIONS_RUNTIME_TOKEN` / `ACTIONS_RESULTS_URL`, which the runner injects into every step — no `permissions:` needed). Driving these endpoints is established practice (docker buildx `--cache-to type=gha` and sccache's GHA backend do the same), but they are not a documented public API.
+Upload and download drive the twirp v2 endpoints of the cache service directly. They use the job's own `ACTIONS_RUNTIME_TOKEN` and `ACTIONS_RESULTS_URL`, which the runner injects into every step, so no `permissions:` entry is needed. Driving these endpoints is established practice. docker buildx `--cache-to type=gha` and the GHA backend of sccache do the same. The endpoints are still not a documented public API.
 
-Known risk, deliberately accepted rather than mitigated: GitHub has changed this protocol before — the legacy REST flavor was shut off in 2025 in favor of the twirp service — and a bundled pin cannot protect against a server-side shutdown. When the protocol moves again, these actions break **loudly** (RPC errors → failed jobs, never silent corruption) until `@actions/cache` is bumped here and the actions republished. The actual containment is the release model, not the pin: every consumer rides the moving `<name>#latest` tags, so the fix lands org-wide from this one repo without touching consumer workflows — unlike 2025, where every action pinning an old `@actions/cache` had to update independently. The pin/bundle itself just keeps releases hermetic and reviewable. GHES (v1 cache service) is not supported.
+This risk is accepted, not mitigated. GitHub has changed this protocol before. The legacy REST flavor was shut off in 2025 in favor of the twirp service. A bundled pin cannot protect against a server-side shutdown. The next protocol move breaks these actions **loudly**, with RPC errors and failed jobs, never silent corruption. They stay broken until `@actions/cache` is bumped here and the actions are republished. The containment is the release model, not the pin. Every consumer rides the moving `<name>#latest` tags, so the fix lands org-wide from this one repo, and no consumer workflow changes. In 2025 every action pinning an old `@actions/cache` had to update on its own. The pin and the bundle only keep releases hermetic and reviewable. GHES, which runs the v1 cache service, is not supported.
 
 ## Re-runs
 
-The exact key includes `run_attempt`; the matching `cache-download` also tries the prefix `cache-xfer-<run_id>-<name>-`, so "re-run failed jobs" (new attempt, succeeded producer not re-run) restores the newest earlier attempt's hand-off, while "re-run all jobs" exact-matches the new attempt. Caveat: if a [`cache-cleanup`](../cache-cleanup/) job already deleted the failed run's entries, "re-run failed jobs" has nothing to restore — use "Re-run all jobs".
+The exact key includes `run_attempt`. The matching `cache-download` also tries the prefix `cache-xfer-<run_id>-<name>-`. "Re-run failed jobs" starts a new attempt and does not re-run the succeeded producer, so that prefix restores the newest earlier attempt's hand-off. "Re-run all jobs" exact-matches the new attempt. Caveat: a [`cache-cleanup`](../cache-cleanup/) job can already have deleted the failed run's entries. "Re-run failed jobs" then has nothing to restore. Use "Re-run all jobs".
 
 ## Inputs
 
