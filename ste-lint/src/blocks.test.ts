@@ -29,6 +29,27 @@ test('each list item is its own block, and its continuation stays with it', () =
 	assert.equal(b[1].text, 'second item');
 });
 
+// YAML frontmatter is data, not a wrapped sentence: one key per line is the
+// correct shape, and a checker that saw it as prose flagged it as a broken wrap.
+test('YAML frontmatter is skipped whole, not read as an unjoined wrap', () => {
+	const b = blocks(lines('---\nifenv: SOME_FLAG\n---\n# Title\n\nBody text here.'));
+	assert.deepEqual(
+		b.map((x) => x.text),
+		['Body text here.'], // the heading is skippable too, same as any other heading
+	);
+	assert.equal(lintText('a.md', '---\nifenv: SOME_FLAG\n---\n\nBody text here.').wrappedLines.length, 0);
+});
+
+test('a --- that is not frontmatter, because it does not open the file, is left alone', () => {
+	// A mid-file "---" is a horizontal rule, not frontmatter -- frontmatterEnd only
+	// looks at line 0, so this one becomes its own (harmless, word-free) block.
+	const b = blocks(lines('Body first.\n\n---\n\nMore body.'));
+	assert.deepEqual(
+		b.map((x) => x.text),
+		['Body first.', '---', 'More body.'],
+	);
+});
+
 // The loophole this closes: prose is hard-wrapped, so measuring one physical
 // line at a time made the sentence cap unenforceable.
 test('a sentence wrapped over three lines is measured whole', () => {
