@@ -103,8 +103,6 @@ export function formatBlock(file: string, block: CommentBlock, max: number = MAX
 	const span = block.startLine === block.endLine ? `line ${block.startLine}` : `lines ${block.startLine}-${block.endLine}`;
 	return (
 		`${file}: ${block.lines} comment lines in a row (${span}) — the limit is ${max}. ` +
-		`A comment this long is describing a trap: fix the trap so nobody has to be warned about it. ` +
-		`Where the trap is genuinely someone else's, the text goes in a doc beside the file. ` +
-		`Blank lines between comment lines do not split a block.`
+		`A comment this long is describing a trap: fix the trap so nobody has to be warned about it.`
 	);
 }
