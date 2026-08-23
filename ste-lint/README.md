@@ -62,8 +62,9 @@ with the standard. This action does not claim that either.
 
 ## What it does not read
 
-A heading, a blockquote, a table row, a fenced or inline code span, and any text
-inside double quotes. A quotation is another voice, and code is not prose.
+A heading, a blockquote, a table row, a fenced or inline code span, any text
+inside double quotes, and a leading YAML frontmatter block (`---` to `---`). A
+quotation is another voice, code is not prose, and frontmatter is data.
 
 A blanked span keeps its length, so every finding still points at the line it
 came from. It opens with one letter, which counts the span as the one word it

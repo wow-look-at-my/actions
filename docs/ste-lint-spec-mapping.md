@@ -97,8 +97,10 @@ one wrapped paragraph by accident.
 The check reports every physical line that continues the line above it, inside a
 block (`src/blocks.ts` already finds these, because every rule reads a block with
 its wrapped lines rejoined). A code fence, a table, a heading, a blockquote and an
-HTML comment end a block, so none of them can report a wrap. A list item is a
-block of its own, so a second item is not a wrap and an indented continuation
+HTML comment end a block, so none of them can report a wrap. A leading YAML
+frontmatter block (`---` to `---`) is skipped whole, before any block forms, for
+the same reason: one key per line is its correct shape, not a wrap. A list item is
+a block of its own, so a second item is not a wrap and an indented continuation
 under one item is.
 
 ## The caps only move downward
