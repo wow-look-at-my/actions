@@ -1,6 +1,6 @@
 name: ste-lint
 version: 1
-description: Check prose against the mechanical subset of ASD-STE100 Simplified Technical English — sentence length measured over whole sentences rather than wrapped lines, contractions, banned modal verbs, semicolons, comma splices, and dictionary word choice
+description: Check prose against the mechanical subset of ASD-STE100 Simplified Technical English — sentence length measured over whole sentences rather than wrapped lines, contractions, banned modal verbs, semicolons, comma splices, hard-wrapped paragraphs, and dictionary word choice
 
 inputs:
   files:
