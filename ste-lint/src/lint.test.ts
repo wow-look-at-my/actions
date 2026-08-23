@@ -75,10 +75,10 @@ test('a semicolon fails because STE bans it', () => {
 });
 
 test('present and past perfect fail the "only simple tenses" rule as a warning', () => {
-	const f = lintText('a.md', 'The operator has adjusted the linkage.\nThe technician had removed the seal.');
+	const f = lintText('a.md', 'The operator has adjusted the linkage.\n\nThe technician had removed the seal.');
 	assert.equal(f.complexTense.length, 2);
 	assert.match(f.complexTense[0], /a\.md:1: "has adjusted"/);
-	assert.match(f.complexTense[1], /a\.md:2: "had removed"/);
+	assert.match(f.complexTense[1], /a\.md:3: "had removed"/);
 	assert.equal(hasFailures(f), false);
 });
 
@@ -174,6 +174,28 @@ test('inline code is exempt', () => {
 test('a quotation is exempt because it is another voice', () => {
 	assert.equal(lintText('a.md', 'The owner said "it doesn\'t work".').contractions.length, 0);
 	assert.equal(lintText('a.md', `The rule is "${words(40)}".`).hardLong.length, 0);
+});
+
+test('a hard-wrapped paragraph fails, and the finding names the continuation', () => {
+	const f = lintText('a.md', 'A paragraph broken\nover two lines.');
+	assert.equal(f.wrappedLines.length, 1);
+	assert.match(f.wrappedLines[0], /a\.md:2: continues line 1/);
+	assert.equal(hasFailures(f), true);
+});
+
+test('a paragraph on one line reports no wrap, whatever its width', () => {
+	assert.equal(lintText('a.md', words(40)).wrappedLines.length, 0);
+});
+
+test('a wrapped list item fails, and a second item does not', () => {
+	assert.equal(lintText('a.md', '- One item.\n- A second item.').wrappedLines.length, 0);
+	assert.equal(lintText('a.md', '- An item broken\n  over two lines.').wrappedLines.length, 1);
+});
+
+test('a fenced block, a table and a heading run wrap-free', () => {
+	assert.equal(lintText('a.md', '```\none\ntwo\n```').wrappedLines.length, 0);
+	assert.equal(lintText('a.md', '| a | b |\n| --- | --- |\n| c | d |').wrappedLines.length, 0);
+	assert.equal(lintText('a.md', '# One\n## Two').wrappedLines.length, 0);
 });
 
 test('a heading, a blockquote and a table row are not sentences', () => {

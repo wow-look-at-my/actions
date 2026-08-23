@@ -9,6 +9,7 @@ export function isSkippableLine(line: string): boolean {
 	if (/^\s{0,3}#{1,6}\s/.test(line)) return true; // a heading is a headline, not a sentence
 	if (/^\s*>/.test(line)) return true; // a blockquote is a verbatim quote
 	if (/^\s*\|/.test(line)) return true; // a table cell is a fragment
+	if (/^\s*<!--/.test(line)) return true; // a comment is markup, not prose
 	return false;
 }
 
