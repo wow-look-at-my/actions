@@ -24,6 +24,7 @@ export interface Findings {
 	bannedModals: string[];
 	semicolons: string[];
 	commaSplices: string[];
+	wrappedLines: string[];
 	// Each of these only warns: they are heuristics, and a heuristic that
 	// fails a build teaches people to route around the check.
 	warnLong: string[];
@@ -41,6 +42,7 @@ export function emptyFindings(): Findings {
 		bannedModals: [],
 		semicolons: [],
 		commaSplices: [],
+		wrappedLines: [],
 		warnLong: [],
 		passive: [],
 		nounClusters: [],
@@ -56,7 +58,8 @@ export function hasFailures(f: Findings): boolean {
 		f.contractions.length > 0 ||
 		f.bannedModals.length > 0 ||
 		f.semicolons.length > 0 ||
-		f.commaSplices.length > 0
+		f.commaSplices.length > 0 ||
+		f.wrappedLines.length > 0
 	);
 }
 
@@ -201,11 +204,16 @@ export function stripCode(text: string): string {
 	return out.join('\n');
 }
 
-// A quotation is someone else's voice, so the rules do not apply to it. The
-// character class spans newlines, which keeps a quote wrapped across lines
-// intact.
+// A quotation is someone else's voice, so the rules do not apply to it. A span
+// may cross a line break, which keeps a quote wrapped across lines intact, and
+// it stops at a blank line.
+//
+// The blank line is the important half. Pairing quotes across a whole document
+// means one unbalanced quote re-pairs every quote after it, and each of those
+// mis-paired spans blanks real prose. That is a false negative the reader
+// cannot see, on a checker whose findings fail a build.
 export function stripQuotedSpans(text: string): string {
-	return text.replace(/"[^"]*"/g, blankSpan);
+	return text.replace(/"(?:[^"\n]|\n(?!\s*\n))*?"/g, blankSpan);
 }
 
 export function sentences(text: string): string[] {
@@ -265,6 +273,16 @@ export function lintText(name: string, text: string, opts: Options = DEFAULTS, i
 		}
 		previousEndLine = block.starts[block.starts.length - 1].line;
 		if (!block.list) paragraphSentences += sentences(joined).length;
+
+		// A paragraph is one line. A hard wrap is one author's guess at one
+		// reader's window, frozen into the file, and every later edit reflows
+		// the block and buries the real change in the diff. It also hides
+		// length: nobody writes twelve lines by accident, and everybody
+		// writes the same text as one wrapped paragraph by accident.
+		for (let i = 1; i < block.starts.length; i++) {
+			const line = block.starts[i].line;
+			into.wrappedLines.push(`${name}:${line}: continues line ${block.starts[i - 1].line}`);
+		}
 
 		let m: RegExpExecArray | null;
 		CONTRACTION_RE.lastIndex = 0;
@@ -343,6 +361,12 @@ export function failureReport(f: Findings, opts: Options): string {
 		problems.push(
 			'A comma joining two clauses is the semicolon STE bans, spelled differently -- ' +
 				`use a period and start a new sentence:\n${f.commaSplices.join('\n')}`,
+		);
+	}
+	if (f.wrappedLines.length) {
+		problems.push(
+			'A paragraph is one line -- join these back up and let the reader\'s window do the wrapping:\n' +
+				f.wrappedLines.join('\n'),
 		);
 	}
 	return problems.join('\n\n');
