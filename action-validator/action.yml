@@ -27,15 +27,9 @@ runs:
           action-validator "$f"
         done
 
-    # Workflows are validated against the LIVE schema, not action-validator's.
-    # action-validator vendors its schema into a wasm blob (@action-validator/
-    # core, pinned at 0.6.0 with no newer release) that has fallen behind
-    # GitHub: it rejects generally-available permission scopes -- among them
-    # `artifact-metadata` -- so a correct workflow fails with "Additional
-    # property 'artifact-metadata' is not allowed". Fetching schemastore's
-    # github-workflow.json here keeps the check current instead of pinning it
-    # to whenever that wasm was last rebuilt. A fetch failure is a hard error,
-    # never a skipped check.
+    # Workflows go through the LIVE schemastore schema, not action-validator's
+    # vendored one, which has fallen behind GitHub. A fetch failure is a hard
+    # error, never a skipped check. see action-validator/README.md
     - name: Validate workflows
       shell: bash
       env:

@@ -1,11 +1,8 @@
 name: PR Preview (buildhost)
 
-# Thin reusable workflow: deploy a pull-request preview to a buildhost static-site
-# project and post a sticky PR comment with the preview URL. It reuses buildhost's
-# own buildhost-publish-site action for the upload (tar.gz PUT to
-# sites.<domain>/<project>/branch/<branch>, GitHub OIDC auth -- no static secret).
-#
-# This is the only PR-preview workflow used in this org -- GitHub Pages is not used.
+# Deploys a pull-request preview to a buildhost static-site project and posts a
+# sticky PR comment with the URL. The only PR-preview workflow in this org.
+# see .github/workflows/buildhost-preview.md
 
 on:
   workflow_call:
@@ -50,11 +47,9 @@ on:
         description: 'The deployed preview URL.'
         value: ${{ jobs.preview.outputs.preview_url }}
 
-# id-token: lets buildhost-publish-site authenticate to buildhost via OIDC (no
-# static secret). pull-requests: write is for the sticky comment. actions: read
-# is needed when artifact-name is used -- buildhost-publish-site downloads the
-# named artifact through the Actions REST API (listWorkflowRunArtifacts +
-# downloadArtifact), which both require it. Callers must grant at least these.
+# Callers must grant at least these; a reusable workflow cannot escalate past
+# its caller.
+# see .github/workflows/buildhost-preview.md
 permissions:
   contents: read
   actions: read

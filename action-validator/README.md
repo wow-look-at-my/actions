@@ -2,6 +2,14 @@
 
 Validate GitHub Action `action.yml` and workflow files using [action-validator](https://github.com/mpalmer/action-validator).
 
+## Which Schema Validates What
+
+`action.yml` files go through `action-validator` itself. **Workflow files are validated against the live schemastore `github-workflow.json`**, fetched per run by `validate-workflows.mjs` (ajv), not against action-validator's own schema.
+
+action-validator vendors its schema into a wasm blob (`@action-validator/core`, pinned at 0.6.0 with no newer release) that has fallen behind GitHub: it rejects generally-available permission scopes — `artifact-metadata` among them — so a correct workflow fails with `Additional property 'artifact-metadata' is not allowed`. Fetching the live schema keeps the check current instead of pinning it to whenever that wasm was last rebuilt.
+
+A fetch failure is a hard error, never a skipped check. An empty glob is a clean no-op.
+
 ## Usage
 
 ```yaml

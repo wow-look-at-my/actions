@@ -45,15 +45,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./cache-rg/test
 
-  # Pushes to local bare repositories, so it needs no token and no network. It
-  # covers what a release does when it loses the race for #latest: the
-  # numbered tag must publish anyway.
-  #
-  # dats is fetched directly rather than through go-toolchain, which bundles it
-  # but hard-requires a go.mod this repo does not have. bubblewrap is dats'
-  # native Linux backend, and ubuntu denies unprivileged user namespaces by
-  # default, which is what the sysctl re-enables. Without a backend dats fails
-  # rather than running the commands unsandboxed.
+  # Local bare repositories only: no token, no network. dats needs a sandbox
+  # backend or it fails, which is what bubblewrap and the sysctl are for.
+  # see docs/release-workflow.md
   test-orphan-release:
     runs-on: ubuntu-latest
     steps:
@@ -68,9 +62,8 @@ jobs:
       - run: dats test orphan-release/dats/
 
   # Dogfood round-trip for the cache hand-off trio against the REAL cache
-  # service: upload -> nameless discovery -> named download -> ambiguity
-  # hard-error -> cleanup. Entries are run-scoped, so parallel CI runs never
-  # interfere.
+  # service. Entries are run-scoped, so parallel CI runs never interfere.
+  # see docs/release-workflow.md
   test-cache-xfer:
     runs-on: ubuntu-latest
     permissions:
@@ -159,11 +152,9 @@ jobs:
       - name: Assert cleanup deleted both hand-offs
         run: test "${{ steps.cleanup.outputs.deleted-count }}" -ge 2
 
-  # Dogfood the all-builds name guard: it must pass on this repo (no job is
-  # ever named all-builds here) and fail on the shadowed fixture. The API
-  # layers are hard-required: this job grants actions:/checks: read so the
-  # passing run exercises them for real, and a bogus-token step asserts that
-  # layers which cannot run fail the guard.
+  # Dogfood the all-builds name guard: it must pass on this repo and fail on
+  # the shadowed fixture. The API layers are hard-required here.
+  # see docs/release-workflow.md
   test-no-all-builds-job:
     runs-on: ubuntu-latest
     permissions:
@@ -178,25 +169,18 @@ jobs:
           action-dir: no-all-builds-job
       - name: Guard passes on this repo
         uses: ./no-all-builds-job
-      # The runner refuses to override GITHUB_* vars via step `env:`, so the
-      # failure path execs the built bundle with a shell-level assignment
-      # pointing GITHUB_WORKSPACE at the fixture — same entry point the action
-      # runs. The explicitly empty token takes the documented no-token skip of
-      # the API layers, so this step's failure is attributable to the file
-      # scan alone. The success step above exported the run-once sentinel into
-      # the job env, so it is explicitly cleared here (empty = absent) —
-      # otherwise this run would skip instead of detecting the fixture
-      # violation.
+      # A shell-level assignment, because the runner refuses a step `env:`
+      # override of GITHUB_*. The empty token and sentinel are load-bearing.
+      # see docs/release-workflow.md
       - name: Guard must fail on the shadowed fixture (file-scan layer)
         id: shadowed
         continue-on-error: true
         run: NO_ALL_BUILDS_JOB_ALREADY_RAN= GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/no-all-builds-job/test/fixtures/shadowed" INPUT_TOKEN= node no-all-builds-job/dist/index.js
       - name: Assert the shadowed fixture failed the guard
         run: test "${{ steps.shadowed.outcome }}" = "failure"
-      # Hard-fail proof: with a token whose API layers cannot run, the guard
-      # must fail even though this repo has no violations — a layer that
-      # cannot scan is itself a blocking error (both layers are reported
-      # before the failure).
+      # Hard-fail proof: a layer that cannot scan is itself a blocking error,
+      # so the guard must fail even where this repo has no violations.
+      # see docs/release-workflow.md
       - name: Guard must fail when the API layers cannot run
         id: layers
         continue-on-error: true
@@ -207,6 +191,27 @@ jobs:
       # the same violating fixture — the skip wins before any check runs.
       - name: Guard skips when the run-once sentinel is set
         run: NO_ALL_BUILDS_JOB_ALREADY_RAN=1 GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/no-all-builds-job/test/fixtures/shadowed" INPUT_TOKEN=x node no-all-builds-job/dist/index.js
+
+  # Dogfood the comment-block limit: it must pass on this repo and on the
+  # at-the-limit fixture, and fail on the four-line wall fixture.
+  # see docs/release-workflow.md
+  test-yaml-comment-block:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-and-build
+        with:
+          action-dir: yaml-comment-block
+      - name: Check passes on this repo
+        uses: ./yaml-comment-block
+      - name: Check must fail on the wall fixture
+        id: wall
+        continue-on-error: true
+        run: GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/yaml-comment-block/test/fixtures/wall" node yaml-comment-block/dist/index.js
+      - name: Assert the wall fixture failed the check
+        run: test "${{ steps.wall.outcome }}" = "failure"
+      - name: Check must pass on the at-the-limit fixture
+        run: GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/yaml-comment-block/test/fixtures/clean" node yaml-comment-block/dist/index.js
 
   test-typescript:
     runs-on: ubuntu-latest
@@ -260,13 +265,9 @@ jobs:
       - name: Validate workflow YAML with action-validator
         uses: ./action-validator
         with:
-          # Only the workflow files are validated here. The repo's action.yml
-          # files carry a non-standard `version:` field (vestigial -- release
-          # versions now auto-increment from the existing tags) and
-          # `using: node24`, both of which action-validator's bundled schema
-          # rejects -- so a non-matching glob skips them (nullglob -> zero
-          # iterations) while every workflow, including the reusable ones, is
-          # schema-checked.
+          # Workflow files only. The non-matching actions glob skips this
+          # repo's action.yml files, which the bundled schema rejects.
+          # see docs/release-workflow.md
           actions: 'no-such-dir/*/action.yml'
           workflows: '.github/workflows/*.yml'
 

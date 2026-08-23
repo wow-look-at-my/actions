@@ -1,0 +1,16 @@
+name: Fixture at the limit
+
+# Three comment lines in a row are fine.
+# This is the second line.
+# This is the third and last.
+on:
+  push:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # A second block starts after a line of content.
+    # Three lines again, so the file passes.
+    # The next line carries a trailing comment, which never joins a block.
+    steps:
+      - run: echo hi # trailing comments never join a block

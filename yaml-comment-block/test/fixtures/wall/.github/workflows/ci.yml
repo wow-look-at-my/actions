@@ -1,0 +1,15 @@
+name: Fixture with a comment wall
+
+# This fixture exists to prove the check fails.
+# The block below runs to four comment lines.
+# This is the third line of it.
+
+# A blank line does not split the block, so this is the fourth.
+on:
+  push:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo hi
