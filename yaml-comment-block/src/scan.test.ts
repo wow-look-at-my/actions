@@ -2,13 +2,13 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {MAX_COMMENT_LINES, candidatePaths, findCommentBlocks, findUses, formatBlock, isLocalRef} from './scan';
 
-test('the limit is three comment lines', () => {
-	assert.equal(MAX_COMMENT_LINES, 3);
+test('the limit is one comment line', () => {
+	assert.equal(MAX_COMMENT_LINES, 1);
 });
 
-test('three comment lines in a row pass, four fail', () => {
-	assert.deepEqual(findCommentBlocks('# one\n# two\n# three\njobs: {}\n'), []);
-	assert.deepEqual(findCommentBlocks('# one\n# two\n# three\n# four\njobs: {}\n'), [{startLine: 1, endLine: 4, lines: 4}]);
+test('one comment line passes, two fail', () => {
+	assert.deepEqual(findCommentBlocks('# one\njobs: {}\n'), []);
+	assert.deepEqual(findCommentBlocks('# one\n# two\njobs: {}\n'), [{startLine: 1, endLine: 2, lines: 2}]);
 });
 
 test('a block reports its full span', () => {
@@ -25,7 +25,7 @@ test('each block is reported separately', () => {
 });
 
 test('a line of content splits a block', () => {
-	const content = ['# a', '# b', 'name: CI', '# c', '# d', 'jobs: {}'].join('\n');
+	const content = ['# a', 'name: CI', '# b', 'on: push', '# c', 'jobs: {}'].join('\n');
 	assert.deepEqual(findCommentBlocks(content), []);
 });
 
@@ -35,7 +35,7 @@ test('blank lines neither count nor split a block', () => {
 });
 
 test('a trailing comment after content never joins a block', () => {
-	const content = ['# a', '# b', 'name: CI # three', 'on: push # four', '# c', 'jobs: {}'].join('\n');
+	const content = ['# a', 'name: CI # two', 'on: push # three', '# b', 'jobs: {}'].join('\n');
 	assert.deepEqual(findCommentBlocks(content), []);
 });
 
@@ -100,6 +100,6 @@ test('candidatePaths names the action file for a directory and the file itself f
 
 test('formatBlock names the file, the count, the span and the limit', () => {
 	const message = formatBlock('.github/workflows/ci.yml', {startLine: 3, endLine: 9, lines: 6});
-	assert.match(message, /^\.github\/workflows\/ci\.yml: 6 comment lines in a row \(lines 3-9\) — the limit is 3\./);
-	assert.match(message, /move the rest into a doc/);
+	assert.match(message, /^\.github\/workflows\/ci\.yml: 6 comment lines in a row \(lines 3-9\) — the limit is 1\./);
+	assert.match(message, /fix the trap/);
 });

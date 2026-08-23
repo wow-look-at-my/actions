@@ -1,5 +1,5 @@
 name: YAML Comment Block
-description: Fail CI when a GitHub Actions YAML file in the local call chain carries more than 3 comment lines in a row
+description: Fail CI when a GitHub Actions YAML file in the local call chain carries more than 1 comment line in a row
 
 inputs:
   paths:

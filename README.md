@@ -202,7 +202,7 @@ Reusable GitHub Actions.
 ### [YAML Comment Block](yaml-comment-block/)
 
 ```yml
-# Fail CI when a GitHub Actions YAML file in the local call chain carries more than 3 comment lines in a row.
+# Fail CI when a GitHub Actions YAML file in the local call chain carries more than 1 comment line in a row.
 # Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/yaml-comment-block/README.md
 - uses: wow-look-at-my/actions@yaml-comment-block#latest
 ```

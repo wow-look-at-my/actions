@@ -10,19 +10,13 @@ export interface CommentBlock {
 
 // The limit, in comment lines. Deliberately a constant with no input: a
 // settable maximum removes the rule instead of configuring it.
-export const MAX_COMMENT_LINES = 3;
+export const MAX_COMMENT_LINES = 1;
 
 function isCommentLine(line: string): boolean {
 	return line.trimStart().startsWith('#');
 }
 
-// Every comment block in the file that runs past the limit. A block is a
-// maximal group of comment lines separated by nothing except blank lines, so
-// splitting a wall into paragraphs does not get it past the check. A trailing
-// comment after content is not a comment line and never joins a block. A `#`
-// inside a block scalar (a shell comment in a `run:` script) DOES count: the
-// rule is about walls of prose, and the runner does not care which language
-// the wall is written in.
+// Every comment block in the file that runs past the limit. see README.md
 export function findCommentBlocks(content: string, max: number = MAX_COMMENT_LINES): CommentBlock[] {
 	const lines = content.split(/\r?\n/);
 	const blocks: CommentBlock[] = [];
@@ -109,7 +103,8 @@ export function formatBlock(file: string, block: CommentBlock, max: number = MAX
 	const span = block.startLine === block.endLine ? `line ${block.startLine}` : `lines ${block.startLine}-${block.endLine}`;
 	return (
 		`${file}: ${block.lines} comment lines in a row (${span}) — the limit is ${max}. ` +
-		`A comment block this long is a document, not a comment: keep the ${max} lines that stop the next mistake and move the rest into a doc beside the file. ` +
+		`A comment this long is describing a trap: fix the trap so nobody has to be warned about it. ` +
+		`Where the trap is genuinely someone else's, the text goes in a doc beside the file. ` +
 		`Blank lines between comment lines do not split a block.`
 	);
 }

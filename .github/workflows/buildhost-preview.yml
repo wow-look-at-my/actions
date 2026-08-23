@@ -1,7 +1,5 @@
 name: PR Preview (buildhost)
 
-# Deploys a pull-request preview to a buildhost static-site project and posts a
-# sticky PR comment with the URL. The only PR-preview workflow in this org.
 # see .github/workflows/buildhost-preview.md
 
 on:
@@ -47,18 +45,14 @@ on:
         description: 'The deployed preview URL.'
         value: ${{ jobs.preview.outputs.preview_url }}
 
-# Callers must grant at least these; a reusable workflow cannot escalate past
-# its caller.
-# see .github/workflows/buildhost-preview.md
+# A caller must grant at least these. see .github/workflows/buildhost-preview.md
 permissions:
   contents: read
   actions: read
   pull-requests: write
   id-token: write
   checks: read
-  # buildhost-publish-site records what it uploaded on the org's linked
-  # artifacts page; that recording is part of publishing, not optional,
-  # so the publish fails without this.
+  # The publish records the upload on the org artifacts page and fails without this.
   artifact-metadata: write
   deployments: write
 
@@ -84,9 +78,7 @@ jobs:
           sparse-checkout: ${{ inputs.source-dir }}
           path: __caller
 
-      # Reuse buildhost's own publish-site action for the upload (tar.gz PUT to
-      # sites.<domain>/<project>/branch/<branch>, OIDC auth, project
-      # auto-provisioned from the repo identity).
+      # buildhost owns the upload grammar. see .github/workflows/buildhost-preview.md
       - name: Publish preview to buildhost
         id: publish
         uses: wow-look-at-my/buildhost/.github/actions/buildhost-publish-site@master

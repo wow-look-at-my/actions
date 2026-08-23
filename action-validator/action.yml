@@ -27,9 +27,7 @@ runs:
           action-validator "$f"
         done
 
-    # Workflows go through the LIVE schemastore schema, not action-validator's
-    # vendored one, which has fallen behind GitHub. A fetch failure is a hard
-    # error, never a skipped check. see action-validator/README.md
+    # see action-validator/README.md for why this is not action-validator's schema
     - name: Validate workflows
       shell: bash
       env:
@@ -48,9 +46,7 @@ runs:
           -o "${workdir}/github-workflow.json"
         npm install --silent --no-fund --no-audit --prefix "${workdir}" \
           ajv@8 ajv-formats@3 js-yaml@4
-        # The script must live NEXT TO the installed node_modules: ESM `import`
-        # ignores NODE_PATH and resolves by walking up from the script's own
-        # directory, so running it from the action path would not find ajv.
+        # ESM resolves from the script's own directory, so it runs beside node_modules.
         cp "${GITHUB_ACTION_PATH}/validate-workflows.mjs" "${workdir}/"
         node "${workdir}/validate-workflows.mjs" \
           "${workdir}/github-workflow.json" "${files[@]}"

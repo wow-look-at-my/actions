@@ -3,13 +3,7 @@ import * as fsp from 'fs/promises';
 import * as path from 'path';
 import {MAX_COMMENT_LINES, candidatePaths, findCommentBlocks, findUses, formatBlock, isLocalRef} from './scan';
 
-// A comment block longer than MAX_COMMENT_LINES lines fails the job. The scan
-// covers the whole local call chain: every workflow file, every reusable
-// workflow, and every composite or Node action they reach with `uses: ./...`,
-// plus every action.yml in the workspace (each one is an entry point a caller
-// in another repository reaches). A `uses:` reference to another repository
-// names a file this workspace does not hold; those are listed in the log and
-// checked where they live.
+// The comment-block limit, over the whole local call chain. see README.md
 
 const SKIP_DIRS = new Set(['node_modules', '.git']);
 
@@ -161,14 +155,14 @@ async function run(): Promise<void> {
 			core.warning(`nothing to scan under ${workspace} — no workflow file and no action.yml, so this run enforced nothing. Check the repo out first.`);
 			return;
 		}
-		core.info(`OK — no comment block longer than ${MAX_COMMENT_LINES} lines in ${scanned.length} file(s): ${scanned.join(', ')}`);
+		core.info(`OK — no comment block longer than ${MAX_COMMENT_LINES} line(s) in ${scanned.length} file(s): ${scanned.join(', ')}`);
 		return;
 	}
 	for (const message of [...messages, ...chainErrors]) {
 		core.error(message);
 	}
 	if (messages.length > 0) {
-		core.setFailed(`${messages.length} comment block(s) run past ${MAX_COMMENT_LINES} lines across ${scanned.length} scanned file(s)`);
+		core.setFailed(`${messages.length} comment block(s) run past ${MAX_COMMENT_LINES} line(s) across ${scanned.length} scanned file(s)`);
 		return;
 	}
 	core.setFailed(`${chainErrors.length} part(s) of the call chain could not be read, so they went unscanned`);

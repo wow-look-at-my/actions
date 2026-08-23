@@ -25,14 +25,10 @@ inputs:
 runs:
   using: composite
   steps:
-    # Credentials come from secret-server over OIDC, so the caller must grant
-    # `permissions: id-token: write`. An unentitled identity exports nothing.
-    # see cloudflare-pages/README.md
+    # Needs `id-token: write`. see cloudflare-pages/README.md
     - uses: wow-look-at-my/actions@secret-server#latest
 
-    # Direct upload. Without credentials the default is a loud green no-op;
-    # missing-credentials: fail turns that red. A real deploy failure is
-    # always red. see cloudflare-pages/README.md
+    # see cloudflare-pages/README.md for the no-credentials behaviour
     - name: Deploy to Cloudflare Pages
       uses: wow-look-at-my/actions@typescript#latest
       with:

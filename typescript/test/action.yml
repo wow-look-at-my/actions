@@ -5,17 +5,13 @@ description: "Dogfood the typescript action via file: inputs exercising import/e
 runs:
   using: composite
   steps:
-    # repro.ts: top-level import, injected globals, top-level await, global
-    # fetch. A pass proves it type-checks under strict tsc AND runs: the action
-    # exits non-zero on any tsc or runtime error, which fails this job.
+    # repro.ts: top-level import, injected globals, top-level await, global fetch.
     - name: "repro.ts: import + globals + await + fetch"
       uses: ./typescript
       with:
         file: typescript/test/repro.ts
 
-    # repro2.ts reads package.json from the workspace root and returns its
-    # version. The seeded value must differ from the script's own `export const
-    # VERSION = "1.0.0"`, which must NOT be what reaches `result`.
+    # The seeded version must differ from repro2.ts's own exported VERSION.
     - name: Seed package.json for repro2 (readFile("package.json"))
       shell: bash
       run: echo '{"version":"9.9.9-test"}' > "${GITHUB_WORKSPACE}/package.json"
@@ -39,9 +35,7 @@ runs:
         fi
         echo "repro2 OK: top-level return value reached the result output"
 
-    # repro3.ts: the injected `octokit` must be authenticated out of the box,
-    # with no github-token override, no secrets plumbing and no getOctokit call.
-    # An unauthenticated octokit throws and fails this step.
+    # repro3.ts: the injected octokit must authenticate with no plumbing at all.
     - name: "repro3.ts: injected octokit authenticated with the default token"
       uses: ./typescript
       with:
