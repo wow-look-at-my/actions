@@ -34,7 +34,7 @@ ASD's own FAQ says it does not endorse a tool "claimed to be 'fully compliant'" 
 
 ## What it does not read
 
-A heading, a blockquote, a table row, a fenced or inline code span, and any text inside double quotes. A quotation is another voice, and code is not prose.
+A heading, a blockquote, a table row, a fenced or inline code span, any text inside double quotes, and a leading YAML frontmatter block (`---` to `---`). A quotation is another voice, code is not prose, and frontmatter is data.
 
 A blanked span keeps its length, so every finding still points at the line it came from. It opens with one letter, which counts the span as the one word it is. That letter also lets a sentence that opens with a code span split from the sentence before it.
 

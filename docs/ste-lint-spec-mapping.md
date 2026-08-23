@@ -54,7 +54,7 @@ This one is a house rule. ASD-STE100 governs the words in a sentence and says no
 
 A wrap is one author's guess at one reader's window, frozen into the file. Every later edit reflows the block, so a two-word change and a full rewrite produce the same diff, and a reviewer cannot tell them apart. A wrap also hides length: nobody writes twelve lines by accident, and everybody writes the same text as one wrapped paragraph by accident.
 
-The check reports every physical line that continues the line above it, inside a block (`src/blocks.ts` already finds these. Every rule reads a block with its wrapped lines rejoined). A code fence, a table, a heading, a blockquote and an HTML comment end a block, so none of them can report a wrap. A list item is a block of its own. A second item is therefore not a wrap and an indented continuation under one item is.
+The check reports every physical line that continues the line above it, inside a block (`src/blocks.ts` already finds these. Every rule reads a block with its wrapped lines rejoined). A code fence, a table, a heading, a blockquote and an HTML comment end a block, so none of them can report a wrap. A leading YAML frontmatter block (`---` to `---`) is skipped whole, before any block forms, for the same reason. One key per line is its correct shape, not a wrap. A list item is a block of its own. A second item is therefore not a wrap and an indented continuation under one item is.
 
 ## The caps only move downward
 
