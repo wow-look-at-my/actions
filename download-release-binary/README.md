@@ -16,7 +16,7 @@ Release assets **must** follow this naming pattern:
 | `os`      | `linux`, `darwin`, `windows` |
 | `arch`    | `amd64`, `arm64` |
 
-For example, a tool called `mytool` should have these release assets:
+For example, a tool called `mytool` must have these release assets:
 
 ```
 mytool_linux_amd64

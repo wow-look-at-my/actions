@@ -1,0 +1,23 @@
+name: YAML Comment Block
+description: Fail CI when a GitHub Actions YAML file in the local call chain carries more than 1 comment line in a row
+
+inputs:
+  paths:
+    description: >-
+      Files to scan, newline or comma separated, relative to the workspace.
+      Leave empty to scan every workflow file and every action.yml in the
+      workspace. Whatever the roots are, the scan follows `uses: ./...` from
+      them through the rest of the local call chain.
+    required: false
+    default: ''
+
+  exclude:
+    description: >-
+      Glob patterns for files the scan skips, newline or comma separated.
+      Intended for fixtures that violate the rule on purpose.
+    required: false
+    default: ''
+
+runs:
+  using: node24
+  main: dist/index.js

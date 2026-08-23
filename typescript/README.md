@@ -1,6 +1,6 @@
 # TypeScript
 
-Run an inline TypeScript script with full `tsc` validation. Common helpers (`core`, `context`, `octokit`, `fs`, `path`, ...) and most workflow contexts (`github`, `runner`, `env`, `job`) are auto-injected with no configuration; the rest can be passed in when needed.
+Run an inline TypeScript script with full `tsc` validation. Common helpers (`core`, `context`, `octokit`, `fs`, `path`, ...) and most workflow contexts (`github`, `runner`, `env`, `job`) are auto-injected with no configuration. You can pass in the rest when needed.
 
 ## Usage
 
@@ -38,7 +38,7 @@ The injected `octokit` is **pre-authenticated out of the box** — no `secrets:`
       core.info(`Stars: ${data.stargazers_count}`);
 ```
 
-The token comes from the `github-token` input, which defaults to the automatic `${{ github.token }}` (`GITHUB_TOKEN`). **You must still grant the matching `permissions:`** — the automatic token is read-only for many scopes, so a write call needs an explicit grant on the job:
+The token comes from the `github-token` input, which defaults to the automatic `${{ github.token }}` (`GITHUB_TOKEN`). **You must still grant the matching `permissions:`**. The automatic token is read-only for many scopes. A write call needs an explicit grant on the job:
 
 ```yaml
 jobs:
@@ -71,7 +71,7 @@ To authenticate as something other than the automatic token — a PAT with broad
 
 ## Running commands (`$`)
 
-`$` is a tagged-template command runner (zx-style). Static parts of the template are split on whitespace; each interpolated value is passed as **exactly one argument** — never shell-split — so there is no quoting or injection footgun:
+`$` is a tagged-template command runner (zx-style). The action splits static parts of the template on whitespace. Each interpolated value is passed as **exactly one argument**, never shell-split. There is no quoting or injection footgun:
 
 ```yaml
 - uses: wow-look-at-my/actions@typescript#latest
@@ -98,11 +98,11 @@ script: |
   core.setOutput('branch', `${await $`git branch --show-current`}`);
 ```
 
-`stdout`/`stderr` are the raw captured streams (untrimmed); `toString()` returns `stdout` with a single trailing newline (`\n` or `\r\n`) removed.
+`stdout`/`stderr` are the raw captured streams (untrimmed). `toString()` returns `stdout` with a single trailing newline (`\n` or `\r\n`) removed.
 
 #### Parsing JSON output
 
-`stdout` and `stderr` each carry a `.json()` helper, and the builder's `.stdout` / `.stderr` are themselves awaitable — so you can parse a stream straight off a command, no `(await ...)` wrapper needed:
+`stdout` and `stderr` each carry a `.json()` helper. The builder's `.stdout` / `.stderr` are themselves awaitable. You can parse a stream straight off a command, with no `(await ...)` wrapper needed:
 
 ```yaml
 script: |
@@ -169,7 +169,7 @@ script: |
 
 ## Passing other workflow contexts
 
-If the script needs contexts the runner doesn't expose to action processes (`vars`, `secrets`, `steps`, `needs`, `inputs`, `strategy`, `matrix`), pass them explicitly:
+If the script needs contexts the runner does not expose to action processes (`vars`, `secrets`, `steps`, `needs`, `inputs`, `strategy`, `matrix`), pass them explicitly:
 
 ```yaml
 - uses: wow-look-at-my/actions@typescript#latest
@@ -186,10 +186,10 @@ If the script needs contexts the runner doesn't expose to action processes (`var
 
 1. The step log has two collapsed groups: `Compiling script` (everything below) and `Executing script` (your script's own output).
 2. `Compiling script` opens by echoing the source, syntax-highlighted with ANSI color escapes (GitHub's log viewer renders them). If highlighting fails for any reason, the plain source is printed instead — it never fails the step.
-3. An inline `script` is checked for comment blocks: two or more consecutive lines holding nothing but a `//` comment fail the step before anything is compiled or run (see below). A `file` input is exempt.
-4. The `script` is compiled as a TypeScript module: top-level `import`/`export` declarations stay at module scope, and the remaining statements become the body of an `async function` — so top-level `await` and `return` work without ceremony too. The transformed module is type-checked using the bundled TypeScript compiler with `strict: true`; any `tsc` error fails the step before any code runs.
+3. An inline `script` is checked for comment blocks. A run of two or more consecutive comment-only `//` lines fails the step. The failure comes before anything is compiled or run (see below). A `file` input is exempt.
+4. The `script` is compiled as a TypeScript module. Top-level `import`/`export` declarations stay at module scope. The remaining statements become the body of an `async function`. Top-level `await` and `return` work without ceremony too. The transformed module is type-checked with the bundled TypeScript compiler with `strict: true`. Any `tsc` error fails the step before any code runs.
 5. The validated source is transpiled to JavaScript.
-6. The module is evaluated in-process with the injected helpers in scope: imports/exports execute first (matching ESM import hoisting), then the rest of the script. The action runs as a fresh process per step, so nothing carries over between invocations.
+6. The module is evaluated in-process with the injected helpers in scope: imports/exports execute first (matching ESM import hoisting), then the rest of the script. The action runs as a fresh process per step. Nothing carries over between invocations.
 7. If the script returns a value (top-level `return <value>`), it is JSON-serialized and exposed as the `result` output.
 
 ## No comment blocks
@@ -219,12 +219,12 @@ name DOM types the action does not know:
 It is off by default on purpose. `lib.dom` declares hundreds of browser globals,
 and the damaging ones are the short names -- `name`, `status`, `location`,
 `length`, `close`, `open`, `event`, `top`, `self`. Without it, a script that
-references an undeclared `name` is a compile error; with it, that typo quietly
+references an undeclared `name` is a compile error. With it, that typo quietly
 becomes `string` and fails at run time instead. Turn it on for the steps that
 need it, not repo-wide.
 
-Node's own globals keep working alongside it: `setTimeout`, `fetch` and `URL`
-resolve to the `@types/node` declarations, so an ordinary script does not change
+Node's own globals keep working alongside it. `setTimeout`, `fetch` and `URL`
+resolve to the `@types/node` declarations. An ordinary script does not change
 behaviour when the flag goes on.
 
 ## Inputs
@@ -249,7 +249,7 @@ behaviour when the flag goes on.
 
 ### Why are some contexts opt-in?
 
-`vars`, `secrets`, `steps`, `needs`, `inputs`, `strategy`, and `matrix` are runner-side only — they exist as `${{ ... }}` expression substitutions in your workflow YAML and never reach the action's child process as env vars or files. The action has no way to read them on its own. Pass `${{ toJSON(vars) }}` (or whichever) when the script needs them.
+`vars`, `secrets`, `steps`, `needs`, `inputs`, `strategy`, and `matrix` are runner-side only. They exist as `${{ ... }}` expression substitutions in your workflow YAML. They never reach the action's child process as env vars or files. The action has no way to read them on its own. Pass `${{ toJSON(vars) }}` (or whichever) when the script needs them.
 
 `github`, `runner`, `env`, and `job` are reconstructed from the standard env vars and the event-payload file ([all documented by GitHub](https://docs.github.com/en/actions/learn-github-actions/variables#default-environment-variables)), so no plumbing is needed for those.
 
@@ -278,12 +278,12 @@ Always available inside the script:
 | `child_process` | `typeof import('child_process')` | Node built-in |
 | `util` | `typeof import('util')` | Node built-in |
 
-Top-level ESM `import` works the same way: `import`s of `@actions/core|exec|io|github` and built-in Node modules (including `node:`-prefixed specifiers) resolve to the same instances the action uses. `require('module-name')` is also available — everything else falls through to Node's regular resolver, then to `$GITHUB_WORKSPACE/node_modules`, so packages installed by a prior `npm ci` / `npm install` step can be imported or required directly.
+Top-level ESM `import` works the same way: `import`s of `@actions/core|exec|io|github` and built-in Node modules (including `node:`-prefixed specifiers) resolve to the same instances the action uses. `require('module-name')` is also available. Everything else falls through to Node's regular resolver, then to `$GITHUB_WORKSPACE/node_modules`. A package installed by a prior `npm ci` / `npm install` step can be imported or required directly.
 
 ## Notes
 
 - `crypto` is intentionally not injected because Node's global `crypto` (Web Crypto) conflicts with the `crypto` module's type. Use the global, `import { ... } from 'node:crypto'`, or `require('crypto')` for the Node module.
 - `octokit` is pre-authenticated with the `github-token` input (default `${{ github.token }}`), so `octokit.rest.*` works without any `secrets:` plumbing. Calling it as `octokit(token)` still works but is deprecated (it logs a warning) — use the instance directly, or `getOctokit(token)` for a one-off custom-token client. If `github-token` resolves to empty, `octokit` is unauthenticated and the first API call throws `Parameter token or opts.auth is required`.
 - `octokit` is typed loosely (`rest: any`, `graphql: any`, ...) so the action stays small. For full Octokit types, write a separate Node action. Top-level `import { context, getOctokit } from '@actions/github'` type-checks against a bundled stub with the module's real surface (`Context` fully typed, octokit instances loose) and resolves to the action's own module at runtime.
-- Top-level `import`/`export`, top-level `await`, and top-level `return <value>` (→ the `result` output) all work together: module-scope statements (imports, exports, namespaces, `declare`s) are hoisted to real module scope and execute before the remaining statements, matching ESM import-hoisting semantics. An `import` may shadow an injected global of the same name.
+- Top-level `import`/`export`, top-level `await`, and top-level `return <value>` (→ the `result` output) all work together. Module-scope statements (imports, exports, namespaces, `declare`s) are hoisted to real module scope. They execute before the remaining statements, matching ESM import-hoisting semantics. An `import` may shadow an injected global of the same name.
 - One limitation of the hoisting: an exported declaration can only reference imports, other module-scope declarations, and globals — not non-exported top-level `const`s/`function`s (those live in the async body). Violations fail type-checking with a clear error on the offending line.
