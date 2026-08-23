@@ -1,0 +1,52 @@
+name: 'Action Validator'
+version: 1
+description: 'Validate GitHub Action action.yml files'
+inputs:
+  actions:
+    description: 'Glob pattern for action.yml files to validate'
+    required: false
+    default: '*/action.yml'
+  workflows:
+    description: 'Glob pattern for workflow files to validate'
+    required: false
+    default: '.github/workflows/*.yml'
+
+runs:
+  using: composite
+  steps:
+    - name: Install action-validator
+      shell: bash
+      run: npm install -g @action-validator/core @action-validator/cli
+
+    - name: Validate actions
+      shell: bash
+      run: |
+        shopt -s nullglob
+        for f in ${{ inputs.actions }}; do
+          echo "Validating $f"
+          action-validator "$f"
+        done
+
+    # see action-validator/README.md for why this is not action-validator's schema
+    - name: Validate workflows
+      shell: bash
+      env:
+        WORKFLOW_GLOB: ${{ inputs.workflows }}
+      run: |
+        set -euo pipefail
+        shopt -s nullglob
+        files=(${WORKFLOW_GLOB})
+        if [ ${#files[@]} -eq 0 ]; then
+          echo "No workflow files matched '${WORKFLOW_GLOB}'; nothing to validate"
+          exit 0
+        fi
+        workdir="${RUNNER_TEMP}/action-validator-workflows"
+        mkdir -p "${workdir}"
+        curl -fsSL https://json.schemastore.org/github-workflow.json \
+          -o "${workdir}/github-workflow.json"
+        npm install --silent --no-fund --no-audit --prefix "${workdir}" \
+          ajv@8 ajv-formats@3 js-yaml@4
+        # ESM resolves from the script's own directory, so it runs beside node_modules.
+        cp "${GITHUB_ACTION_PATH}/validate-workflows.mjs" "${workdir}/"
+        node "${workdir}/validate-workflows.mjs" \
+          "${workdir}/github-workflow.json" "${files[@]}"
