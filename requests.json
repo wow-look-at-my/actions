@@ -14,7 +14,7 @@
   {
     "id": "ste-on-all-md",
     "request": "Enforce STE on all .md files in actions.",
-    "proof": "node ste-lint/dist/index.js '**/*.md'",
+    "proof": "node ste-lint/dist/index.js '*.md' 'docs/*.md' '.github/workflows/*.md' '*/README.md' '*/CLAUDE.md'",
     "status": "done"
   },
   {

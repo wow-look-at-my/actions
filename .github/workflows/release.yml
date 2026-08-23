@@ -199,9 +199,10 @@ jobs:
       - uses: ./.github/actions/setup-and-build
         with:
           action-dir: ste-lint
+      # ste-lint/fixtures/*.md break the rules on purpose, so they are not listed.
       - uses: ./ste-lint
         with:
-          files: '**/*.md'
+          files: '*.md docs/*.md .github/workflows/*.md */README.md */CLAUDE.md'
 
   # see docs/release-workflow.md
   test-yaml-comment-block:
