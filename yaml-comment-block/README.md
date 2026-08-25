@@ -2,7 +2,7 @@
 
 Fail CI when a GitHub Actions YAML file carries **more than 1 comment line in a row**.
 
-A comment that runs to a second line is usually an essay, not a note. The fix is to shorten it to what a reader needs right here — usually one line. Real depth that outlives that line belongs in an existing doc, cited with one line, never in a new file created only to get past this check. A wall of comments moved verbatim into a fresh doc is the same essay in a different place, and it still fails the next reader.
+A comment that runs to a second line is usually an essay, not a note. The fix is to shorten it to what a reader needs right here — usually one line. Real depth that outlives one line belongs in an existing doc, cited here in one line. Never create a new file only to get past this check. A wall of comments moved verbatim into a fresh doc is the same essay in a different place, and it still fails the next reader.
 
 The limit is a constant. There is deliberately no input that raises it. A settable maximum removes the rule instead of configuring it.
 
