@@ -103,8 +103,12 @@ export function formatBlock(file: string, block: CommentBlock, max: number = MAX
 	const span = block.startLine === block.endLine ? `line ${block.startLine}` : `lines ${block.startLine}-${block.endLine}`;
 	return (
 		`${file}: ${block.lines} comment lines in a row (${span}) — the limit is ${max}. ` +
-		`A comment this long is describing a trap: fix the trap so nobody has to be warned about it. ` +
-		`Where the trap is genuinely someone else's, the text goes in a doc beside the file. ` +
+		`Shorten this to one line. Say only what a reader needs right here. ` +
+		`Moving the same wall of text into a new doc file is not a fix — it is the ` +
+		`same essay in a different place, and it still fails the next reader. ` +
+		`Real depth that outlives this line belongs in an EXISTING doc, or a doc ` +
+		`worth maintaining on its own, cited here with one line — never a file ` +
+		`created only to get past this check. ` +
 		`Blank lines between comment lines do not split a block.`
 	);
 }
