@@ -162,7 +162,7 @@ async function run(): Promise<void> {
 		core.error(message);
 	}
 	if (messages.length > 0) {
-		core.setFailed(`${messages.length} comment block(s) run past ${MAX_COMMENT_LINES} line(s) across ${scanned.length} scanned file(s)`);
+		core.setFailed(`${messages.length} comment block(s) too long, across ${scanned.length} scanned file(s)`);
 		return;
 	}
 	core.setFailed(`${chainErrors.length} part(s) of the call chain could not be read, so they went unscanned`);
