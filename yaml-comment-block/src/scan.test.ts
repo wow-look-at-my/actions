@@ -102,5 +102,4 @@ test('formatBlock names the file, the count, the span and the limit', () => {
 	const message = formatBlock('.github/workflows/ci.yml', {startLine: 3, endLine: 9, lines: 6});
 	assert.match(message, /^\.github\/workflows\/ci\.yml: 6 comment lines in a row \(lines 3-9\) — the limit is 1\./);
 	assert.match(message, /Shorten this to one line/);
-	assert.match(message, /never a file created only to get past this check/);
 });

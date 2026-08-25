@@ -47,7 +47,7 @@ A comment line is a line whose first non-whitespace character is `#`. A block is
 Each block is one annotation. It names the file, the count, the span, and the limit:
 
 ```
-.github/workflows/ci.yml: 9 comment lines in a row (lines 48-56) — the limit is 1. Shorten this to one line. Say only what a reader needs right here. ...
+.github/workflows/ci.yml: 9 comment lines in a row (lines 48-56) — the limit is 1. Shorten this to one line. Say only what a reader needs right here.
 ```
 
 An empty scan enforces nothing. No workflow file and no `action.yml` under the workspace gives a warning that names the workspace, never a quiet pass.
