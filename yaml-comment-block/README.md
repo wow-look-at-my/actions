@@ -2,7 +2,7 @@
 
 Fail CI when a GitHub Actions YAML file carries **more than 1 comment line in a row**.
 
-A comment that runs to a second line is almost always a warning about a trap. The fix is to remove the trap. A warning stays true only until the code moves, and nothing checks it after that.
+A comment that runs to a second line is usually an essay, not a note. The fix is to shorten it to what a reader needs right here — usually one line. Real depth that outlives one line belongs in an existing doc, cited here in one line. Never create a new file only to get past this check. A wall of comments moved verbatim into a fresh doc is the same essay in a different place, and it still fails the next reader.
 
 The limit is a constant. There is deliberately no input that raises it. A settable maximum removes the rule instead of configuring it.
 
@@ -47,7 +47,7 @@ A comment line is a line whose first non-whitespace character is `#`. A block is
 Each block is one annotation. It names the file, the count, the span, and the limit:
 
 ```
-.github/workflows/ci.yml: 9 comment lines in a row (lines 48-56) — the limit is 1.
+.github/workflows/ci.yml: 9 comment lines in a row (lines 48-56) — the limit is 1. Shorten this to one line. Say only what a reader needs right here.
 ```
 
 An empty scan enforces nothing. No workflow file and no `action.yml` under the workspace gives a warning that names the workspace, never a quiet pass.
