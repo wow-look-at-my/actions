@@ -1,7 +1,7 @@
 {
   "name": "yaml-comment-block",
   "version": "1.0.0",
-  "description": "Fail CI when a GitHub Actions YAML file carries more than 3 comment lines in a row",
+  "description": "Fail CI when a GitHub Actions YAML file carries more than 1 comment line in a row",
   "main": "dist/index.js",
   "type": "commonjs",
   "dependencies": {
