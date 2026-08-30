@@ -20,6 +20,14 @@ dats is fetched directly, not through go-toolchain. go-toolchain bundles dats. I
 
 bubblewrap is the native Linux backend of dats. ubuntu denies an unprivileged user namespace by default. The sysctl call re-enables it. Without a backend, dats fails. It never runs the commands unsandboxed.
 
+## test-secret-server
+
+`export-secrets.sh` is extracted out of `action.yml` so dats can drive it
+directly, with no OIDC token and no network. jq.exe on Windows writes CRLF,
+so a key or value read off its stdout carries a trailing `\r` unless
+stripped; the suite proves this with a fake `jq` that appends `\r` to real
+jq's output, and a negative control proves it fails without the strip.
+
 ## test-cache-xfer
 
 This is a round-trip for the cache hand-off trio against the real cache service. The steps are upload, nameless discovery, named download, the ambiguity hard-error, and cleanup. Entries are run-scoped, so parallel CI runs never interfere.

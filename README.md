@@ -278,7 +278,6 @@ Notes:
 - `actions: read` matters only with `artifact-name`: `buildhost-publish-site` fetches the named artifact through the Actions REST API (`listWorkflowRunArtifacts` and `downloadArtifact`), and both calls require it.
 - Fork PRs are skipped (they receive no OIDC token and cannot authenticate to buildhost).
 
-
 ### Publish to GHCR
 
 ```yml
