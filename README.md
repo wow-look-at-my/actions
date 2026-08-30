@@ -139,6 +139,14 @@ Reusable GitHub Actions.
 - uses: wow-look-at-my/actions@no-scripts-action#latest
 ```
 
+### [No Tests In YAML](no-tests-in-yaml/)
+
+```yml
+# Fail CI when a GitHub Actions YAML file in the local call chain carries a test instead of invoking the repository's own suite.
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/no-tests-in-yaml/README.md
+- uses: wow-look-at-my/actions@no-tests-in-yaml#latest
+```
+
 ### [Orphan Release](orphan-release/)
 
 ```yml
@@ -269,6 +277,7 @@ Notes:
 - The upload is buildhost's own `buildhost-publish-site` action: a tar.gz PUT to `sites.<domain>/<project>/branch/<branch>`, authenticated with the workflow's OIDC token (`id-token: write`). `pull-requests: write` is for the sticky comment.
 - `actions: read` matters only with `artifact-name`: `buildhost-publish-site` fetches the named artifact through the Actions REST API (`listWorkflowRunArtifacts` and `downloadArtifact`), and both calls require it.
 - Fork PRs are skipped (they receive no OIDC token and cannot authenticate to buildhost).
+
 
 ### Publish to GHCR
 
