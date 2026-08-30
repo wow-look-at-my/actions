@@ -22,11 +22,11 @@ bubblewrap is the native Linux backend of dats. ubuntu denies an unprivileged us
 
 ## test-secret-server
 
-`export-secrets.sh` is extracted out of `action.yml` so dats can drive it
-directly, with no OIDC token and no network. jq.exe on Windows writes CRLF,
-so a key or value read off its stdout carries a trailing `\r` unless
-stripped; the suite proves this with a fake `jq` that appends `\r` to real
-jq's output, and a negative control proves it fails without the strip.
+`export-secrets.sh` is extracted out of `action.yml`, so dats can drive it directly. It needs no OIDC token and no network.
+
+jq.exe on Windows writes CRLF. A key or value read off its stdout then carries a trailing `\r`.
+
+The suite proves this with a fake `jq` that appends `\r` to real jq's output. A negative control proves the suite fails without the strip.
 
 ## test-cache-xfer
 
