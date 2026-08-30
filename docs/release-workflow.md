@@ -16,9 +16,15 @@ Tags without `#` are kept and logged. Orphan-release never mints them, and a man
 
 The suite pushes to local bare repositories. It needs no token and no network. It covers what a release does when it loses the race for `#latest`. The numbered tag must publish anyway.
 
-dats is fetched directly, not through go-toolchain. go-toolchain bundles dats. It also hard-requires a go.mod file. This repo has none.
+This repo has no go.mod. go-toolchain bundles dats but hard-requires one, so this repo cannot get dats that way. It uses the `wow-look-at-my/dats` action instead, which downloads the binary and makes sure a sandbox backend works.
 
-bubblewrap is the native Linux backend of dats. ubuntu denies an unprivileged user namespace by default. The sysctl call re-enables it. Without a backend, dats fails. It never runs the commands unsandboxed.
+## test-secret-server
+
+`export-secrets.sh` is extracted out of `action.yml`, so dats can drive it directly. It needs no OIDC token and no network.
+
+jq.exe on Windows writes CRLF. A key or value read off its stdout then carries a trailing `\r`.
+
+The suite proves this with a fake `jq` that appends `\r` to real jq's output. A negative control proves the suite fails without the strip.
 
 ## test-cache-xfer
 
