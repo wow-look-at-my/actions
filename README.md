@@ -182,6 +182,14 @@ Reusable GitHub Actions.
 - uses: wow-look-at-my/actions@ste-lint#latest
 ```
 
+### [Tag Cleanup](tag-cleanup/)
+
+```yml
+# Delete orphan-release tags whose action, branch, or version no longer exists.
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/tag-cleanup/README.md
+- uses: wow-look-at-my/actions@tag-cleanup#latest
+```
+
 ### [Tag Runner Image](tag-runner/)
 
 ```yml

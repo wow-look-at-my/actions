@@ -2,6 +2,16 @@
 
 `.github/workflows/release.yml` builds, dogfoods, and tags every action in this repo. Its job comments stay to one line and point here. This file holds the reasoning behind the parts that look arbitrary.
 
+## cleanup
+
+The cleanup job sweeps release tags that name things which no longer exist. Three shapes are junk. The action directory is gone from the default branch. A branch tag names a branch the remote no longer has. The version suffix is neither a number nor `#latest`.
+
+Existence is judged against the default branch, fetched fresh, never against the checkout. A feature branch that deletes an action must not delete that action's tags on its own run. The default branch is the only referee. The job is therefore safe on every branch push.
+
+A deletion that loses a race against a concurrent run is tolerated with a warning. Every other failure is loud. An unresolvable default branch or a failed tree fetch aborts the job. A blind sweep can delete every tag.
+
+Tags without `#` are kept and logged. Orphan-release never mints them, and a manually created tag may carry a meaning this job cannot know.
+
 ## test-orphan-release
 
 The suite pushes to local bare repositories. It needs no token and no network. It covers what a release does when it loses the race for `#latest`. The numbered tag must publish anyway.
