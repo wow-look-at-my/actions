@@ -55,14 +55,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install dats
-        run: |
-          sudo apt-get update && sudo apt-get install -y bubblewrap
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-          curl -fL --compressed "https://dl.pazer.build/dats?os=linux&arch=amd64" -o /usr/local/bin/dats
-          chmod +x /usr/local/bin/dats
-          dats --version
-      - run: dats test orphan-release/dats/
+      - uses: wow-look-at-my/dats@master
+        with:
+          args: 'test orphan-release/dats/'
+
+  # see docs/release-workflow.md
+  test-secret-server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: wow-look-at-my/dats@master
+        with:
+          args: 'test secret-server/dats/'
 
   # Round-trip against the REAL cache service. see docs/release-workflow.md
   test-cache-xfer:
