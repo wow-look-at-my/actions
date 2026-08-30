@@ -11,10 +11,11 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Cleanup orphaned branch tags
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: ./orphan-release/orphan-cleanup.sh
+      # node24 action: dist/ is not committed, so build before `uses: ./...`.
+      - uses: ./.github/actions/setup-and-build
+        with:
+          action-dir: tag-cleanup
+      - uses: ./tag-cleanup
 
   check-readme:
     runs-on: ubuntu-latest
