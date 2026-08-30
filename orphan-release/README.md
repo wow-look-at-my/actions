@@ -56,13 +56,15 @@ This is useful for GitHub Actions where you want separate tags per branch.
 
 ## Cleanup
 
-Delete all orphaned branch tags (tags for branches that no longer exist):
+Delete stale release tags in one pass. The sweep covers three cases. An action directory is gone from the default branch. A branch tag names a branch the remote no longer has. A version suffix is neither a number nor `latest`:
 
 ```yaml
 - uses: wow-look-at-my/actions@orphan-release#latest
   with:
     cleanup: true
 ```
+
+The input delegates to the [`tag-cleanup`](../tag-cleanup/) action. Its README documents the full deletion rules.
 
 ## Inputs
 
@@ -74,7 +76,7 @@ Delete all orphaned branch tags (tags for branches that no longer exist):
 | `exclude` | No | Space-separated patterns to exclude |
 | `message` | No | Commit message (defaults to "Release {tag}") |
 | `include-branch` | No | Include branch name in tags for non-main branches |
-| `cleanup` | No | Delete orphaned branch tags (cleanup mode) |
+| `cleanup` | No | Delete stale release tags (cleanup mode) |
 
 *Not required when using `cleanup`.
 
