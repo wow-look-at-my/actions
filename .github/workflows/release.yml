@@ -21,15 +21,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check README is up-to-date
-        run: |
-          ./generate-readme.sh > README.md.tmp
-          if ! diff -q README.md README.md.tmp > /dev/null 2>&1; then
-            echo "::error::README.md is out of date. Run ./generate-readme.sh > README.md and commit the result."
-            diff README.md README.md.tmp || true
-            exit 1
-          fi
-          rm README.md.tmp
+      # The assertion is dats/readme.dats, so an engineer can run it. see docs/release-workflow.md
+      - uses: wow-look-at-my/dats@master
+        with:
+          args: 'test dats/'
+
+  no-tests-in-yaml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-and-build
+        with:
+          action-dir: no-tests-in-yaml
+      - uses: ./no-tests-in-yaml
 
   no-scripts:
     runs-on: ubuntu-latest
