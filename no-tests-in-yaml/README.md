@@ -18,6 +18,10 @@ Every rule reads a `run:` script. Nothing else in the file is examined, and a st
 | `assertion` | A comparison paired with a failure on one line: `grep -q … \|\| exit 1`, `if ! grep …`, `[ "$x" = "$y" ] \|\| { … }`, `diff … && echo "::error::…"`, or a line that both annotates an error and exits nonzero — the shape a `case` arm uses. |
 | `assert-helper` | A shell function named `assert*`, `expect*`, `require*`, `must*`, `fail_if*` or `check_that*`. A workflow that grows its own assertion vocabulary is a test framework with no test runner. |
 
+## What it does not catch
+
+The assertion rules read one line at a time, so a test spread across several lines with no comparison on any of them goes unseen — a `case` arm whose `echo "::error::…"` and `exit 1` sit on separate lines, for instance. That shape is also how an action validates its own inputs, which is not a test, and telling the two apart needs more than the text of one line. Silence from this action is not proof that a workflow holds no test.
+
 ## What it scans
 
 The whole local call chain, the same way `yaml-comment-block` does: every workflow file, every `action.yml` at any depth, and everything they reach through `uses: ./…`. A `uses:` into another repository is listed in the log and checked where it lives.
