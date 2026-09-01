@@ -49,6 +49,9 @@ runs:
         fi
 
     - if: steps.claim.outputs.first == 'true'
+      uses: wow-look-at-my/actions@no-all-builds-job#latest
+
+    - if: steps.claim.outputs.first == 'true'
       uses: wow-look-at-my/actions@yaml-comment-block#latest
       with:
         exclude: ${{ steps.gate.outputs.exclude }}
