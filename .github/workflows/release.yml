@@ -2,6 +2,8 @@ name: Release Actions
 
 on:
   push:
+    branches:
+      - '**'
   workflow_dispatch:
 
 jobs:
@@ -14,54 +16,37 @@ jobs:
       checks: read # the guard's check-runs layer must be able to run
     steps:
       - uses: actions/checkout@v4
+      - uses: ./cache-rg/test
+      # Toolchain only -- every node24 action this job runs is built below.
+      - uses: ./.github/actions/setup-and-build
+      # node24 actions: dist/ is not committed, so build before `uses: ./...`.
+      - name: Build the typescript action, which builds the rest
+        run: cd typescript && just build
+      - name: Build the actions this job runs
+        uses: ./typescript
+        with:
+          script: |
+            const dirs = ['no-tests-in-yaml', 'no-scripts-action', 'tag-cleanup', 'no-all-builds-job',
+              'yaml-comment-block', 'ste-lint', 'cache-upload', 'cache-download', 'cache-cleanup'];
+            await Promise.all(dirs.map(dir => $`just build`.cwd(dir)));
+      # The guard suites drive dist/, so they run after the build above.
       - uses: wow-look-at-my/dats@master
         with:
           tests: |
             dats/
             orphan-release/dats/
             secret-server/dats/
-      - uses: ./cache-rg/test
-      # Toolchain only -- every node24 action this job runs is built below.
-      - uses: ./.github/actions/setup-and-build
-      # node24 actions: dist/ is not committed, so build before `uses: ./...`.
-      - name: Build the actions this job runs
-        run: |
-          for a in no-tests-in-yaml no-scripts-action tag-cleanup no-all-builds-job \
-                   yaml-comment-block typescript cache-upload cache-download cache-cleanup; do
-            (cd "$a" && just build)
-          done
+            no-all-builds-job/dats/
+            yaml-comment-block/dats/
       - uses: ./no-tests-in-yaml
+      # ste-lint/fixtures/*.md break the rules on purpose, so they are not listed.
+      - uses: ./ste-lint
+        with:
+          files: '*.md docs/*.md .github/workflows/*.md */README.md */CLAUDE.md'
       - uses: ./no-scripts-action
       - uses: ./tag-cleanup
-      - name: Guard passes on this repo
-        uses: ./no-all-builds-job
-      # A step `env:` cannot override GITHUB_*. see docs/release-workflow.md
-      - name: Guard must fail on the shadowed fixture (file-scan layer)
-        id: shadowed
-        continue-on-error: true
-        run: NO_ALL_BUILDS_JOB_ALREADY_RAN= GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/no-all-builds-job/test/fixtures/shadowed" INPUT_TOKEN= node no-all-builds-job/dist/index.js
-      - name: Assert the shadowed fixture failed the guard
-        run: test "${{ steps.shadowed.outcome }}" = "failure"
-      # A layer that cannot scan is a blocking error. see docs/release-workflow.md
-      - name: Guard must fail when the API layers cannot run
-        id: layers
-        continue-on-error: true
-        run: NO_ALL_BUILDS_JOB_ALREADY_RAN= INPUT_TOKEN=x node no-all-builds-job/dist/index.js
-      - name: Assert the unrunnable API layers failed the guard
-        run: test "${{ steps.layers.outcome }}" = "failure"
-      # The sentinel skips the guard before any check runs.
-      - name: Guard skips when the run-once sentinel is set
-        run: NO_ALL_BUILDS_JOB_ALREADY_RAN=1 GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/no-all-builds-job/test/fixtures/shadowed" INPUT_TOKEN=x node no-all-builds-job/dist/index.js
-      - name: Comment-block check passes on this repo
-        uses: ./yaml-comment-block
-      - name: Comment-block check must fail on the wall fixture
-        id: wall
-        continue-on-error: true
-        run: GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/yaml-comment-block/test/fixtures/wall" node yaml-comment-block/dist/index.js
-      - name: Assert the wall fixture failed the check
-        run: test "${{ steps.wall.outcome }}" = "failure"
-      - name: Comment-block check must pass on the at-the-limit fixture
-        run: GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/yaml-comment-block/test/fixtures/clean" node yaml-comment-block/dist/index.js
+      - uses: ./no-all-builds-job
+      - uses: ./yaml-comment-block
       # Type-aware rules against boxed-String output streams.
       - name: Lint typescript action
         working-directory: typescript
@@ -137,18 +122,6 @@ jobs:
         uses: ./cache-cleanup
       - name: Assert cleanup deleted both hand-offs
         run: test "${{ steps.cleanup.outputs.deleted-count }}" -ge 2
-
-  ste-lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-and-build
-        with:
-          action-dir: ste-lint
-      # ste-lint/fixtures/*.md break the rules on purpose, so they are not listed.
-      - uses: ./ste-lint
-        with:
-          files: '*.md docs/*.md .github/workflows/*.md */README.md */CLAUDE.md'
 
   validate:
     runs-on: ubuntu-latest
