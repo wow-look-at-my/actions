@@ -38,27 +38,22 @@ runs:
   steps:
     - id: resolve
       uses: wow-look-at-my/actions@typescript#latest
-      env:
-        PERMISSION: ${{ inputs.permission }}
-        LEVEL: ${{ inputs.level }}
-        ASSERT: ${{ inputs.assert }}
-        WORKFLOW: ${{ inputs.workflow }}
-        JOB: ${{ inputs.job }}
       with:
         script: |
           type Level = 'none' | 'read' | 'write';
           const RANK: Record<Level, number> = {none: 0, read: 1, write: 2};
           const isLevel = (value: unknown): value is Level => typeof value === 'string' && value in RANK;
 
-          const {PERMISSION: permission, LEVEL: want, ASSERT: assert, WORKFLOW, JOB} = env as Record<string, string>;
+          const permission = '${{ inputs.permission }}';
+          const want = '${{ inputs.level }}';
           if (!isLevel(want)) throw new Error(`level is '${want}', not read, write or none`);
 
-          const relative = WORKFLOW || env.GITHUB_WORKFLOW_REF!.split('@')[0].split('/').slice(2).join('/');
+          const relative = '${{ inputs.workflow }}' || env.GITHUB_WORKFLOW_REF!.split('@')[0].split('/').slice(2).join('/');
           const file = path.join(env.GITHUB_WORKSPACE!, relative);
           if (!fs.existsSync(file)) throw new Error(`${file} does not exist. Check the repository out before this step.`);
 
           const doc = await $`yq -o=json ${file}`.json<{jobs?: Record<string, {permissions?: unknown}>; permissions?: unknown}>();
-          const job = JOB || env.GITHUB_JOB!;
+          const job = '${{ inputs.job }}' || env.GITHUB_JOB!;
           if (!doc.jobs?.[job]) throw new Error(`${relative} names no job '${job}'. It has: ${Object.keys(doc.jobs ?? {}).join(', ')}`);
 
           const levelIn = (block: unknown, where: string): Level | undefined => {
@@ -92,7 +87,7 @@ runs:
             const why = source === 'default'
               ? `${where} declares no permissions block, so ${permission} falls to the repository default. Declare the block to grant it.`
               : `${permission}: ${want} is NOT granted to ${where}. Its ${source} permissions block gives ${level}.`;
-            if (assert === 'true') throw new Error(why);
+            if ('${{ inputs.assert }}' === 'true') throw new Error(why);
             core.warning(why);
           }
           return {granted: String(granted), level, source};

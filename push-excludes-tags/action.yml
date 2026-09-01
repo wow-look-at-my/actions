@@ -13,8 +13,6 @@ runs:
   using: composite
   steps:
     - uses: wow-look-at-my/actions@typescript#latest
-      env:
-        EXCLUDE: ${{ inputs.exclude }}
       with:
         script: |
           const FILTERS = ['branches', 'branches-ignore', 'tags', 'tags-ignore'];
@@ -23,7 +21,7 @@ runs:
             core.warning(`no ${dir}, so this run enforced nothing. Check the repo out first.`);
             return;
           }
-          const skip = new Set((env.EXCLUDE ?? '').split(',').map(name => name.trim()).filter(Boolean));
+          const skip = new Set('${{ inputs.exclude }}'.split(',').map(name => name.trim()).filter(Boolean));
           const names = fs.readdirSync(dir).filter(name => /\.ya?ml$/.test(name) && !skip.has(name)).sort();
           if (names.length === 0) {
             core.warning(`no workflow file under ${dir}, so this run enforced nothing.`);
