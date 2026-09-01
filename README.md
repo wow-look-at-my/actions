@@ -163,6 +163,14 @@ Reusable GitHub Actions.
 - uses: wow-look-at-my/actions@orphan-release#latest
 ```
 
+### [Push Excludes Tags](push-excludes-tags/)
+
+```yml
+# Fail CI when a workflow's push trigger names no ref filter, so tag pushes start it again.
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/push-excludes-tags/README.md
+- uses: wow-look-at-my/actions@push-excludes-tags#latest
+```
+
 ### [Run Once](run-once/)
 
 ```yml

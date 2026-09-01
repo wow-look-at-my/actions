@@ -1,0 +1,14 @@
+name: Push Excludes Tags
+description: Fail CI when a workflow's push trigger names no ref filter, so tag pushes start it again
+
+inputs:
+  exclude:
+    description: >-
+      Glob patterns for workflow files the scan skips, newline or comma
+      separated. Intended for fixtures that violate the rule on purpose.
+    required: false
+    default: ''
+
+runs:
+  using: node24
+  main: dist/index.js
