@@ -1,4 +1,4 @@
-# Sharing source between actions (`shared/`)
+# Sharing source between actions (`_shared/`)
 
 Each action directory is its own package. Common code used to be **copied** into both actions that needed it. A `cmp` step in `release.yml` asserted that the copies stayed byte-identical.
 

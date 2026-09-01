@@ -84,10 +84,10 @@ jobs:
           for a in cache-upload cache-download cache-cleanup; do
             (cd "$a" && just build)
           done
-      # shared/cache-xfer has no package.json, so the release matrix never tests it.
+      # _shared/cache-xfer has no package.json, so the release matrix never tests it.
       - name: Shared cache-xfer unit tests
         working-directory: cache-download
-        run: pnpm tsx --test ../shared/cache-xfer/*.test.ts
+        run: pnpm tsx --test ../_shared/cache-xfer/*.test.ts
       - name: Create hand-off payload
         run: |
           mkdir -p handoff-src/sub
@@ -358,7 +358,7 @@ jobs:
         run: >
           ./orphan-release/orphan-release.sh
           --source "${{ matrix.action }}"
-          --exclude "src node_modules tsconfig.json justfile package.json pnpm-lock.yaml pnpm-workspace.yaml"
+          --exclude "src node_modules tsconfig.json ts0.json justfile package.json pnpm-lock.yaml pnpm-workspace.yaml"
 
   release-composite:
     needs: [cleanup, detect]

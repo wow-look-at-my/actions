@@ -1,0 +1,8 @@
+[private]
+help:
+	@just --list
+
+build:
+	pnpm install
+	curl -fL --compressed "https://dl.pazer.build/ts0?branch=master&os=linux&arch=amd64" -o /tmp/ts0.cjs
+	node /tmp/ts0.cjs build
