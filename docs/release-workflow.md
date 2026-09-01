@@ -2,7 +2,7 @@
 
 `.github/workflows/release.yml` builds, dogfoods, and tags every action in this repo. Its job comments stay to one line and point here. This file holds the reasoning behind the parts that look arbitrary.
 
-## cleanup
+## checks: cleanup
 
 The cleanup job sweeps release tags that name things which no longer exist. Three shapes are junk. The action directory is gone from the default branch. A branch tag names a branch the remote no longer has. The version suffix is neither a number nor `#latest`.
 
@@ -12,13 +12,13 @@ A deletion that loses a race against a concurrent run is tolerated with a warnin
 
 Tags without `#` are kept and logged. Orphan-release never mints them, and a manually created tag may carry a meaning this job cannot know.
 
-## test-orphan-release
+## checks: orphan-release
 
 The suite pushes to local bare repositories. It needs no token and no network. It covers what a release does when it loses the race for `#latest`. The numbered tag must publish anyway.
 
 This repo has no go.mod. go-toolchain bundles dats but hard-requires one, so this repo cannot get dats that way. It uses the `wow-look-at-my/dats` action instead, which downloads the binary and makes sure a sandbox backend works.
 
-## test-secret-server
+## checks: secret-server
 
 `export-secrets.sh` is extracted out of `action.yml`, so dats can drive it directly. It needs no OIDC token and no network.
 
@@ -26,11 +26,11 @@ jq.exe on Windows writes CRLF. A key or value read off its stdout then carries a
 
 The suite proves this with a fake `jq` that appends `\r` to real jq's output. A negative control proves the suite fails without the strip.
 
-## test-cache-xfer
+## checks: cache-xfer
 
 This is a round-trip for the cache hand-off trio against the real cache service. The steps are upload, nameless discovery, named download, the ambiguity hard-error, and cleanup. Entries are run-scoped, so parallel CI runs never interfere.
 
-## test-no-all-builds-job
+## checks: no-all-builds-job
 
 The guard must pass on this repo. No job here is ever named `all-builds`. The guard must also fail on the shadowed fixture. The API layers are hard-required. The job grants `actions: read` and `checks: read`, so the passing run exercises them for real. A bogus-token step then proves that a layer which cannot run fails the guard.
 
@@ -44,12 +44,12 @@ The last two steps prove the two failure modes. A token whose API layers cannot 
 
 Every `.md` file in this repo goes through `ste-lint`. Sentence length, contractions, banned modal verbs, semicolons, and comma splices fail the job. The heuristics only warn.
 
-## test-yaml-comment-block
+## checks: yaml-comment-block
 
 Two fixtures run against the built bundle, with `GITHUB_WORKSPACE` pointed at each. `test/fixtures/clean` sits at the one-line limit and must pass. `test/fixtures/wall` carries a two-line block and must fail. The plain `uses: ./yaml-comment-block` step above them checks the repo itself.
 
 Nothing excludes the fixtures from that step. The scan matches `.github/workflows/*.yml` at the workspace root only, and a fixture workflow file sits under `yaml-comment-block/test/fixtures/<name>/.github/workflows/`.
 
-## validate-workflows
+## validate: workflows
 
 Only the workflow files are validated. The `action.yml` files in this repo carry a non-standard `version:` field and `using: node24`. The bundled schema of action-validator rejects both. A non-matching `actions:` glob therefore skips them, because nullglob gives zero iterations. Every workflow, the reusable ones included, is still schema-checked.
