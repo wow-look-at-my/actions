@@ -54,9 +54,8 @@ runs:
           const want = env.LEVEL!;
           if (!isLevel(want)) throw new Error(`level is '${want}', not read, write or none`);
 
-          const workspace = env.GITHUB_WORKSPACE!;
           const relative = env.WORKFLOW || env.GITHUB_WORKFLOW_REF!.split('@')[0].split('/').slice(2).join('/');
-          const file = path.join(workspace, relative);
+          const file = path.join(env.GITHUB_WORKSPACE!, relative);
           if (!fs.existsSync(file)) throw new Error(`${file} does not exist. Check the repository out before this step.`);
 
           const doc = await $`yq -o=json ${file}`.json<{jobs?: Record<string, {permissions?: unknown}>; permissions?: unknown}>();
