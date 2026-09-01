@@ -24,7 +24,7 @@ jobs:
       # The assertion is dats/readme.dats, so an engineer can run it. see docs/release-workflow.md
       - uses: wow-look-at-my/dats@master
         with:
-          args: 'test dats/'
+          tests: 'dats/'
 
   no-tests-in-yaml:
     runs-on: ubuntu-latest
@@ -57,7 +57,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: wow-look-at-my/dats@master
         with:
-          args: 'test orphan-release/dats/'
+          tests: 'orphan-release/dats/'
 
   # see docs/release-workflow.md
   test-secret-server:
@@ -66,7 +66,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: wow-look-at-my/dats@master
         with:
-          args: 'test secret-server/dats/'
+          tests: 'secret-server/dats/'
 
   # Round-trip against the REAL cache service. see docs/release-workflow.md
   test-cache-xfer:
