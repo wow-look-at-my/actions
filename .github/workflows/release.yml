@@ -17,8 +17,8 @@ jobs:
           action-dir: tag-cleanup
       - uses: ./tag-cleanup
 
-  # Every dats suite in this repo, in one run of the binary. see docs/release-workflow.md
-  dats:
+  # The suites and guards that need nothing but a checkout. see docs/release-workflow.md
+  checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,30 +28,16 @@ jobs:
             dats/
             orphan-release/dats/
             secret-server/dats/
-
-  no-tests-in-yaml:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+      - uses: ./cache-rg/test
+      # node24 actions: dist/ is not committed, so build before `uses: ./...`.
       - uses: ./.github/actions/setup-and-build
         with:
           action-dir: no-tests-in-yaml
       - uses: ./no-tests-in-yaml
-
-  no-scripts:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-and-build
         with:
           action-dir: no-scripts-action
       - uses: ./no-scripts-action
-
-  test-cache-rg:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./cache-rg/test
 
   # Round-trip against the REAL cache service. see docs/release-workflow.md
   test-cache-xfer:

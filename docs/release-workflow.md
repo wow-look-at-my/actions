@@ -12,13 +12,13 @@ A deletion that loses a race against a concurrent run is tolerated with a warnin
 
 Tags without `#` are kept and logged. Orphan-release never mints them, and a manually created tag may carry a meaning this job cannot know.
 
-## dats: orphan-release
+## checks: orphan-release
 
 The suite pushes to local bare repositories. It needs no token and no network. It covers what a release does when it loses the race for `#latest`. The numbered tag must publish anyway.
 
 This repo has no go.mod. go-toolchain bundles dats but hard-requires one, so this repo cannot get dats that way. It uses the `wow-look-at-my/dats` action instead, which downloads the binary and makes sure a sandbox backend works.
 
-## dats: secret-server
+## checks: secret-server
 
 `export-secrets.sh` is extracted out of `action.yml`, so dats can drive it directly. It needs no OIDC token and no network.
 
