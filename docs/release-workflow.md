@@ -26,11 +26,11 @@ jq.exe on Windows writes CRLF. A key or value read off its stdout then carries a
 
 The suite proves this with a fake `jq` that appends `\r` to real jq's output. A negative control proves the suite fails without the strip.
 
-## test-cache-xfer
+## checks: cache-xfer
 
 This is a round-trip for the cache hand-off trio against the real cache service. The steps are upload, nameless discovery, named download, the ambiguity hard-error, and cleanup. Entries are run-scoped, so parallel CI runs never interfere.
 
-## test-no-all-builds-job
+## checks: no-all-builds-job
 
 The guard must pass on this repo. No job here is ever named `all-builds`. The guard must also fail on the shadowed fixture. The API layers are hard-required. The job grants `actions: read` and `checks: read`, so the passing run exercises them for real. A bogus-token step then proves that a layer which cannot run fails the guard.
 
@@ -44,7 +44,7 @@ The last two steps prove the two failure modes. A token whose API layers cannot 
 
 Every `.md` file in this repo goes through `ste-lint`. Sentence length, contractions, banned modal verbs, semicolons, and comma splices fail the job. The heuristics only warn.
 
-## test-yaml-comment-block
+## checks: yaml-comment-block
 
 Two fixtures run against the built bundle, with `GITHUB_WORKSPACE` pointed at each. `test/fixtures/clean` sits at the one-line limit and must pass. `test/fixtures/wall` carries a two-line block and must fail. The plain `uses: ./yaml-comment-block` step above them checks the repo itself.
 
