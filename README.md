@@ -78,6 +78,14 @@ Reusable GitHub Actions.
     project-name: # Cloudflare Pages project name (auto-created on first use)
 ```
 
+### [Common Checks](common-checks/)
+
+```yml
+# Run this org's GitHub Actions checks once per workflow run, over the calling repo only.
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/common-checks/README.md
+- uses: wow-look-at-my/actions@common-checks#latest
+```
+
 ### [Download Executable Artifact](download-exe/)
 
 ```yml
@@ -161,6 +169,16 @@ Reusable GitHub Actions.
 # Review a pull request using the pi coding agent SDK (via shaftoe/pi-coding-agent-action). Defaults mirror the configured local pi setup (Gemma 4 26B via llama.pazer.ai)..
 # Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/pi-review/README.md
 - uses: wow-look-at-my/actions@pi-review#latest
+```
+
+### [Run Once](run-once/)
+
+```yml
+# Claim a workflow run for one job, so the work behind the claim runs once per run instead of once per job.
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/run-once/README.md
+- uses: wow-look-at-my/actions@run-once#latest
+  with:
+    name: # Claim name, unique per piece of work (the claim is scoped to this run and attempt)
 ```
 
 ### [Fetch Secrets](secret-server/)

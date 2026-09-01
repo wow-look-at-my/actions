@@ -35,7 +35,7 @@ test('actionDirsFromPaths keeps only directories carrying an action.yml', () => 
 		'a/b/action.yml',
 		'a/b/other.yml',
 		'.github/actions/setup-and-build/action.yml',
-		'shared/cache-xfer/lib.ts',
+		'_shared/cache-xfer/lib.ts',
 		'widget/index.ts',
 	]);
 	assert.deepEqual([...dirs].sort(), ['.github/actions/setup-and-build', 'a/b', 'widget']);
