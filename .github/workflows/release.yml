@@ -26,12 +26,15 @@ jobs:
       # Toolchain only -- every node24 action this job runs is built below.
       - uses: ./.github/actions/setup-and-build
       # node24 actions: dist/ is not committed, so build before `uses: ./...`.
+      - name: Build the typescript action, which builds the rest
+        run: cd typescript && just build
       - name: Build the actions this job runs
-        run: |
-          for a in no-tests-in-yaml no-scripts-action tag-cleanup no-all-builds-job \
-                   yaml-comment-block typescript ste-lint cache-upload cache-download cache-cleanup; do
-            (cd "$a" && just build)
-          done
+        uses: ./typescript
+        with:
+          script: |
+            const dirs = ['no-tests-in-yaml', 'no-scripts-action', 'tag-cleanup', 'no-all-builds-job',
+              'yaml-comment-block', 'ste-lint', 'cache-upload', 'cache-download', 'cache-cleanup'];
+            await Promise.all(dirs.map(dir => $`just build`.cwd(dir)));
       - uses: ./no-tests-in-yaml
       # ste-lint/fixtures/*.md break the rules on purpose, so they are not listed.
       - uses: ./ste-lint
