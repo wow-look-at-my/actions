@@ -1,0 +1,70 @@
+name: Cloudflare Pages
+version: 1
+description: 'Publish a directory to Cloudflare Pages by direct upload (wrangler) - no Actions artifacts, no Cloudflare git integration. Credentials come from secret-server via OIDC (the caller must grant id-token: write permission); the first deploy auto-creates the Pages project; missing credentials default to a loud green no-op'
+
+inputs:
+  directory:
+    description: 'Built/staged directory to upload'
+    required: true
+  project-name:
+    description: 'Cloudflare Pages project name (auto-created on first use)'
+    required: true
+  branch:
+    description: "Deployment branch; empty = the current github.ref_name. A deploy whose branch equals the project's production branch is a production deployment, anything else is a preview"
+    required: false
+    default: ''
+  production-branch:
+    description: 'Production branch used when auto-creating the project'
+    required: false
+    default: 'master'
+  missing-credentials:
+    description: "How to treat absent Cloudflare credentials: 'warn' = loud green no-op (warning annotation + step summary), 'fail' = red"
+    required: false
+    default: 'warn'
+
+runs:
+  using: composite
+  steps:
+    # Needs `id-token: write`. see cloudflare-pages/README.md
+    - uses: wow-look-at-my/actions@secret-server#latest
+
+    # see cloudflare-pages/README.md for the no-credentials behaviour
+    - name: Deploy to Cloudflare Pages
+      uses: wow-look-at-my/actions@typescript#latest
+      with:
+        script: |
+          const dir = '${{ inputs.directory }}';
+          const project = '${{ inputs.project-name }}';
+          const prodBranch = '${{ inputs.production-branch }}' || 'master';
+          const branch = '${{ inputs.branch }}' || github.ref_name;
+          const onMissing = '${{ inputs.missing-credentials }}' || 'warn';
+          const token = process.env.CLOUDFLARE_API_TOKEN ?? '';
+          const account = process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+          if (!token || !account) {
+            const msg =
+              `Cloudflare Pages deploy of ${dir} to project ${project} SKIPPED: ` +
+              'CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID were not provided by ' +
+              'secret-server — this workflow identity is not entitled to them yet ' +
+              '(or the secrets are not stored). Store both in secret-server ' +
+              '(https://secrets.pazer.io) and entitle this workflow identity, then re-run.';
+            if (onMissing === 'fail') {
+              core.setFailed(msg);
+            } else {
+              core.warning(msg);
+              await core.summary.addRaw('## WARNING: not deployed\n\n' + msg + '\n').write();
+            }
+            return;
+          }
+          if (!fs.existsSync(dir) || fs.readdirSync(dir).length === 0) {
+            core.setFailed(`deploy directory ${dir} is missing or empty — refusing to deploy`);
+            return;
+          }
+          await $`npm install --no-save wrangler@4`;
+          try {
+            await $`npx wrangler pages project create ${project} --production-branch ${prodBranch}`;
+            core.info(`created Cloudflare Pages project ${project}`);
+          } catch {
+            core.info(`Pages project ${project} already exists; deploying to it`);
+          }
+          await $`npx wrangler pages deploy ${dir} --project-name ${project} --branch ${branch} --commit-hash ${context.sha}`;
+          await core.summary.addRaw(`Deployed ${dir} to Cloudflare Pages project ${project} (branch ${branch}).\n`).write();
