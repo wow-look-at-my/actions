@@ -29,10 +29,14 @@ jobs:
       - name: Build the actions this job runs
         run: |
           for a in no-tests-in-yaml no-scripts-action tag-cleanup no-all-builds-job \
-                   yaml-comment-block typescript cache-upload cache-download cache-cleanup; do
+                   yaml-comment-block typescript ste-lint cache-upload cache-download cache-cleanup; do
             (cd "$a" && just build)
           done
       - uses: ./no-tests-in-yaml
+      # ste-lint/fixtures/*.md break the rules on purpose, so they are not listed.
+      - uses: ./ste-lint
+        with:
+          files: '*.md docs/*.md .github/workflows/*.md */README.md */CLAUDE.md'
       - uses: ./no-scripts-action
       - uses: ./tag-cleanup
       - name: Guard passes on this repo
@@ -139,18 +143,6 @@ jobs:
         uses: ./cache-cleanup
       - name: Assert cleanup deleted both hand-offs
         run: test "${{ steps.cleanup.outputs.deleted-count }}" -ge 2
-
-  ste-lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-and-build
-        with:
-          action-dir: ste-lint
-      # ste-lint/fixtures/*.md break the rules on purpose, so they are not listed.
-      - uses: ./ste-lint
-        with:
-          files: '*.md docs/*.md .github/workflows/*.md */README.md */CLAUDE.md'
 
   validate:
     runs-on: ubuntu-latest

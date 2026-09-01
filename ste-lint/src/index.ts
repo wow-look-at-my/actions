@@ -14,8 +14,9 @@ function patternsOf(raw: string): string[] {
 		.filter(Boolean);
 }
 
-function preview(items: string[], limit = 20, join = ', '): string {
-	return items.slice(0, limit).join(join) + (items.length > limit ? ', ...' : '');
+function preview(items: string[], limit = 20): string {
+	const shown = items.slice(0, limit).map(item => `\n  ${item}`).join('');
+	return shown + (items.length > limit ? `\n  ... and ${items.length - limit} more` : '');
 }
 
 function main(): void {
@@ -87,20 +88,20 @@ function main(): void {
 	}
 	if (findings.nounClusters.length) {
 		core.warning(
-			`Possible long noun cluster, heuristic only, not enforced (${findings.nounClusters.length} found): ${preview(findings.nounClusters, 20, ' | ')}`,
+			`Possible long noun cluster, heuristic only, not enforced (${findings.nounClusters.length} found): ${preview(findings.nounClusters)}`,
 		);
 	}
 	if (findings.complexTense.length) {
 		core.warning(
 			`Possible complex verb tense (STE allows only simple tenses), heuristic only, not enforced ` +
-				`(${findings.complexTense.length} found): ${preview(findings.complexTense, 20, ' | ')}`,
+				`(${findings.complexTense.length} found): ${preview(findings.complexTense)}`,
 		);
 	}
 	if (findings.bannedWords.length) {
 		core.warning(
 			`Word not approved in the ASD-STE100 dictionary, heuristic only, not enforced -- this checker ` +
 				`matches text, not part of speech or meaning, so it can miss a word's approved sense ` +
-				`(${findings.bannedWords.length} found): ${preview(findings.bannedWords, 20, ' | ')}`,
+				`(${findings.bannedWords.length} found): ${preview(findings.bannedWords)}`,
 		);
 	}
 	if (findings.longParagraphs.length) {

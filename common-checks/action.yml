@@ -63,5 +63,3 @@ runs:
 
     - if: steps.claim.outputs.first == 'true'
       uses: wow-look-at-my/actions@push-excludes-tags#latest
-      with:
-        exclude: ${{ steps.gate.outputs.exclude }}
