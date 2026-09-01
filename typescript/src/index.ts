@@ -9,9 +9,11 @@ import * as child_process from 'child_process';
 import * as util from 'util';
 import { createRequire } from 'module';
 import * as ts from 'typescript';
+import { parse as parseYaml } from 'yaml';
 import { MAIN_FN, transformScript } from './transform';
 import { highlightSource } from './highlight';
 import { CommentBlock, findCommentBlocks } from './comments';
+import { unnamedStepMessage, unnamedSteps, WorkflowDoc } from './step-name';
 
 type ShellArg = string | number | boolean | null | undefined | string[];
 
@@ -622,6 +624,24 @@ function readUserScript(): { script: string; label: string; dir: string; inline:
 	return { script: inline, label: 'script', dir: process.env.GITHUB_WORKSPACE ?? process.cwd(), inline: true };
 }
 
+// Reads the running workflow to find this step and check it carries a `name:`.
+// A step reached through a composite action is not in that file, and neither is
+// anything outside a workflow run, so both cases return no findings.
+async function unnamedStepPositions(): Promise<{workflow: string; job: string; positions: number[]}> {
+	const ref = process.env.GITHUB_WORKFLOW_REF;
+	const job = process.env.GITHUB_JOB;
+	const workspace = process.env.GITHUB_WORKSPACE;
+	const none = {workflow: '', job: job ?? '', positions: []};
+	if (!ref || !job || !workspace) return none;
+
+	const workflow = ref.split('@')[0].split('/').slice(2).join('/');
+	const file = path.join(workspace, workflow);
+	if (!workflow || !fs.existsSync(file)) return none;
+
+	const doc = parseYaml(fs.readFileSync(file, 'utf-8')) as WorkflowDoc;
+	return {workflow, job, positions: unnamedSteps(doc, job)};
+}
+
 async function run(): Promise<void> {
 	const { script: userScript, label, dir, inline } = readUserScript();
 
@@ -646,6 +666,13 @@ async function run(): Promise<void> {
 	const commentBlocks = inline ? findCommentBlocks(userScript) : [];
 	for (const b of commentBlocks) {
 		core.error(formatCommentBlock(b, label));
+	}
+
+	// Deferred with the comment gate, for the same reason: the script still runs,
+	// so one pass shows everything wrong instead of one error per re-run.
+	const unnamed = await unnamedStepPositions();
+	if (unnamed.positions.length > 0) {
+		core.error(unnamedStepMessage(unnamed.workflow, unnamed.job, unnamed.positions));
 	}
 
 	const { text: source, lineMap } = transformScript(userScript);
@@ -682,6 +709,9 @@ async function run(): Promise<void> {
 	// after the type-check and execution results are already visible.
 	if (commentBlocks.length > 0) {
 		core.setFailed(`Comment check failed: ${commentBlocks.length} block(s) of consecutive \`//\` comment lines.`);
+	}
+	if (unnamed.positions.length > 0) {
+		core.setFailed(`Step name check failed: ${unnamed.positions.length} typescript step(s) in job '${unnamed.job}' carry no \`name:\`.`);
 	}
 }
 

@@ -4,7 +4,8 @@ description: Fail CI when a workflow's push trigger names no ref filter, so tag 
 runs:
   using: composite
   steps:
-    - uses: wow-look-at-my/actions@typescript#latest
+    - name: Check every workflow's push trigger for a ref filter
+      uses: wow-look-at-my/actions@typescript#latest
       with:
         script: |
           const FILTERS = ['branches', 'branches-ignore', 'tags', 'tags-ignore'];
