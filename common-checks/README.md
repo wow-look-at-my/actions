@@ -2,7 +2,7 @@
 
 One step that runs the checks every repository in this org wants.
 
-Today that is [yaml-comment-block](../yaml-comment-block/) and [no-tests-in-yaml](../no-tests-in-yaml/). A check added here reaches every caller on the next run of `common-checks`, with no edit to their workflow.
+`action.yml` names the checks. A check added there reaches every caller on the next run of `common-checks`, with no edit to their workflow.
 
 ## Usage
 
