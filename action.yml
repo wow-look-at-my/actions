@@ -1,0 +1,65 @@
+name: Common Checks
+description: Run this org's GitHub Actions checks once per workflow run, over the calling repo only
+
+inputs:
+  exclude:
+    description: >-
+      Extra glob patterns for files every check skips, newline or comma
+      separated. Submodule paths are excluded already.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    # One job of the run holds the claim. see README.md
+    - id: claim
+      uses: wow-look-at-my/actions@run-once#latest
+      with:
+        name: common-checks
+
+    # The submodule exclusions. see README.md
+    - id: gate
+      if: steps.claim.outputs.first == 'true'
+      shell: bash
+      env:
+        EXCLUDE: ${{ inputs.exclude }}
+      run: |
+        set -euo pipefail
+
+        submodules=''
+        if [ -f .gitmodules ]; then
+          submodules=$(git config --file .gitmodules --get-regexp '^submodule\..*\.path$' | cut -d' ' -f2- || true)
+        fi
+
+        {
+          echo 'exclude<<COMMON_CHECKS_EOF'
+          if [ -n "$EXCLUDE" ]; then
+            printf '%s\n' "$EXCLUDE"
+          fi
+          if [ -n "$submodules" ]; then
+            printf '%s\n' "$submodules" | sed 's|/*$|/**|'
+          fi
+          echo 'COMMON_CHECKS_EOF'
+        } >> "$GITHUB_OUTPUT"
+
+        if [ -n "$submodules" ]; then
+          echo "common-checks: submodules of this repo carry their own CI, so these paths are excluded:"
+          printf '%s\n' "$submodules"
+        fi
+
+    - if: steps.claim.outputs.first == 'true'
+      uses: wow-look-at-my/actions@no-all-builds-job#latest
+
+    - if: steps.claim.outputs.first == 'true'
+      uses: wow-look-at-my/actions@yaml-comment-block#latest
+      with:
+        exclude: ${{ steps.gate.outputs.exclude }}
+
+    - if: steps.claim.outputs.first == 'true'
+      uses: wow-look-at-my/actions@no-tests-in-yaml#latest
+      with:
+        exclude: ${{ steps.gate.outputs.exclude }}
+
+    - if: steps.claim.outputs.first == 'true'
+      uses: wow-look-at-my/actions@push-excludes-tags#latest
