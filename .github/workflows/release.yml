@@ -5,89 +5,72 @@ on:
   workflow_dispatch:
 
 jobs:
-  cleanup:
+  # Every suite, guard and dogfood run this repo does. see docs/release-workflow.md
+  checks:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # tag-cleanup deletes orphaned release tags
+      actions: write # cache-cleanup deletes entries; the all-builds guard lists jobs
+      checks: read # the guard's check-runs layer must be able to run
     steps:
       - uses: actions/checkout@v4
-      # node24 action: dist/ is not committed, so build before `uses: ./...`.
-      - uses: ./.github/actions/setup-and-build
-        with:
-          action-dir: tag-cleanup
-      - uses: ./tag-cleanup
-
-  check-readme:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      # The assertion is dats/readme.dats, so an engineer can run it. see docs/release-workflow.md
       - uses: wow-look-at-my/dats@master
         with:
-          args: 'test dats/'
-
-  no-tests-in-yaml:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-and-build
-        with:
-          action-dir: no-tests-in-yaml
-      - uses: ./no-tests-in-yaml
-
-  no-scripts:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-and-build
-        with:
-          action-dir: no-scripts-action
-      - uses: ./no-scripts-action
-
-  test-cache-rg:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+          tests: |
+            dats/
+            orphan-release/dats/
+            secret-server/dats/
       - uses: ./cache-rg/test
-
-  # see docs/release-workflow.md
-  test-orphan-release:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: wow-look-at-my/dats@master
-        with:
-          args: 'test orphan-release/dats/'
-
-  # see docs/release-workflow.md
-  test-secret-server:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: wow-look-at-my/dats@master
-        with:
-          args: 'test secret-server/dats/'
-
-  # Round-trip against the REAL cache service. see docs/release-workflow.md
-  test-cache-xfer:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: write # cache-cleanup deletes entries; nameless discovery lists them
-    steps:
-      - uses: actions/checkout@v4
-      # Toolchain only -- this job builds three directories itself below.
+      # Toolchain only -- every node24 action this job runs is built below.
       - uses: ./.github/actions/setup-and-build
       # node24 actions: dist/ is not committed, so build before `uses: ./...`.
-      - name: Build the cache hand-off trio
+      - name: Build the actions this job runs
         run: |
-          for a in cache-upload cache-download cache-cleanup; do
+          for a in no-tests-in-yaml no-scripts-action tag-cleanup no-all-builds-job \
+                   yaml-comment-block typescript cache-upload cache-download cache-cleanup; do
             (cd "$a" && just build)
           done
-      # shared/cache-xfer has no package.json, so the release matrix never tests it.
+      - uses: ./no-tests-in-yaml
+      - uses: ./no-scripts-action
+      - uses: ./tag-cleanup
+      - name: Guard passes on this repo
+        uses: ./no-all-builds-job
+      # A step `env:` cannot override GITHUB_*. see docs/release-workflow.md
+      - name: Guard must fail on the shadowed fixture (file-scan layer)
+        id: shadowed
+        continue-on-error: true
+        run: NO_ALL_BUILDS_JOB_ALREADY_RAN= GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/no-all-builds-job/test/fixtures/shadowed" INPUT_TOKEN= node no-all-builds-job/dist/index.js
+      - name: Assert the shadowed fixture failed the guard
+        run: test "${{ steps.shadowed.outcome }}" = "failure"
+      # A layer that cannot scan is a blocking error. see docs/release-workflow.md
+      - name: Guard must fail when the API layers cannot run
+        id: layers
+        continue-on-error: true
+        run: NO_ALL_BUILDS_JOB_ALREADY_RAN= INPUT_TOKEN=x node no-all-builds-job/dist/index.js
+      - name: Assert the unrunnable API layers failed the guard
+        run: test "${{ steps.layers.outcome }}" = "failure"
+      # The sentinel skips the guard before any check runs.
+      - name: Guard skips when the run-once sentinel is set
+        run: NO_ALL_BUILDS_JOB_ALREADY_RAN=1 GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/no-all-builds-job/test/fixtures/shadowed" INPUT_TOKEN=x node no-all-builds-job/dist/index.js
+      - name: Comment-block check passes on this repo
+        uses: ./yaml-comment-block
+      - name: Comment-block check must fail on the wall fixture
+        id: wall
+        continue-on-error: true
+        run: GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/yaml-comment-block/test/fixtures/wall" node yaml-comment-block/dist/index.js
+      - name: Assert the wall fixture failed the check
+        run: test "${{ steps.wall.outcome }}" = "failure"
+      - name: Comment-block check must pass on the at-the-limit fixture
+        run: GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/yaml-comment-block/test/fixtures/clean" node yaml-comment-block/dist/index.js
+      # Type-aware rules against boxed-String output streams.
+      - name: Lint typescript action
+        working-directory: typescript
+        run: just lint
+      - uses: ./typescript/test
+      # _shared/cache-xfer has no package.json, so the release matrix never tests it.
       - name: Shared cache-xfer unit tests
         working-directory: cache-download
-        run: pnpm tsx --test ../shared/cache-xfer/*.test.ts
+        run: pnpm tsx --test ../_shared/cache-xfer/*.test.ts
       - name: Create hand-off payload
         run: |
           mkdir -p handoff-src/sub
@@ -155,39 +138,6 @@ jobs:
       - name: Assert cleanup deleted both hand-offs
         run: test "${{ steps.cleanup.outputs.deleted-count }}" -ge 2
 
-  # see docs/release-workflow.md
-  test-no-all-builds-job:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: read # the guard's run-jobs layer must be able to run
-      checks: read # the guard's check-runs layer must be able to run
-    steps:
-      - uses: actions/checkout@v4
-      # node24 action: dist/ is not committed, so build before `uses: ./...`.
-      - uses: ./.github/actions/setup-and-build
-        with:
-          action-dir: no-all-builds-job
-      - name: Guard passes on this repo
-        uses: ./no-all-builds-job
-      # A step `env:` cannot override GITHUB_*. see docs/release-workflow.md
-      - name: Guard must fail on the shadowed fixture (file-scan layer)
-        id: shadowed
-        continue-on-error: true
-        run: NO_ALL_BUILDS_JOB_ALREADY_RAN= GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/no-all-builds-job/test/fixtures/shadowed" INPUT_TOKEN= node no-all-builds-job/dist/index.js
-      - name: Assert the shadowed fixture failed the guard
-        run: test "${{ steps.shadowed.outcome }}" = "failure"
-      # A layer that cannot scan is a blocking error. see docs/release-workflow.md
-      - name: Guard must fail when the API layers cannot run
-        id: layers
-        continue-on-error: true
-        run: NO_ALL_BUILDS_JOB_ALREADY_RAN= INPUT_TOKEN=x node no-all-builds-job/dist/index.js
-      - name: Assert the unrunnable API layers failed the guard
-        run: test "${{ steps.layers.outcome }}" = "failure"
-      # The sentinel skips the guard before any check runs.
-      - name: Guard skips when the run-once sentinel is set
-        run: NO_ALL_BUILDS_JOB_ALREADY_RAN=1 GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/no-all-builds-job/test/fixtures/shadowed" INPUT_TOKEN=x node no-all-builds-job/dist/index.js
-
   ste-lint:
     runs-on: ubuntu-latest
     steps:
@@ -200,43 +150,7 @@ jobs:
         with:
           files: '*.md docs/*.md .github/workflows/*.md */README.md */CLAUDE.md'
 
-  # see docs/release-workflow.md
-  test-yaml-comment-block:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-and-build
-        with:
-          action-dir: yaml-comment-block
-      - name: Check passes on this repo
-        uses: ./yaml-comment-block
-      - name: Check must fail on the wall fixture
-        id: wall
-        continue-on-error: true
-        run: GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/yaml-comment-block/test/fixtures/wall" node yaml-comment-block/dist/index.js
-      - name: Assert the wall fixture failed the check
-        run: test "${{ steps.wall.outcome }}" = "failure"
-      - name: Check must pass on the at-the-limit fixture
-        run: GITHUB_WORKSPACE="${GITHUB_WORKSPACE}/yaml-comment-block/test/fixtures/clean" node yaml-comment-block/dist/index.js
-
-  test-typescript:
-    runs-on: ubuntu-latest
-    # repro3.ts makes a real authenticated repos.get call with the default token.
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-      # node24 action: dist/ is not committed, so build before `uses: ./...`.
-      - uses: ./.github/actions/setup-and-build
-        with:
-          action-dir: typescript
-      # Type-aware rules against boxed-String output streams.
-      - name: Lint typescript action
-        working-directory: typescript
-        run: just lint
-      - uses: ./typescript/test
-
-  validate-slugs:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -259,10 +173,6 @@ jobs:
             exit 1
           fi
 
-  validate-workflows:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
       - name: Validate workflow YAML with action-validator
         uses: ./action-validator
         with:
@@ -295,7 +205,7 @@ jobs:
           echo "composite=$(composite | jq -R | jq -sc)" >> $GITHUB_OUTPUT
 
   release-node:
-    needs: [cleanup, detect]
+    needs: [checks, detect]
     if: needs.detect.outputs.node != '[]'
     strategy:
       fail-fast: false
@@ -358,10 +268,10 @@ jobs:
         run: >
           ./orphan-release/orphan-release.sh
           --source "${{ matrix.action }}"
-          --exclude "src node_modules tsconfig.json justfile package.json pnpm-lock.yaml pnpm-workspace.yaml"
+          --exclude "src node_modules tsconfig.json ts0.json justfile package.json pnpm-lock.yaml pnpm-workspace.yaml"
 
   release-composite:
-    needs: [cleanup, detect]
+    needs: [checks, detect]
     if: needs.detect.outputs.composite != '[]'
     runs-on: ubuntu-latest
     permissions:
