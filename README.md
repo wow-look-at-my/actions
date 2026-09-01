@@ -123,6 +123,16 @@ Reusable GitHub Actions.
 - uses: wow-look-at-my/actions@ghcr#latest
 ```
 
+### [Has Permission](has-permission/)
+
+```yml
+# Report whether a permission is granted to the running job by its job or workflow permissions block.
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/has-permission/README.md
+- uses: wow-look-at-my/actions@has-permission#latest
+  with:
+    permission: # Permission scope to look for, such as id-token, contents or packages
+```
+
 ### [Multi-Command](multicmd/)
 
 ```yml

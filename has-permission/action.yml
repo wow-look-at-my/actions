@@ -1,0 +1,35 @@
+name: Has Permission
+description: Report whether a permission is granted to the running job by its job or workflow permissions block
+
+inputs:
+  permission:
+    description: Permission scope to look for, such as id-token, contents or packages
+    required: true
+  level:
+    description: Level the caller needs - read, write or none. write satisfies read.
+    required: false
+    default: write
+  assert:
+    description: Fail the step when the permission is not granted
+    required: false
+    default: 'false'
+  workflow:
+    description: Workflow file to read, relative to the workspace. Defaults to the running workflow.
+    required: false
+    default: ''
+  job:
+    description: Job id to read. Defaults to the running job.
+    required: false
+    default: ''
+
+outputs:
+  granted:
+    description: 'true when the job holds the permission at the requested level'
+  level:
+    description: Level the resolved block gives for this permission - none, read or write
+  source:
+    description: Block the level came from - job, workflow or default
+
+runs:
+  using: node24
+  main: dist/index.js
