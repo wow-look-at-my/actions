@@ -12,13 +12,13 @@ A deletion that loses a race against a concurrent run is tolerated with a warnin
 
 Tags without `#` are kept and logged. Orphan-release never mints them, and a manually created tag may carry a meaning this job cannot know.
 
-## test-orphan-release
+## dats: orphan-release
 
 The suite pushes to local bare repositories. It needs no token and no network. It covers what a release does when it loses the race for `#latest`. The numbered tag must publish anyway.
 
 This repo has no go.mod. go-toolchain bundles dats but hard-requires one, so this repo cannot get dats that way. It uses the `wow-look-at-my/dats` action instead, which downloads the binary and makes sure a sandbox backend works.
 
-## test-secret-server
+## dats: secret-server
 
 `export-secrets.sh` is extracted out of `action.yml`, so dats can drive it directly. It needs no OIDC token and no network.
 
@@ -50,6 +50,6 @@ Two fixtures run against the built bundle, with `GITHUB_WORKSPACE` pointed at ea
 
 Nothing excludes the fixtures from that step. The scan matches `.github/workflows/*.yml` at the workspace root only, and a fixture workflow file sits under `yaml-comment-block/test/fixtures/<name>/.github/workflows/`.
 
-## validate-workflows
+## validate: workflows
 
 Only the workflow files are validated. The `action.yml` files in this repo carry a non-standard `version:` field and `using: node24`. The bundled schema of action-validator rejects both. A non-matching `actions:` glob therefore skips them, because nullglob gives zero iterations. Every workflow, the reusable ones included, is still schema-checked.

@@ -32,7 +32,7 @@ Each action lives in its own directory with an `action.yml` file:
 
 `docs/release-workflow.md` holds the reasoning behind release.yml's job comments. Those comments stay to one line and point at it.
 
-`dats/` holds this repository's own suite — the assertions release.yml used to spell out in bash. `dats/readme.dats` regenerates the README and diffs it, which is what keeps `generate-readme.sh` and the committed file in step. The `check-readme` job only invokes the suite.
+`dats/` holds this repository's own suite — the assertions release.yml used to spell out in bash. `dats/readme.dats` regenerates the README and diffs it, which is what keeps `generate-readme.sh` and the committed file in step. The `dats` job only invokes the suite.
 
 Not an action directory, and never released as one. The leading underscore is what says so at a glance:
 
