@@ -10,5 +10,9 @@ inputs:
     default: ''
 
 runs:
-  using: node24
-  main: dist/index.js
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        INPUT_EXCLUDE: ${{ inputs.exclude }}
+      run: ${{ github.action_path }}/scan-workflows.sh

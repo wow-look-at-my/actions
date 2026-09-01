@@ -25,11 +25,23 @@ inputs:
 outputs:
   granted:
     description: 'true when the job holds the permission at the requested level'
+    value: ${{ steps.resolve.outputs.granted }}
   level:
     description: Level the resolved block gives for this permission - none, read or write
+    value: ${{ steps.resolve.outputs.level }}
   source:
     description: Block the level came from - job, workflow or default
+    value: ${{ steps.resolve.outputs.source }}
 
 runs:
-  using: node24
-  main: dist/index.js
+  using: composite
+  steps:
+    - id: resolve
+      shell: bash
+      env:
+        INPUT_PERMISSION: ${{ inputs.permission }}
+        INPUT_LEVEL: ${{ inputs.level }}
+        INPUT_ASSERT: ${{ inputs.assert }}
+        INPUT_WORKFLOW: ${{ inputs.workflow }}
+        INPUT_JOB: ${{ inputs.job }}
+      run: ${{ github.action_path }}/resolve-permission.sh
