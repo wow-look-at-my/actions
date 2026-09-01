@@ -32,13 +32,9 @@ This is a round-trip for the cache hand-off trio against the real cache service.
 
 ## checks: no-all-builds-job
 
-The guard must pass on this repo. No job here is ever named `all-builds`. The guard must also fail on the shadowed fixture. The API layers are hard-required. The job grants `actions: read` and `checks: read`, so the passing run exercises them for real. A bogus-token step then proves that a layer which cannot run fails the guard.
+The plain `uses: ./no-all-builds-job` step checks this repo. No job here is ever named `all-builds`. The job grants `actions: read` and `checks: read`, so that run exercises the API layers for real.
 
-The runner refuses a step `env:` override of a `GITHUB_*` variable. The failure path therefore execs the built bundle with a shell-level assignment that points `GITHUB_WORKSPACE` at the fixture. That is the same entry point the action runs. The explicitly empty token takes the documented no-token skip of the API layers. The failure of that step is therefore attributable to the file scan alone.
-
-The success step before it exported the run-once sentinel into the job env. The fixture step clears it explicitly, because an empty value means absent. Without that reset the run skips instead of detecting the fixture violation.
-
-The last two steps prove the two failure modes. A token whose API layers cannot run must fail the guard, even where this repo has no violations. A layer that cannot scan is itself a blocking error, and both layers are reported before the failure. With the sentinel set, the guard must exit 0 on the same violating fixture. The skip wins before any check runs.
+The three failure and skip paths live in `no-all-builds-job/dats/`. Each test execs the built bundle with a shell-level assignment, which is the entry point the action itself runs. An explicitly empty token takes the documented no-token skip of the API layers, so a failure there is attributable to the file scan alone. A bogus token proves that a layer which cannot run fails the guard, even where this repo has no violations. With the sentinel set, the guard must exit 0 on the same violating fixture, because the skip wins before any check runs.
 
 ## ste-lint
 
@@ -46,7 +42,7 @@ Every `.md` file in this repo goes through `ste-lint`. Sentence length, contract
 
 ## checks: yaml-comment-block
 
-Two fixtures run against the built bundle, with `GITHUB_WORKSPACE` pointed at each. `test/fixtures/clean` sits at the one-line limit and must pass. `test/fixtures/wall` carries a two-line block and must fail. The plain `uses: ./yaml-comment-block` step above them checks the repo itself.
+The plain `uses: ./yaml-comment-block` step checks the repo itself. Two fixtures run against the built bundle in `yaml-comment-block/dats/`, with `GITHUB_WORKSPACE` pointed at each. `test/fixtures/clean` sits at the one-line limit and must pass. `test/fixtures/wall` carries a two-line block and must fail.
 
 Nothing excludes the fixtures from that step. The scan matches `.github/workflows/*.yml` at the workspace root only, and a fixture workflow file sits under `yaml-comment-block/test/fixtures/<name>/.github/workflows/`.
 

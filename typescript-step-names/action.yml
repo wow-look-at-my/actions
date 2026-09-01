@@ -1,0 +1,40 @@
+name: TypeScript Step Names
+description: Fail CI when a step that runs the typescript action carries no name, which leaves the log saying nothing about it
+
+runs:
+  using: composite
+  steps:
+    - name: Scan every workflow and action for an unnamed typescript step
+      uses: wow-look-at-my/actions@typescript#latest
+      with:
+        script: |
+          const root = env.GITHUB_WORKSPACE!;
+          const isTypescriptAction = (uses: unknown) =>
+            typeof uses === 'string' && /(^|\/)actions@typescript(#|$)|(^|\/)typescript\/?$/.test(uses.trim());
+
+          const files = [
+            ...fs.globSync('.github/workflows/*.{yml,yaml}', {cwd: root}),
+            ...fs.globSync('**/action.{yml,yaml}', {cwd: root, exclude: (n: string) => n.includes('node_modules')}),
+          ].sort();
+          if (files.length === 0) {
+            core.warning(`no workflow or action YAML under ${root}, so this run enforced nothing. Check the repo out first.`);
+            return;
+          }
+
+          let found = 0;
+          for (const file of files) {
+            const doc = await $`yq -o=json ${path.join(root, file)}`.json<any>();
+            const lists: unknown[][] = [];
+            for (const job of Object.values(doc?.jobs ?? {}) as any[]) if (Array.isArray(job?.steps)) lists.push(job.steps);
+            if (Array.isArray(doc?.runs?.steps)) lists.push(doc.runs.steps);
+
+            for (const steps of lists) {
+              for (const step of steps as any[]) {
+                if (!isTypescriptAction(step?.uses) || step?.name) continue;
+                found++;
+                core.error(`${file}: a step runs the typescript action with no \`name:\`. The log then shows only the action, never the script it ran. Name the step after what the script does.`, {file});
+              }
+            }
+          }
+          if (found > 0) core.setFailed(`${found} unnamed typescript step(s) across ${files.length} file(s)`);
+          else core.info(`OK - every typescript step is named, across ${files.length} file(s)`);
