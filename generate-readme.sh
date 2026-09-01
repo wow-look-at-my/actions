@@ -39,7 +39,7 @@ while IFS= read -r action_yml; do
   fi
 
   echo '```'
-done < <(find . -name action.yml -not -path './.github/*' -not -path '*/test/*' -printf '%P\n' | sort)
+done < <(find . -name action.yml -not -path './.github/*' -not -path '*/test/*' | sed 's|^\./||' | sort)
 
 # Reusable workflows (workflow_call triggers in .github/workflows/)
 first_wf=true
@@ -67,4 +67,4 @@ while IFS= read -r wf; do
     echo ""
     cat "$extra"
   fi
-done < <(find .github/workflows -maxdepth 1 -name '*.yml' -printf '%f\n' | sort)
+done < <(find .github/workflows -maxdepth 1 -name '*.yml' | sed 's|.*/||' | sort)

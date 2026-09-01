@@ -8,7 +8,6 @@ Reusable GitHub Actions.
 
 ```yml
 # Validate GitHub Action action.yml files.
-# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/action-validator/README.md
 - uses: wow-look-at-my/actions@action-validator#latest
 ```
 
@@ -16,7 +15,6 @@ Reusable GitHub Actions.
 
 ```yml
 # Add merged branches to a ruleset that blocks re-creation.
-# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/branch-block/README.md
 - uses: wow-look-at-my/actions@branch-block#latest
   with:
     branch: # Branch name to block
@@ -26,7 +24,6 @@ Reusable GitHub Actions.
 
 ```yml
 # Delete this run's cache hand-offs and sweep aged ones left by crashed runs (housekeeping for cache-upload/cache-download).
-# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/cache-cleanup/README.md
 - uses: wow-look-at-my/actions@cache-cleanup#latest
 ```
 
@@ -34,7 +31,6 @@ Reusable GitHub Actions.
 
 ```yml
 # Restore files handed off by cache-upload earlier in the same workflow run (artifact-free replacement for actions/download-artifact).
-# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/cache-download/README.md
 - uses: wow-look-at-my/actions@cache-download#latest
 ```
 
@@ -42,7 +38,6 @@ Reusable GitHub Actions.
 
 ```yml
 # Install ripgrep from apt with the .deb cached between runs (ubuntu-latest only).
-# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/cache-rg/README.md
 - uses: wow-look-at-my/actions@cache-rg#latest
 ```
 
@@ -50,7 +45,6 @@ Reusable GitHub Actions.
 
 ```yml
 # Report disk usage breakdown of cached directories.
-# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/cache-size/README.md
 - uses: wow-look-at-my/actions@cache-size#latest
   with:
     paths: # Directories to measure (newline or space separated)
@@ -60,7 +54,6 @@ Reusable GitHub Actions.
 
 ```yml
 # Hand a file or directory to later jobs in the same workflow run via the actions cache (artifact-free replacement for actions/upload-artifact).
-# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/cache-upload/README.md
 - uses: wow-look-at-my/actions@cache-upload#latest
   with:
     name: # Hand-off name, unique within the workflow run (like an artifact name)
@@ -71,7 +64,6 @@ Reusable GitHub Actions.
 
 ```yml
 # Publish a directory to Cloudflare Pages by direct upload (wrangler) - no Actions artifacts, no Cloudflare git integration. Credentials come from secret-server via OIDC (the caller must grant id-token: write permission); the first deploy auto-creates the Pages project; missing credentials default to a loud green no-op.
-# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/cloudflare-pages/README.md
 - uses: wow-look-at-my/actions@cloudflare-pages#latest
   with:
     directory: # Built/staged directory to upload
@@ -82,7 +74,6 @@ Reusable GitHub Actions.
 
 ```yml
 # Run this org's GitHub Actions checks once per workflow run, over the calling repo only.
-# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/common-checks/README.md
 - uses: wow-look-at-my/actions@common-checks#latest
 ```
 
@@ -90,7 +81,6 @@ Reusable GitHub Actions.
 
 ```yml
 # Download an artifact, optionally select/rename files, and set +x.
-# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/download-exe/README.md
 - uses: wow-look-at-my/actions@download-exe#latest
   with:
     name: # Artifact name to download
@@ -100,7 +90,6 @@ Reusable GitHub Actions.
 
 ```yml
 # Download a platform-specific binary from a GitHub release.
-# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/download-release-binary/README.md
 - uses: wow-look-at-my/actions@download-release-binary#latest
   with:
     repo: # Repository (owner/name) to download from
@@ -123,11 +112,19 @@ Reusable GitHub Actions.
 - uses: wow-look-at-my/actions@ghcr#latest
 ```
 
+### [Has Permission](has-permission/)
+
+```yml
+# Report whether a permission is granted to the running job by its job or workflow permissions block.
+- uses: wow-look-at-my/actions@has-permission#latest
+  with:
+    permission: # Permission scope to look for, such as id-token, contents or packages
+```
+
 ### [Multi-Command](multicmd/)
 
 ```yml
 # Run OS-specific commands in a single step without boilerplate if-checks.
-# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/multicmd/README.md
 - uses: wow-look-at-my/actions@multicmd#latest
 ```
 
@@ -135,7 +132,6 @@ Reusable GitHub Actions.
 
 ```yml
 # Fail CI when any job is named all-builds — a known trick that shadows the org's required all-builds gate (required-builds-manager) in the GitHub UI.
-# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/no-all-builds-job/README.md
 - uses: wow-look-at-my/actions@no-all-builds-job#latest
 ```
 
@@ -143,7 +139,6 @@ Reusable GitHub Actions.
 
 ```yml
 # Ensures package.json files do not contain scripts sections (use justfiles instead).
-# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/no-scripts-action/README.md
 - uses: wow-look-at-my/actions@no-scripts-action#latest
 ```
 
@@ -151,7 +146,6 @@ Reusable GitHub Actions.
 
 ```yml
 # Fail CI when a GitHub Actions YAML file in the local call chain carries a test instead of invoking the repository's own suite.
-# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/no-tests-in-yaml/README.md
 - uses: wow-look-at-my/actions@no-tests-in-yaml#latest
 ```
 
@@ -159,7 +153,6 @@ Reusable GitHub Actions.
 
 ```yml
 # Create orphan tags from a directory.
-# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/orphan-release/README.md
 - uses: wow-look-at-my/actions@orphan-release#latest
 ```
 
@@ -171,11 +164,17 @@ Reusable GitHub Actions.
 - uses: wow-look-at-my/actions@pi-review#latest
 ```
 
+### [Push Excludes Tags](push-excludes-tags/)
+
+```yml
+# Fail CI when a workflow's push trigger names no ref filter, so tag pushes start it again.
+- uses: wow-look-at-my/actions@push-excludes-tags#latest
+```
+
 ### [Run Once](run-once/)
 
 ```yml
 # Claim a workflow run for one job, so the work behind the claim runs once per run instead of once per job.
-# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/run-once/README.md
 - uses: wow-look-at-my/actions@run-once#latest
   with:
     name: # Claim name, unique per piece of work (the claim is scoped to this run and attempt)
@@ -185,7 +184,6 @@ Reusable GitHub Actions.
 
 ```yml
 # Fetch secrets from a self-hosted secret server using GitHub Actions OIDC.
-# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/secret-server/README.md
 - uses: wow-look-at-my/actions@secret-server#latest
 ```
 
@@ -193,7 +191,6 @@ Reusable GitHub Actions.
 
 ```yml
 # Cache with change detection - only saves when files actually changed.
-# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/smart-cache/README.md
 - uses: wow-look-at-my/actions@smart-cache#latest
   with:
     path: # Paths to cache (space-separated)
@@ -204,7 +201,6 @@ Reusable GitHub Actions.
 
 ```yml
 # Check prose against the mechanical subset of ASD-STE100 Simplified Technical English — sentence length measured over whole sentences rather than wrapped lines, contractions, banned modal verbs, semicolons, comma splices, hard-wrapped paragraphs, and dictionary word choice.
-# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/ste-lint/README.md
 - uses: wow-look-at-my/actions@ste-lint#latest
 ```
 
@@ -212,7 +208,6 @@ Reusable GitHub Actions.
 
 ```yml
 # Delete orphan-release tags whose action, branch, or version no longer exists.
-# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/tag-cleanup/README.md
 - uses: wow-look-at-my/actions@tag-cleanup#latest
 ```
 
@@ -220,7 +215,6 @@ Reusable GitHub Actions.
 
 ```yml
 # Tags runner images with branch/latest tags and triggers flush.
-# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/tag-runner/README.md
 - uses: wow-look-at-my/actions@tag-runner#latest
   with:
     token: # GitHub token with packages:write and actions:write permissions
@@ -237,7 +231,6 @@ Reusable GitHub Actions.
 
 ```yml
 # Run an inline TypeScript script, validated with tsc, with helpful globals pre-injected..
-# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/typescript/README.md
 - uses: wow-look-at-my/actions@typescript#latest
 ```
 
@@ -245,7 +238,6 @@ Reusable GitHub Actions.
 
 ```yml
 # Fail CI when a GitHub Actions YAML file in the local call chain carries more than 1 comment line in a row.
-# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/yaml-comment-block/README.md
 - uses: wow-look-at-my/actions@yaml-comment-block#latest
 ```
 
@@ -259,9 +251,9 @@ jobs:
     uses: wow-look-at-my/actions/.github/workflows/buildhost-preview.yml@master
 ```
 
-Deploys a pull-request preview to a [buildhost](https://github.com/wow-look-at-my/buildhost) static-site project. It posts a sticky PR comment with the preview URL. It authenticates to buildhost over GitHub OIDC, with no static secret. A PR deploys to a `pr-<number>` branch. A push deploys to `branch/<ref-name>`.
+Deploys a pull-request preview to a [buildhost](https://github.com/wow-look-at-my/buildhost) static-site project. It posts a sticky PR comment with the preview URL. It authenticates to buildhost with a GitHub OIDC token, and needs no static secret. A PR deploys to a `pr-<number>` branch. A push deploys to `branch/<ref-name>`.
 
-The caller must declare the permissions the reusable workflow needs (a reusable workflow cannot escalate beyond its caller):
+The caller must declare the permissions this workflow needs. A reusable workflow gets no more than its caller holds:
 
 ```yml
 name: PR preview
@@ -285,7 +277,7 @@ jobs:
     secrets: inherit
 ```
 
-To deploy a previously-uploaded run artifact instead of checking out `source-dir`, pass `artifact-name` (mutually exclusive with `source-dir`):
+Pass `artifact-name` to deploy an artifact the run uploaded earlier. It replaces the checkout of `source-dir`, and the two inputs are mutually exclusive:
 
 ```yml
 jobs:
@@ -298,8 +290,8 @@ jobs:
 
 Notes:
 
-- `project` defaults to the repository name. buildhost derives the project as the **lowercase** repo name, and it rejects a mismatch. Pin `project:` explicitly where the repo name is not already lowercase.
-- `public: true` serves the preview without buildhost auth, even where the source repo or project is private. It is opt-in. The default `false` keeps the preview of a private repo gated.
+- `project` defaults to the name of the repository. buildhost lowercases that name to derive the project, and it rejects a mismatch. Pin `project:` explicitly where the repo name is not already lowercase.
+- `public: true` serves the preview to anyone, and buildhost asks for no login. That holds even where the source repo or the project is private. It is opt-in. The default `false` keeps the preview of a private repo gated.
 - The upload is buildhost's own `buildhost-publish-site` action: a tar.gz PUT to `sites.<domain>/<project>/branch/<branch>`, authenticated with the workflow's OIDC token (`id-token: write`). `pull-requests: write` is for the sticky comment.
 - `actions: read` matters only with `artifact-name`: `buildhost-publish-site` fetches the named artifact through the Actions REST API (`listWorkflowRunArtifacts` and `downloadArtifact`), and both calls require it.
 - Fork PRs are skipped (they receive no OIDC token and cannot authenticate to buildhost).
@@ -312,7 +304,7 @@ jobs:
     uses: wow-look-at-my/actions/.github/workflows/publish-ghcr.yml@master
 ```
 
-Pass the secret to opt in to instant docker-updater notifications after a push. A private image does not emit a GitHub package webhook. This is recommended there. The URL defaults to `https://docker-updater-hook.pazer.io/`:
+Pass the secret to opt in. A push then notifies docker-updater immediately. A private image does not emit a GitHub package webhook. This is recommended there. The URL defaults to `https://docker-updater-hook.pazer.io/`:
 
 ```yml
 jobs:
@@ -322,4 +314,4 @@ jobs:
       updater-webhook-secret: ${{ secrets.DOCKER_UPDATER_WEBHOOK_SECRET }}
 ```
 
-Set `DOCKER_UPDATER_WEBHOOK_SECRET` (same value as docker-updater's `DOCKER_UPDATER_GITHUB_WEBHOOK_SECRET`) at the org level. Callers that omit the secret get today's behavior unchanged.
+Set `DOCKER_UPDATER_WEBHOOK_SECRET` (same value as docker-updater's `DOCKER_UPDATER_GITHUB_WEBHOOK_SECRET`) at the org level. A caller that omits the secret keeps the behavior it has today.
