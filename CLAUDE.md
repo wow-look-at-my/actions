@@ -36,7 +36,7 @@ Each action lives in its own directory with an `action.yml` file:
 
 Not an action directory, and never released as one. The leading underscore is what says so at a glance:
 
-- `_shared/cache-xfer/` - NOT an action: the one copy of the cache-xfer wire format (key layout, envelope, pack/unpack), imported by cache-upload, cache-download, and cache-cleanup. See `docs/shared-sources.md`.
+- `_shared/cache-xfer/` - NOT an action: the one copy of the cache-xfer wire format (key layout, envelope, pack/unpack), imported by cache-upload, cache-download, and cache-cleanup.
 - `_shared/run-claim/` - NOT an action: the run-once claim logic, with the four cache-service calls injected so every failure path has a test. Imported by `run-once`, whose `src/claim.test.ts` is what the release matrix runs.
 
 ## Reusable Workflows
