@@ -5,21 +5,11 @@ on:
   workflow_dispatch:
 
 jobs:
-  cleanup:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      # node24 action: dist/ is not committed, so build before `uses: ./...`.
-      - uses: ./.github/actions/setup-and-build
-        with:
-          action-dir: tag-cleanup
-      - uses: ./tag-cleanup
-
   # The suites and guards that need nothing but a checkout. see docs/release-workflow.md
   checks:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # tag-cleanup deletes orphaned release tags
     steps:
       - uses: actions/checkout@v4
       - uses: wow-look-at-my/dats@master
@@ -38,6 +28,10 @@ jobs:
         with:
           action-dir: no-scripts-action
       - uses: ./no-scripts-action
+      - uses: ./.github/actions/setup-and-build
+        with:
+          action-dir: tag-cleanup
+      - uses: ./tag-cleanup
 
   # Round-trip against the REAL cache service. see docs/release-workflow.md
   test-cache-xfer:

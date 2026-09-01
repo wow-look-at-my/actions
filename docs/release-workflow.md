@@ -2,7 +2,7 @@
 
 `.github/workflows/release.yml` builds, dogfoods, and tags every action in this repo. Its job comments stay to one line and point here. This file holds the reasoning behind the parts that look arbitrary.
 
-## cleanup
+## checks: cleanup
 
 The cleanup job sweeps release tags that name things which no longer exist. Three shapes are junk. The action directory is gone from the default branch. A branch tag names a branch the remote no longer has. The version suffix is neither a number nor `#latest`.
 
