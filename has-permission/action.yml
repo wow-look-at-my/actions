@@ -1,5 +1,5 @@
 name: Has Permission
-description: Report whether a permission is granted to the running job by its job or workflow permissions block
+description: Fail the run unless a permission is granted to the running job by its job or workflow permissions block
 
 inputs:
   permission:
@@ -9,21 +9,6 @@ inputs:
     description: Level the caller needs - read, write or none. write satisfies read.
     required: false
     default: write
-  assert:
-    description: Fail the step when the permission is not granted
-    required: false
-    default: 'false'
-
-outputs:
-  granted:
-    description: 'true when the job holds the permission at the requested level'
-    value: ${{ fromJSON(steps.resolve.outputs.result).granted }}
-  level:
-    description: Level the resolved block gives for this permission - none, read or write
-    value: ${{ fromJSON(steps.resolve.outputs.result).level }}
-  source:
-    description: Block the level came from - job, workflow or default
-    value: ${{ fromJSON(steps.resolve.outputs.result).source }}
 
 runs:
   using: composite
@@ -73,14 +58,10 @@ runs:
             level = 'none';
           }
 
-          const granted = RANK[level] >= RANK[want];
           const where = `${relative} job '${job}'`;
-          if (granted) core.info(`${permission}: ${level} is granted to ${where} by its ${source} permissions block`);
-          else {
-            const why = source === 'default'
+          if (RANK[level] < RANK[want]) {
+            throw new Error(source === 'default'
               ? `${where} declares no permissions block, so ${permission} falls to the repository default. Declare the block to grant it.`
-              : `${permission}: ${want} is NOT granted to ${where}. Its ${source} permissions block gives ${level}.`;
-            if ('${{ inputs.assert }}' === 'true') throw new Error(why);
-            core.warning(why);
+              : `${permission}: ${want} is NOT granted to ${where}. Its ${source} permissions block gives ${level}.`);
           }
-          return {granted: String(granted), level, source};
+          core.info(`${permission}: ${level} is granted to ${where} by its ${source} permissions block`);
