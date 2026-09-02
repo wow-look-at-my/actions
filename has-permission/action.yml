@@ -80,7 +80,7 @@ runs:
             const why = source === 'default'
               ? `${where} declares no permissions block, so ${permission} falls to the repository default. Declare the block to grant it.`
               : `${permission}: ${want} is NOT granted to ${where}. Its ${source} permissions block gives ${level}.`;
-            if ('${{ inputs.assert }}' === 'true') throw new Error(why);
+            if (${{ inputs.assert == 'true' }}) throw new Error(why);
             core.warning(why);
           }
           return {granted: String(granted), level, source};
