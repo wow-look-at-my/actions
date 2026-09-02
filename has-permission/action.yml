@@ -47,7 +47,20 @@ runs:
           const file = path.join(env.GITHUB_WORKSPACE!, relative);
           if (!fs.existsSync(file)) throw new Error(`${file} does not exist. Check the repository out before this step.`);
 
-          const doc = await $`yq -o=json ${file}`.json<{jobs?: Record<string, {permissions?: unknown}>; permissions?: unknown}>();
+          // A self-hosted runner does not ship yq; fetch the release binary once into RUNNER_TEMP when it is absent.
+          const yq = await (async () => {
+            if ((await $`bash -c ${'command -v yq'}`.nothrow()).exitCode === 0) return 'yq';
+            const dest = path.join(env.RUNNER_TEMP!, 'yq');
+            if (fs.existsSync(dest)) return dest;
+            const arch = ({X64: 'amd64', ARM64: 'arm64'} as Record<string, string>)[env.RUNNER_ARCH ?? 'X64'] ?? 'amd64';
+            const url = `https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${arch}`;
+            const res = await fetch(url, {redirect: 'follow'});
+            if (!res.ok) throw new Error(`could not download yq from ${url}: HTTP ${res.status}`);
+            fs.writeFileSync(dest, Buffer.from(await res.arrayBuffer()));
+            fs.chmodSync(dest, 0o755);
+            return dest;
+          })();
+          const doc = await $`${yq} -o=json ${file}`.json<{jobs?: Record<string, {permissions?: unknown}>; permissions?: unknown}>();
           const job = env.GITHUB_JOB!;
           if (!doc.jobs?.[job]) throw new Error(`${relative} names no job '${job}'. It has: ${Object.keys(doc.jobs ?? {}).join(', ')}`);
 
