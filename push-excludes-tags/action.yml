@@ -19,27 +19,11 @@ runs:
             core.warning(`no workflow file under ${dir}, so this run enforced nothing.`);
             return;
           }
-          // A self-hosted runner does not ship yq; fetch the pinned release binary once into RUNNER_TEMP when it is absent.
-          // The tag is pinned, not 'latest': a yq 5 that renames -o=json would break every consumer of this action at once.
-          const yq = await (async () => {
-            if ((await $`bash -c ${'command -v yq'}`.nothrow()).exitCode === 0) return 'yq';
-            const os = ({Linux: 'linux', macOS: 'darwin', Windows: 'windows'} as Record<string, string>)[env.RUNNER_OS ?? 'Linux'] ?? 'linux';
-            const arch = ({X64: 'amd64', ARM64: 'arm64'} as Record<string, string>)[env.RUNNER_ARCH ?? 'X64'] ?? 'amd64';
-            const ext = os === 'windows' ? '.exe' : '';
-            const dest = path.join(env.RUNNER_TEMP!, `yq${ext}`);
-            if (fs.existsSync(dest)) return dest;
-            const url = `https://github.com/mikefarah/yq/releases/download/v4.53.6/yq_${os}_${arch}${ext}`;
-            const res = await fetch(url);
-            if (!res.ok) throw new Error(`could not download yq from ${url}: HTTP ${res.status}`);
-            fs.writeFileSync(dest, Buffer.from(await res.arrayBuffer()));
-            fs.chmodSync(dest, 0o755);
-            return dest;
-          })();
           let found = 0;
           for (const name of names) {
             const file = `.github/workflows/${name}`;
             // The $ runner never shell-splits, so a quoted literal reaches yq with its quotes; the expression is an interpolated argument.
-            const on = await $`${yq} -o=json ${'.["on"]'} ${path.join(dir, name)}`.json();
+            const on = await $`yq -o=json ${'.["on"]'} ${path.join(dir, name)}`.json();
             const unfiltered =
               on === 'push' ||
               (Array.isArray(on) && on.includes('push')) ||
