@@ -39,8 +39,6 @@ runs:
 
           const permission = '${{ inputs.permission }}';
           const want = '${{ inputs.level }}';
-          // typed :string, else tsc narrows the interpolated literal and rejects the comparison below as always false (TS2367)
-          const assert: string = '${{ inputs.assert }}';
           if (!isLevel(want)) throw new Error(`level is '${want}', not read, write or none`);
 
           const relative = env.GITHUB_WORKFLOW_REF!.split('@')[0].split('/').slice(2).join('/');
@@ -82,7 +80,7 @@ runs:
             const why = source === 'default'
               ? `${where} declares no permissions block, so ${permission} falls to the repository default. Declare the block to grant it.`
               : `${permission}: ${want} is NOT granted to ${where}. Its ${source} permissions block gives ${level}.`;
-            if (assert === 'true') throw new Error(why);
+            if ('${{ inputs.assert }}' === 'true') throw new Error(why);
             core.warning(why);
           }
           return {granted: String(granted), level, source};
