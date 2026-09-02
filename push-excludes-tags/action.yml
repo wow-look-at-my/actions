@@ -22,7 +22,8 @@ runs:
           let found = 0;
           for (const name of names) {
             const file = `.github/workflows/${name}`;
-            const on = await $`yq -o=json '.["on"]' ${path.join(dir, name)}`.json();
+            // The $ runner never shell-splits, so a quoted literal reaches yq with its quotes; the expression is an interpolated argument.
+            const on = await $`yq -o=json ${'.["on"]'} ${path.join(dir, name)}`.json();
             const unfiltered =
               on === 'push' ||
               (Array.isArray(on) && on.includes('push')) ||
