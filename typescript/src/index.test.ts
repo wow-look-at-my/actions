@@ -246,6 +246,19 @@ describe('typescript action', () => {
 		assert.ok(stdout.includes('TypeScript validation failed'));
 	});
 
+	it('accepts a comparison against an interpolated input, which reaches tsc as a literal (TS2367)', async () => {
+		// What the action receives once GitHub has evaluated `'${{ inputs.assert }}'`
+		// in a caller's script. The comparison is meaningful across runs; tsc sees
+		// only this run's value and would call it always-false.
+		const { stdout, exitCode } = await runAction(
+			"const assert = 'false';\nif (assert === 'true') core.info('asserted');\ncore.info('ran');"
+		);
+		assert.equal(exitCode, 0, stdout);
+		assert.ok(stdout.includes('Type-check passed.'), stdout);
+		assert.ok(stdout.includes('ran'), stdout);
+		assert.ok(!stdout.includes('asserted'), `the false branch must not run:\n${stdout}`);
+	});
+
 	it('fails on two consecutive `//` comment lines, but lets the step run to completion first', async () => {
 		const { stdout, exitCode } = await runAction(
 			'core.info("line one");\n// first\n// second\ncore.info("ran");'
