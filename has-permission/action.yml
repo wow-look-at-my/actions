@@ -47,14 +47,17 @@ runs:
           const file = path.join(env.GITHUB_WORKSPACE!, relative);
           if (!fs.existsSync(file)) throw new Error(`${file} does not exist. Check the repository out before this step.`);
 
-          // A self-hosted runner does not ship yq; fetch the release binary once into RUNNER_TEMP when it is absent.
+          // A self-hosted runner does not ship yq; fetch the pinned release binary once into RUNNER_TEMP when it is absent.
+          // The tag is pinned, not 'latest': a yq 5 that renames -o=json would break every consumer of this action at once.
           const yq = await (async () => {
             if ((await $`bash -c ${'command -v yq'}`.nothrow()).exitCode === 0) return 'yq';
-            const dest = path.join(env.RUNNER_TEMP!, 'yq');
-            if (fs.existsSync(dest)) return dest;
+            const os = ({Linux: 'linux', macOS: 'darwin', Windows: 'windows'} as Record<string, string>)[env.RUNNER_OS ?? 'Linux'] ?? 'linux';
             const arch = ({X64: 'amd64', ARM64: 'arm64'} as Record<string, string>)[env.RUNNER_ARCH ?? 'X64'] ?? 'amd64';
-            const url = `https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${arch}`;
-            const res = await fetch(url, {redirect: 'follow'});
+            const ext = os === 'windows' ? '.exe' : '';
+            const dest = path.join(env.RUNNER_TEMP!, `yq${ext}`);
+            if (fs.existsSync(dest)) return dest;
+            const url = `https://github.com/mikefarah/yq/releases/download/v4.53.6/yq_${os}_${arch}${ext}`;
+            const res = await fetch(url);
             if (!res.ok) throw new Error(`could not download yq from ${url}: HTTP ${res.status}`);
             fs.writeFileSync(dest, Buffer.from(await res.arrayBuffer()));
             fs.chmodSync(dest, 0o755);
