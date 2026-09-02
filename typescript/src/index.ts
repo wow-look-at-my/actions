@@ -430,6 +430,17 @@ function baseCompilerOptions(): ts.CompilerOptions {
 	};
 }
 
+// GitHub evaluates every ${{ ... }} expression into the script text before this
+// action runs, so an input read the documented way -- `const a = '${{ inputs.assert }}'`
+// -- reaches tsc as a plain string literal. Every comparison against it is then
+// literal-vs-literal, and TS2367 calls it unintentional because THIS run's value
+// does not match. The value differs per run, and the check cannot tell a
+// substituted literal from a hand-written one, so it is unsound in this action
+// and reports only false positives.
+const SUBSTITUTION_UNSOUND_CODES = new Set([
+	2367, // This comparison appears to be unintentional because the types X and Y have no overlap.
+]);
+
 function typeCheck(source: string): readonly ts.Diagnostic[] {
 	const opts: ts.CompilerOptions = { ...baseCompilerOptions(), noEmit: true };
 
@@ -466,7 +477,7 @@ function typeCheck(source: string): readonly ts.Diagnostic[] {
 		...program.getSyntacticDiagnostics(userFile),
 		...program.getSemanticDiagnostics(userFile),
 		...program.getGlobalDiagnostics(),
-	];
+	].filter((d) => !SUBSTITUTION_UNSOUND_CODES.has(d.code));
 }
 
 // Maps an emitted (transformed) 0-based line back to a 1-based user-script
