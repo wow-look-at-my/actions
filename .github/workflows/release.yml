@@ -47,6 +47,7 @@ jobs:
       - uses: ./tag-cleanup
       - uses: ./no-all-builds-job
       - uses: ./yaml-comment-block
+      - uses: ./push-excludes-tags
       # Type-aware rules against boxed-String output streams.
       - name: Lint typescript action
         working-directory: typescript
