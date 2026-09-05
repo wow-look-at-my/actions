@@ -64,6 +64,6 @@ runs:
     - if: steps.claim.outputs.first == 'true'
       uses: wow-look-at-my/actions@push-excludes-tags#latest
 
-    # Every markdown file in the repo. There is no input to opt a path out.
+    # Every markdown file outside a submodule. There is no input to opt a path out.
     - if: steps.claim.outputs.first == 'true'
       uses: wow-look-at-my/actions@ste-lint#latest
