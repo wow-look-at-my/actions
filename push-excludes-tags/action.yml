@@ -2,5 +2,36 @@ name: Push Excludes Tags
 description: Fail CI when a workflow's push trigger names no ref filter, so tag pushes start it again
 
 runs:
-  using: node24
-  main: dist/index.js
+  using: composite
+  steps:
+    - name: Check every workflow's push trigger for a ref filter
+      uses: wow-look-at-my/actions@typescript#latest
+      with:
+        script: |
+          const FILTERS = ['branches', 'branches-ignore', 'tags', 'tags-ignore'];
+          const dir = path.join(env.GITHUB_WORKSPACE!, '.github', 'workflows');
+          if (!fs.existsSync(dir)) {
+            core.warning(`no ${dir}, so this run enforced nothing. Check the repo out first.`);
+            return;
+          }
+          const names = fs.readdirSync(dir).filter(name => /\.ya?ml$/.test(name)).sort();
+          if (names.length === 0) {
+            core.warning(`no workflow file under ${dir}, so this run enforced nothing.`);
+            return;
+          }
+          let found = 0;
+          for (const name of names) {
+            const file = `.github/workflows/${name}`;
+            // The $ runner never shell-splits, so a quoted literal reaches yq with its quotes; the expression is an interpolated argument.
+            const on = await $`yq -o=json ${'.["on"]'} ${path.join(dir, name)}`.json();
+            const unfiltered =
+              on === 'push' ||
+              (Array.isArray(on) && on.includes('push')) ||
+              (on !== null && typeof on === 'object' && 'push' in on &&
+                (on.push === null || typeof on.push !== 'object' || !FILTERS.some(key => key in on.push)));
+            if (!unfiltered) continue;
+            found++;
+            core.error(`${file}: its push trigger names no ref filter, so every tag push starts this workflow again. Add \`branches: ['**']\` under \`push:\` (or \`tags-ignore: ['**']\`) to keep it on branch pushes.`, {file});
+          }
+          if (found > 0) core.setFailed(`${found} of ${names.length} workflow(s) still match tag pushes`);
+          else core.info(`OK - every push trigger names a ref filter in ${names.length} file(s)`);
