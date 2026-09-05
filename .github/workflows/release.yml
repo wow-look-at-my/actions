@@ -53,10 +53,11 @@ jobs:
         working-directory: typescript
         run: just lint
       - uses: ./typescript/test
-      # _shared/cache-xfer has no package.json, so the release matrix never tests it.
+      # _shared/cache-xfer has no action.yml, so the release matrix never
+      # reaches it. It carries its own ts0.json and tests itself.
       - name: Shared cache-xfer unit tests
-        working-directory: cache-download
-        run: pnpm tsx --test ../_shared/cache-xfer/*.test.ts
+        working-directory: _shared/cache-xfer
+        run: ts0 test
       - name: Create hand-off payload
         run: |
           mkdir -p handoff-src/sub
@@ -195,12 +196,11 @@ jobs:
         with:
           action-dir: ${{ matrix.action }}
 
+      # ts0 type-checks the project and runs whatever test files it finds. An
+      # action with none reports that and passes.
       - name: Test
         working-directory: ${{ matrix.action }}
-        run: |
-          if compgen -G "src/*.test.ts" > /dev/null; then
-            pnpm tsx --test src/*.test.ts
-          fi
+        run: ts0 test
 
       - name: Validate action.yml
         run: |

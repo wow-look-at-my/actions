@@ -1,7 +1,7 @@
 name: Setup and Build
 description: >-
-  Internal CI helper for release.yml: installs the Node/pnpm/just toolchain the
-  repo's node24 actions build with, then optionally runs `just build` in one
+  Internal CI helper for release.yml: installs the Node/pnpm/just/ts0 toolchain
+  the repo's node24 actions build with, then optionally runs `just build` in one
   action directory. Not a released action: release.yml's detect job excludes
   ./.github/*, so this never gets an orphan tag. Checkout is deliberately NOT
   part of this composite -- a local `uses: ./.github/actions/...` reference
@@ -26,6 +26,12 @@ runs:
       with:
         version: latest
     - uses: extractions/setup-just@v2
+    - name: Install ts0
+      shell: bash
+      run: |
+        curl -fsSL -o /tmp/ts0-apt.sh https://apt.pazer.build/ts0/install.sh
+        sudo sh /tmp/ts0-apt.sh
+        sudo apt-get install -y ts0
     - name: Build
       if: inputs.action-dir != ''
       working-directory: ${{ inputs.action-dir }}
