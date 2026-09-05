@@ -9,14 +9,6 @@ inputs:
     required: false
     default: ''
 
-  ste-lint-files:
-    description: >-
-      Glob patterns ste-lint reads, separated by whitespace or commas. The
-      default is every markdown file in the repo. Matching nothing is a
-      failure, so a repo with no markdown must narrow this itself.
-    required: false
-    default: '**/*.md'
-
 runs:
   using: composite
   steps:
@@ -72,8 +64,6 @@ runs:
     - if: steps.claim.outputs.first == 'true'
       uses: wow-look-at-my/actions@push-excludes-tags#latest
 
+    # Every markdown file in the repo. There is no input to opt a path out.
     - if: steps.claim.outputs.first == 'true'
       uses: wow-look-at-my/actions@ste-lint#latest
-      with:
-        files: ${{ inputs.ste-lint-files }}
-        exclude: ${{ steps.gate.outputs.exclude }}

@@ -7,14 +7,6 @@ inputs:
     description: 'Glob patterns to check, separated by whitespace or commas. Matching nothing is a failure, never a quiet pass.'
     required: false
     default: '**/*.md'
-  exclude:
-    description: >-
-      Glob patterns for files the check skips, newline or comma separated.
-      Intended for a submodule that carries its own CI, and for a fixture that
-      breaks the rules on purpose. Excluding every matched file is a failure,
-      never a quiet pass.
-    required: false
-    default: ''
   hard-max-words:
     description: 'A sentence longer than this fails. STE caps a sentence at 25 words, so a value above 25 is refused: it removes the rule rather than configuring it.'
     required: false

@@ -1,7 +1,6 @@
 import * as core from '@actions/core';
 import {globSync} from 'node:fs';
 import {readFileSync} from 'node:fs';
-import {excluder} from './exclude';
 import {guard} from './guard';
 import {capped, STE_MAX_WORDS} from './inputs';
 import {DEFAULTS, failureReport, hasFailures, lintFiles, type Options} from './lint';
@@ -43,21 +42,11 @@ function main(): void {
 		throw new Error(`warn-max-words (${opts.warnMaxWords}) must not exceed hard-max-words (${opts.hardMaxWords})`);
 	}
 
-	const matched = [...new Set(patterns.flatMap((p) => globSync(p, {exclude: (n: string) => n.includes('node_modules')})))].sort();
-	if (matched.length === 0) {
+	const names = [...new Set(patterns.flatMap((p) => globSync(p, {exclude: (n: string) => n.includes('node_modules')})))].sort();
+	if (names.length === 0) {
 		core.setFailed(`ste-lint matched no files: ${patterns.join(' ')}. A check that reads nothing passes for the wrong reason.`);
 		return;
 	}
-	const skip = excluder(core.getInput('exclude'));
-	const names = matched.filter((name) => !skip(name));
-	if (names.length === 0) {
-		core.setFailed(
-			`ste-lint excluded every one of the ${matched.length} file(s) that ${patterns.join(' ')} matched. ` +
-				'A check that reads nothing passes for the wrong reason.',
-		);
-		return;
-	}
-	if (names.length < matched.length) core.info(`ste-lint: ${matched.length - names.length} file(s) excluded`);
 	core.info(`ste-lint: ${names.length} file(s)`);
 
 	const findings = lintFiles(
