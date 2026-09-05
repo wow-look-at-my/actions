@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Every suite, guard and dogfood run this repo does. see docs/release-workflow.md
+  # Every suite, guard and dogfood run this repo does.
   checks:
     runs-on: ubuntu-latest
     permissions:
@@ -151,7 +151,9 @@ jobs:
       - name: Validate workflow YAML with action-validator
         uses: ./action-validator
         with:
-          # Workflow files only. see docs/release-workflow.md
+          # Workflow files only. The actions glob names a directory that does
+          # not exist because the input is required and this step checks
+          # workflows; release-node checks each action.yml's runs.main itself.
           actions: 'no-such-dir/*/action.yml'
           workflows: '.github/workflows/*.yml'
 

@@ -2,6 +2,17 @@
 
 Reusable GitHub Actions.
 
+## Building
+
+Every node action builds with [ts0](https://github.com/wow-look-at-my/ts0), from
+the `ts0.json` in its directory: `cd <action> && just build`. Get ts0 with
+`curl -fsSL https://apt.pazer.build/ts0/install.sh | sudo sh && sudo apt-get install ts0`.
+
+ts0 supplies the compiler, the bundler and `@types/node`, so an action's
+`package.json` lists only what it imports at run time. `ts0 test` type-checks the
+project and runs its test files. `dist/` is not committed; CI builds it before
+cutting a release tag.
+
 ## Actions
 
 ### [Action Validator](action-validator/)
