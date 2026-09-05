@@ -14,10 +14,7 @@ inputs:
 runs:
   using: composite
   steps:
-    # A `run:` step that sets -u and reads a variable no `env:` declares dies on
-    # its first line. The schema validator cannot see it, because the YAML is
-    # valid either way: the declaration and the read live in different keys. This
-    # needs no npm install, so it runs first and fails fast.
+    # A step that sets -u and reads what no env: declares dies on its first line, and the schema cannot see it.
     - name: Validate composite env
       shell: bash
       env:

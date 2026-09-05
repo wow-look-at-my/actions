@@ -155,8 +155,7 @@ jobs:
           workflows: '.github/workflows/*.yml'
       - name: Composite env unit tests
         run: node --test action-validator/validate-env.test.mjs
-      # The step above passes a no-match actions glob, so this repo's own
-      # action.yml files need the env rule run over them here.
+      # The step above passes a no-match actions glob, so this repo's own action.yml files need the rule here.
       - name: Every composite step declares what its script reads
         run: node action-validator/validate-env.mjs */action.yml .github/actions/*/action.yml
 
