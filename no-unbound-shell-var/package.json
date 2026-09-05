@@ -1,0 +1,16 @@
+{
+  "name": "no-unbound-shell-var",
+  "version": "1.0.0",
+  "description": "Fail CI when a bash step under set -u reads a variable nothing declares",
+  "main": "dist/index.js",
+  "type": "commonjs",
+  "dependencies": {
+    "@actions/core": "^2.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.10",
+    "esbuild": "^0.28.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

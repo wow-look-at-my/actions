@@ -1,0 +1,22 @@
+name: No Unbound Shell Var
+description: Fail CI when a bash step running under set -u reads a variable that nothing in the file declares
+
+inputs:
+  paths:
+    description: >-
+      Files to scan, newline or comma separated, relative to the workspace.
+      Leave empty to scan every workflow file and every action.yml in the
+      workspace.
+    required: false
+    default: ''
+
+  exclude:
+    description: >-
+      Glob patterns for files the scan skips, newline or comma separated.
+      Intended for fixtures that violate the rule on purpose.
+    required: false
+    default: ''
+
+runs:
+  using: node24
+  main: dist/index.js

@@ -27,7 +27,8 @@ jobs:
         with:
           script: |
             const dirs = ['no-tests-in-yaml', 'no-scripts-action', 'tag-cleanup', 'no-all-builds-job',
-              'yaml-comment-block', 'ste-lint', 'cache-upload', 'cache-download', 'cache-cleanup'];
+              'yaml-comment-block', 'ste-lint', 'cache-upload', 'cache-download', 'cache-cleanup',
+              'no-unbound-shell-var'];
             await Promise.all(dirs.map(dir => $`just build`.cwd(dir)));
       # The guard suites drive dist/, so they run after the build above.
       - uses: wow-look-at-my/dats@master
@@ -44,6 +45,7 @@ jobs:
         with:
           files: '*.md docs/*.md .github/workflows/*.md */README.md */CLAUDE.md'
       - uses: ./no-scripts-action
+      - uses: ./no-unbound-shell-var
       - uses: ./tag-cleanup
       - uses: ./no-all-builds-job
       - uses: ./yaml-comment-block

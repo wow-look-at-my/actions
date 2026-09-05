@@ -149,6 +149,14 @@ Reusable GitHub Actions.
 - uses: wow-look-at-my/actions@no-tests-in-yaml#latest
 ```
 
+### [No Unbound Shell Var](no-unbound-shell-var/)
+
+```yml
+# Fail CI when a bash step running under set -u reads a variable that nothing in the file declares.
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/no-unbound-shell-var/README.md
+- uses: wow-look-at-my/actions@no-unbound-shell-var#latest
+```
+
 ### [Orphan Release](orphan-release/)
 
 ```yml
