@@ -24,8 +24,8 @@ runs:
 
         {
           echo 'exclude<<COMMON_CHECKS_EOF'
-          if [ -n "$EXCLUDE" ]; then
-            printf '%s\n' "$EXCLUDE"
+          if [ -n "${EXCLUDE:-}" ]; then
+            printf '%s\n' "${EXCLUDE}"
           fi
           if [ -n "$submodules" ]; then
             printf '%s\n' "$submodules" | sed 's|/*$|/**|'
