@@ -16,14 +16,14 @@ runs:
       run: |
         set -euo pipefail
 
-        [ -f .gitmodules ] || exit 0
-
-        git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
-          | jq -Rrn '
-              [inputs | capture("^\\S+ +(?<path>.+)$").path | sub("/+$"; "") + "/**"]
-              | select(length > 0)
-              | "common-checks: submodules of this repo carry their own CI, so these paths are excluded:", .[]
-            '
+        if [ -f .gitmodules ]; then
+          git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+            | jq -Rrn '
+                [inputs | capture("^\\S+ +(?<path>.+)$").path | sub("/+$"; "") + "/**"]
+                | select(length > 0)
+                | "common-checks: submodules of this repo carry their own CI, so these paths are excluded:", .[]
+              '
+        fi
 
     - if: steps.claim.outputs.first == 'true'
       uses: wow-look-at-my/actions@no-all-builds-job#latest
