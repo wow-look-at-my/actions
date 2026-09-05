@@ -2,6 +2,7 @@ import {strict as assert} from 'node:assert';
 import {readFileSync, readdirSync} from 'node:fs';
 import {join} from 'node:path';
 import {test} from 'node:test';
+import {isFixture} from './fixtures';
 import {DEFAULTS, emptyFindings, Findings, lintText} from './lint';
 
 const DIR = join(__dirname, '..', 'fixtures');
@@ -43,6 +44,20 @@ for (const file of files) {
 		}
 	});
 }
+
+// The gatherer skips a fixture by this predicate, so a fixture it does not
+// recognise is one the default `**/*.md` glob lints and fails the build on.
+test('every fixture reads as a fixture to the gatherer', () => {
+	for (const file of files) {
+		assert.ok(isFixture(readFileSync(join(DIR, file), 'utf8')), `${file} is not recognised as a fixture`);
+	}
+});
+
+test('ordinary prose is not a fixture', () => {
+	assert.equal(isFixture('# A heading\n\nA sentence.\n'), false);
+	assert.equal(isFixture('<!-- a plain comment -->\n'), false);
+	assert.equal(isFixture('Words first.\n<!-- expect: hardLong=1 -->\n'), false);
+});
 
 test('a fixture with no expect header fails the run', () => {
 	assert.throws(() => expectations('# nothing\n'), /expect/);
