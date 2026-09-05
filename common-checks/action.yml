@@ -1,6 +1,14 @@
 name: Common Checks
 description: Run this org's GitHub Actions checks once per workflow run, over the calling repo only
 
+inputs:
+  exclude:
+    description: >-
+      Extra glob patterns for files every check skips, newline or comma
+      separated. Submodule paths are excluded already.
+    required: false
+    default: ''
+
 runs:
   using: composite
   steps:
@@ -14,6 +22,8 @@ runs:
     - id: gate
       if: steps.claim.outputs.first == 'true'
       shell: bash
+      env:
+        EXCLUDE: ${{ inputs.exclude }}
       run: |
         set -euo pipefail
 
@@ -43,9 +53,13 @@ runs:
 
     - if: steps.claim.outputs.first == 'true'
       uses: wow-look-at-my/actions@yaml-comment-block#latest
+      with:
+        exclude: ${{ steps.gate.outputs.exclude }}
 
     - if: steps.claim.outputs.first == 'true'
       uses: wow-look-at-my/actions@no-tests-in-yaml#latest
+      with:
+        exclude: ${{ steps.gate.outputs.exclude }}
 
     - if: steps.claim.outputs.first == 'true'
       uses: wow-look-at-my/actions@push-excludes-tags#latest
