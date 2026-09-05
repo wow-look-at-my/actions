@@ -1,7 +1,6 @@
 import * as core from '@actions/core';
 import {globSync} from 'node:fs';
 import {readFileSync} from 'node:fs';
-import {isFixture} from './fixtures';
 import {guard} from './guard';
 import {capped, STE_MAX_WORDS} from './inputs';
 import {DEFAULTS, failureReport, hasFailures, lintFiles, type Options} from './lint';
@@ -68,24 +67,14 @@ function main(): void {
 		);
 		return;
 	}
-	const read = names.map((name) => ({name, text: readFileSync(name, 'utf-8')}));
-	const fixtures = read.filter((file) => isFixture(file.text));
-	const prose = read.filter((file) => !isFixture(file.text));
-	if (fixtures.length) {
-		core.info(`ste-lint: ${fixtures.length} file(s) are ste-lint fixtures, which break a rule on purpose: ${fixtures.map((f) => f.name).join(' ')}`);
-	}
-	if (prose.length === 0) {
-		core.setFailed(
-			`ste-lint read none of the ${names.length} file(s) that ${patterns.join(' ')} matched: every one is a ste-lint fixture. ` +
-				'A check that reads nothing passes for the wrong reason.',
-		);
-		return;
-	}
-	core.info(`ste-lint: ${prose.length} file(s)`);
+	core.info(`ste-lint: ${names.length} file(s)`);
 
-	const findings = lintFiles(prose, opts);
+	const findings = lintFiles(
+		names.map((name) => ({name, text: readFileSync(name, 'utf-8')})),
+		opts,
+	);
 
-	core.setOutput('files', prose.length);
+	core.setOutput('files', names.length);
 	core.setOutput(
 		'violations',
 		findings.hardLong.length +
@@ -154,13 +143,11 @@ function cli(patterns: string[]): number {
 		process.stderr.write(`ste-lint matched no files: ${patterns.join(' ')}\n`);
 		return 2;
 	}
-	const prose = names.map((name) => ({name, text: readFileSync(name, 'utf-8')})).filter((file) => !isFixture(file.text));
-	if (prose.length === 0) {
-		process.stderr.write(`ste-lint read no prose: all ${names.length} file(s) are ste-lint fixtures\n`);
-		return 2;
-	}
-	const findings = lintFiles(prose, opts);
-	process.stdout.write(`ste-lint: ${prose.length} file(s)\n`);
+	const findings = lintFiles(
+		names.map((name) => ({name, text: readFileSync(name, 'utf-8')})),
+		opts,
+	);
+	process.stdout.write(`ste-lint: ${names.length} file(s)\n`);
 	for (const [label, list] of [
 		['sentences over the cap', findings.hardLong],
 		['contractions', findings.contractions],
