@@ -10,33 +10,20 @@ runs:
       with:
         name: common-checks
 
-    # The submodule exclusions. see README.md
-    - id: gate
-      if: steps.claim.outputs.first == 'true'
+    # Names the submodule paths the checks below leave alone. see README.md
+    - if: steps.claim.outputs.first == 'true'
       shell: bash
       run: |
         set -euo pipefail
 
-        submodules=''
-        if [ -f .gitmodules ]; then
-          submodules=$(git config --file .gitmodules --get-regexp '^submodule\..*\.path$' | cut -d' ' -f2- || true)
-        fi
+        [ -f .gitmodules ] || exit 0
 
-        {
-          echo 'exclude<<COMMON_CHECKS_EOF'
-          if [ -n "${EXCLUDE:-}" ]; then
-            printf '%s\n' "${EXCLUDE}"
-          fi
-          if [ -n "$submodules" ]; then
-            printf '%s\n' "$submodules" | sed 's|/*$|/**|'
-          fi
-          echo 'COMMON_CHECKS_EOF'
-        } >> "$GITHUB_OUTPUT"
-
-        if [ -n "$submodules" ]; then
-          echo "common-checks: submodules of this repo carry their own CI, so these paths are excluded:"
-          printf '%s\n' "$submodules"
-        fi
+        git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+          | jq -Rrn '
+              [inputs | capture("^\\S+ +(?<path>.+)$").path | sub("/+$"; "") + "/**"]
+              | select(length > 0)
+              | "common-checks: submodules of this repo carry their own CI, so these paths are excluded:", .[]
+            '
 
     - if: steps.claim.outputs.first == 'true'
       uses: wow-look-at-my/actions@no-all-builds-job#latest
