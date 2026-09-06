@@ -26,12 +26,19 @@ runs:
       with:
         version: latest
     - uses: extractions/setup-just@v2
-    - name: Install ts0
+    - name: Download ts0
+      id: ts0
+      uses: wow-look-at-my/buildhost/.github/actions/buildhost-download@master
+      with:
+        project: ts0
+    # /usr/local/bin, not a private dir on PATH: a sandboxed step mounts the standard paths only.
+    - name: Put ts0 on PATH
       shell: bash
+      env:
+        TS0_CJS: ${{ steps.ts0.outputs.path }}
       run: |
-        curl -fsSL -o /tmp/ts0-apt.sh https://apt.pazer.build/ts0/install.sh
-        sudo sh /tmp/ts0-apt.sh
-        sudo apt-get install -y ts0
+        printf '#!/bin/sh\nexec node "%s" "$@"\n' "$TS0_CJS" > "$RUNNER_TEMP/ts0"
+        sudo install -m 0755 "$RUNNER_TEMP/ts0" /usr/local/bin/ts0
     - name: Build
       if: inputs.action-dir != ''
       working-directory: ${{ inputs.action-dir }}
