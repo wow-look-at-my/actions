@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Every suite, guard and dogfood run this repo does. see docs/release-workflow.md
+  # Every suite, guard and dogfood run this repo does.
   checks:
     runs-on: ubuntu-latest
     permissions:
@@ -39,7 +39,7 @@ jobs:
             no-all-builds-job/dats/
             yaml-comment-block/dats/
       - uses: ./no-tests-in-yaml
-      # ste-lint/fixtures/*.md break the rules on purpose, so they are not listed.
+      # ste-lint/fixtures/* break the rules on purpose, hence .md.fixture and this glob.
       - uses: ./ste-lint
         with:
           files: '*.md docs/*.md .github/workflows/*.md */README.md */CLAUDE.md'
@@ -53,10 +53,10 @@ jobs:
         working-directory: typescript
         run: just lint
       - uses: ./typescript/test
-      # _shared/cache-xfer has no package.json, so the release matrix never tests it.
+      # No action.yml, so the release matrix never reaches it; it tests itself.
       - name: Shared cache-xfer unit tests
-        working-directory: cache-download
-        run: pnpm tsx --test ../_shared/cache-xfer/*.test.ts
+        working-directory: _shared/cache-xfer
+        run: ts0 test
       - name: Create hand-off payload
         run: |
           mkdir -p handoff-src/sub
@@ -150,7 +150,7 @@ jobs:
       - name: Validate workflow YAML with action-validator
         uses: ./action-validator
         with:
-          # Workflow files only. see docs/release-workflow.md
+          # A required input this step has no use for: release-node checks each action.yml.
           actions: 'no-such-dir/*/action.yml'
           workflows: '.github/workflows/*.yml'
 
@@ -195,12 +195,10 @@ jobs:
         with:
           action-dir: ${{ matrix.action }}
 
+      # Type-checks the project, then runs whatever test files it finds; none is a pass.
       - name: Test
         working-directory: ${{ matrix.action }}
-        run: |
-          if compgen -G "src/*.test.ts" > /dev/null; then
-            pnpm tsx --test src/*.test.ts
-          fi
+        run: ts0 test
 
       - name: Validate action.yml
         run: |

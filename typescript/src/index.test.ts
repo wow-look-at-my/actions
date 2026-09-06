@@ -32,9 +32,12 @@ async function runAction(script: string, env: Record<string, string> = {}): Prom
 			timeout: 15000,
 		});
 		return { stdout: stdout.replace(SOURCE_ECHO, ''), rawStdout: stdout, stderr, exitCode: 0 };
-	} catch (err: any) {
-		const stdout: string = err.stdout ?? '';
-		return { stdout: stdout.replace(SOURCE_ECHO, ''), rawStdout: stdout, stderr: err.stderr ?? '', exitCode: err.code ?? 1 };
+	} catch (err: unknown) {
+		// execFile rejects with an Error carrying the captured streams and the
+		// exit code, which no Node type declares.
+		const failure = err as { stdout?: string; stderr?: string; code?: number };
+		const stdout: string = failure.stdout ?? '';
+		return { stdout: stdout.replace(SOURCE_ECHO, ''), rawStdout: stdout, stderr: failure.stderr ?? '', exitCode: failure.code ?? 1 };
 	}
 }
 
@@ -592,7 +595,7 @@ describe('$ command runner', () => {
 			const payload = JSON.stringify({ a: 1, b: ["x", "y"] });
 			const code = "process.stdout.write(process.argv[1])";
 			const r = await $\`node -e \${code} \${payload}\`;
-			const data = r.stdout.json();
+			const data = r.stdout.json() as { a: number; b: string[] };
 			core.info("json=" + data.a + ":" + data.b.join(","));
 		`);
 		assert.equal(exitCode, 0);
@@ -615,7 +618,7 @@ describe('$ command runner', () => {
 		const { stdout, exitCode } = await runAction(`
 			const code = "process.stderr.write(JSON.stringify({ err: true }))";
 			const r = await $\`node -e \${code}\`;
-			core.info("stderr-json=" + r.stderr.json().err);
+			core.info("stderr-json=" + r.stderr.json<{ err: string }>().err);
 		`);
 		assert.equal(exitCode, 0);
 		assert.ok(stdout.includes('stderr-json=true'), stdout);
@@ -646,7 +649,7 @@ describe('$ command runner', () => {
 		const { stdout, exitCode } = await runAction(`
 			const payload = JSON.stringify({ ok: true, n: 41 });
 			const code = "process.stdout.write(process.argv[1])";
-			const data = await $\`node -e \${code} \${payload}\`.json();
+			const data = await $\`node -e \${code} \${payload}\`.json<{ ok: boolean; n: number }>();
 			core.info("paren-free=" + data.ok + ":" + (data.n + 1));
 		`);
 		assert.equal(exitCode, 0);
@@ -676,7 +679,7 @@ describe('$ command runner', () => {
 	it('builder.json() composes with modifiers chained before it', async () => {
 		const { stdout, exitCode } = await runAction(`
 			const code = "process.stdout.write(JSON.stringify({ v: process.env.MYVAR }))";
-			const data = await $\`node -e \${code}\`.env({ MYVAR: "via-env" }).json();
+			const data = await $\`node -e \${code}\`.env({ MYVAR: "via-env" }).json<{ v: string }>();
 			core.info("composed=" + data.v);
 		`);
 		assert.equal(exitCode, 0);
@@ -687,7 +690,7 @@ describe('$ command runner', () => {
 		const { stdout, exitCode } = await runAction(`
 			const payload = JSON.stringify({ ok: true, n: 7 });
 			const code = "process.stdout.write(process.argv[1])";
-			const data = await $\`node -e \${code} \${payload}\`.stdout.json();
+			const data = await $\`node -e \${code} \${payload}\`.stdout.json<{ ok: boolean; n: number }>();
 			core.info("lazy-stdout-json=" + data.ok + ":" + data.n);
 		`);
 		assert.equal(exitCode, 0);
@@ -720,7 +723,7 @@ describe('$ command runner', () => {
 			const sha = await $\`echo \${"v2"}\`.stdout.text();
 			core.info("lazy-text=[" + sha + "]");
 			const code = "process.stdout.write(JSON.stringify({ home: process.env.HOMEVAR }))";
-			const data = await $\`node -e \${code}\`.env({ HOMEVAR: "set" }).stdout.json();
+			const data = await $\`node -e \${code}\`.env({ HOMEVAR: "set" }).stdout.json<{ home: string }>();
 			core.info("lazy-composed=" + data.home);
 		`);
 		assert.equal(exitCode, 0);
