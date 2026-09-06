@@ -49,6 +49,22 @@ shared:
 			  fi
 			}
 
+			# Gives the bare repo a branch at a known commit, so ls-remote has a
+			# tip for the run to compare its own GITHUB_SHA against.
+			set_branch_tip() {
+			  local origin="$1" branch="$2" work
+			  work="$(mktemp -d)"
+			  git init --quiet "$work"
+			  git -C "$work" config user.email t@example.com
+			  git -C "$work" config user.name test
+			  git -C "$work" checkout --quiet -b "$branch"
+			  echo tip > "$work/tip.txt"
+			  git -C "$work" add -A
+			  git -C "$work" commit --quiet -m tip
+			  git -C "$work" push --quiet "$origin" "$branch"
+			  git -C "$work" rev-parse HEAD
+			}
+
 			# Pass a version to pin one, or nothing for the auto-increment path
 			# the release workflow uses.
 			release() {
@@ -66,10 +82,14 @@ shared:
 
 			  local args=(--source payload --name widget --message "release ${version:-auto}")
 			  [ -n "$version" ] && args+=(--version "$version")
+			  [ -n "${INCLUDE_BRANCH:-}" ] && args+=(--include-branch)
 
+			  # BRANCH and SHA let a case stand somewhere other than the tip of
+			  # master, which is what decides whether the run owns #latest.
 			  (
 			    cd "$repo"
-			    export GITHUB_REF_NAME=master GITHUB_REPOSITORY=owner/repo GITHUB_TOKEN=
+			    export GITHUB_REF_NAME="${BRANCH:-master}" GITHUB_REPOSITORY=owner/repo GITHUB_TOKEN=
+			    export GITHUB_SHA="${SHA:-}"
 			    export GIT_CONFIG_COUNT=1
 			    export GIT_CONFIG_KEY_0="url.$origin.insteadOf"
 			    export GIT_CONFIG_VALUE_0="$REMOTE_URL"
@@ -160,6 +180,100 @@ tests:
 		stdout:
 			- "RELEASE_EXIT=0"
 			- "HAS widget#8"
+			- "HAS widget#latest"
+
+	# The bug this gate exists for. A side branch shares the unqualified prefix
+	# unless a caller opts into --include-branch, so it used to move #latest
+	# and race master for the lock. It publishes its own number and nothing
+	# else now. Run this suite against the ungated version and it fails here.
+	- desc: "a side branch publishes its number and never moves #latest"
+	  exit: 0
+	  inputs:
+		files:
+			run.sh: |
+				. {shared.lib.sh}
+				work="$(mktemp -d)"
+				make_origin "$work/origin.git"
+				BRANCH=claude/side release "$SCRIPT" "$work/origin.git" "$work/repo" 11 > "$work/log" 2>&1
+				echo "RELEASE_EXIT=$?"
+				has_ref "$work/origin.git" 'widget#11'
+				has_ref "$work/origin.git" 'widget#latest'
+	  cmd: env SCRIPT="$PWD/orphan-release/dist/index.js" bash {inputs.run.sh}
+	  outputs:
+		stdout:
+			- "RELEASE_EXIT=0"
+			- "HAS widget#11"
+			- "MISSING widget#latest"
+
+	# The boundary of that gate. --include-branch gives the branch its own
+	# prefix, so nothing else can contend that pointer and the branch moves it.
+	# Refusing here would break installing a branch's own latest.
+	- desc: "a branch-scoped #latest is still moved by its own branch"
+	  exit: 0
+	  inputs:
+		files:
+			run.sh: |
+				. {shared.lib.sh}
+				work="$(mktemp -d)"
+				make_origin "$work/origin.git"
+				BRANCH=side INCLUDE_BRANCH=1 \
+				  release "$SCRIPT" "$work/origin.git" "$work/repo" 14 > "$work/log" 2>&1
+				echo "RELEASE_EXIT=$?"
+				has_ref "$work/origin.git" 'widget/side#14'
+				has_ref "$work/origin.git" 'widget/side#latest'
+				has_ref "$work/origin.git" 'widget#latest'
+	  cmd: env SCRIPT="$PWD/orphan-release/dist/index.js" bash {inputs.run.sh}
+	  outputs:
+		stdout:
+			- "RELEASE_EXIT=0"
+			- "HAS widget/side#14"
+			- "HAS widget/side#latest"
+			- "MISSING widget#latest"
+
+	# The same rule applied to one branch over time. Two pushes to master land
+	# close together and the older run can finish last; moving the pointer then
+	# walks it backwards onto a tree master has already left behind.
+	- desc: "a superseded master run publishes its number and never moves #latest"
+	  exit: 0
+	  inputs:
+		files:
+			run.sh: |
+				. {shared.lib.sh}
+				work="$(mktemp -d)"
+				make_origin "$work/origin.git"
+				set_branch_tip "$work/origin.git" master > /dev/null
+				SHA=0000000000000000000000000000000000000000 \
+				  release "$SCRIPT" "$work/origin.git" "$work/repo" 12 > "$work/log" 2>&1
+				echo "RELEASE_EXIT=$?"
+				has_ref "$work/origin.git" 'widget#12'
+				has_ref "$work/origin.git" 'widget#latest'
+	  cmd: env SCRIPT="$PWD/orphan-release/dist/index.js" bash {inputs.run.sh}
+	  outputs:
+		stdout:
+			- "RELEASE_EXIT=0"
+			- "HAS widget#12"
+			- "MISSING widget#latest"
+
+	# The control: the run that IS the tip of master still moves the pointer,
+	# so the gate did not simply switch #latest off.
+	- desc: "the tip of master still moves #latest"
+	  exit: 0
+	  inputs:
+		files:
+			run.sh: |
+				. {shared.lib.sh}
+				work="$(mktemp -d)"
+				make_origin "$work/origin.git"
+				tip="$(set_branch_tip "$work/origin.git" master)"
+				SHA="$tip" release "$SCRIPT" "$work/origin.git" "$work/repo" 13 > "$work/log" 2>&1
+				echo "RELEASE_EXIT=$?"
+				has_ref "$work/origin.git" 'widget#13'
+				has_ref "$work/origin.git" 'widget#latest'
+	  cmd: env SCRIPT="$PWD/orphan-release/dist/index.js" bash {inputs.run.sh}
+	  outputs:
+		stdout:
+			- "RELEASE_EXIT=0"
+			- "HAS widget#13"
 			- "HAS widget#latest"
 
 	# #latest is a pointer and moves; a numbered tag is immutable and does not.

@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { nextVersion, parseArgs, tagPrefix } from "./args";
+import { isDefaultBranch, nextVersion, parseArgs, tagPrefix } from "./args";
 
 function git(args: string[], cwd?: string): string {
 	return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }).trim();
@@ -15,6 +15,45 @@ function gitQuiet(args: string[], cwd?: string): string {
 	} catch {
 		return "";
 	}
+}
+
+/**
+ * Whether this run owns the #latest pointer it is about to move.
+ *
+ * A prefix decides who is allowed to contend for one. `--include-branch`
+ * gives a side branch its own `<name>/<branch>` prefix, so its pointer is
+ * uncontended and it moves it freely. Without that flag every branch computes
+ * the SAME unqualified prefix, and the pointer belongs to the default branch:
+ * a side branch moving it serves that branch's tree to everyone installing
+ * "latest", and two branches releasing at once race for the lock. The loser's
+ * release then fails on "cannot lock ref" over content nothing was wrong with.
+ *
+ * On the default branch the same rule applies over time. Two pushes land close
+ * together and the older run can finish last, walking the pointer backwards
+ * onto a tree the branch has already left behind. So a run also checks that
+ * the commit it was triggered for is still the tip.
+ *
+ * A remote that cannot be read leaves the tip unknown. The move goes ahead and
+ * says so: a release that silently stops publishing #latest is worse than one
+ * that occasionally re-runs a race.
+ */
+function ownsLatest(branch: string, sharedPrefix: boolean, staging: string): boolean {
+	if (sharedPrefix && !isDefaultBranch(branch)) {
+		core.info(`[${branch}] Shares the default branch's prefix; leaving #latest to it`);
+		return false;
+	}
+	const sha = process.env.GITHUB_SHA ?? "";
+	if (sha === "") return true;
+	const tip = gitQuiet(["ls-remote", "origin", `refs/heads/${branch}`], staging).split(/\s+/)[0] ?? "";
+	if (tip === "") {
+		core.warning(`Could not read the tip of ${branch}; moving #latest without that check`);
+		return true;
+	}
+	if (tip !== sha) {
+		core.info(`[${branch}] ${tip.slice(0, 7)} superseded this run's ${sha.slice(0, 7)}; leaving #latest to it`);
+		return false;
+	}
+	return true;
 }
 
 function main(): void {
@@ -86,9 +125,12 @@ function main(): void {
 		// A number is immutable: no force, so a stale tag listing fails loudly
 		// rather than rewriting history.
 		git(["push", "origin", `refs/tags/${numbered}`], staging);
-		git(["push", "origin", `+refs/tags/${latest}:refs/tags/${latest}`], staging);
 	} else {
 		git(["push", "--force", "origin", `refs/tags/${numbered}`], staging);
+	}
+	// The numbered tag belongs to this run and always lands. The pointer can be
+	// shared, so it moves only for the run that owns it.
+	if (ownsLatest(branch, prefix === options.name, staging)) {
 		git(["push", "--force", "origin", `refs/tags/${latest}`], staging);
 	}
 	core.endGroup();
