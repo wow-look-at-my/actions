@@ -69,6 +69,34 @@ function messageOf(error: unknown): string {
 }
 
 /**
+ * Whether a create failure says the entry is already there.
+ *
+ * The live service does not answer a collision with ok:false -- it THROWS, with
+ * "Failed request: (409) Conflict: cache entry with the same key, version, and
+ * scope already exists". That is the claim being HELD, which is the one signal
+ * this action exists to read, and reading it as an unreachable service made
+ * every job fail open and run the work.
+ */
+function looksLikeCollision(message: string): boolean {
+	return /already exists/i.test(message) || /\bconflict\b/i.test(message) || /\b409\b/.test(message);
+}
+
+/**
+ * Whether the entry is really there.
+ *
+ * A claim is only ever surrendered on a positive answer. A lookup that fails,
+ * or that finds nothing, keeps the fail-open behaviour: running a check twice
+ * costs seconds, and skipping it everywhere on a guess hides what it reports.
+ */
+async function claimIsHeld(service: ClaimService, key: string, version: string): Promise<{held: boolean; lookupError?: string}> {
+	try {
+		return {held: await service.exists(key, version)};
+	} catch (error) {
+		return {held: false, lookupError: messageOf(error)};
+	}
+}
+
+/**
  * Claim the run for this job.
  *
  * `first` is true when this job holds the claim and the work behind it runs
@@ -81,18 +109,19 @@ export async function claimRun(service: ClaimService, key: string, version: stri
 	try {
 		created = await service.create(key, version);
 	} catch (error) {
-		return {first: true, reason: 'the claim could not be attempted, so this job runs the work', warning: `run-once could not reach the cache service: ${messageOf(error)}`};
+		const detail = messageOf(error);
+		if (looksLikeCollision(detail)) {
+			const {held} = await claimIsHeld(service, key, version);
+			if (held) {
+				return {first: false, reason: `another job of this run holds the claim ${key}`};
+			}
+		}
+		return {first: true, reason: 'the claim could not be attempted, so this job runs the work', warning: `run-once could not reach the cache service: ${detail}`};
 	}
 
 	if (!created.ok) {
-		let taken = false;
-		let lookupError: string | undefined;
-		try {
-			taken = await service.exists(key, version);
-		} catch (error) {
-			lookupError = messageOf(error);
-		}
-		if (taken) {
+		const {held, lookupError} = await claimIsHeld(service, key, version);
+		if (held) {
 			return {first: false, reason: `another job of this run holds the claim ${key}`};
 		}
 		const detail = lookupError ?? created.message ?? 'the service gave no message';
