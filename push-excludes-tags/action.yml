@@ -22,8 +22,10 @@ runs:
             return;
           }
           // `in` reads the prototype, and every array carries Array.prototype.push, so `on: [pull_request]` read as a push trigger with no filter. hasOwn asks about the mapping yq produced.
-          const isRecord = (value: unknown): value is Record<string, unknown> =>
-            value !== null && typeof value === 'object';
+          // json() answers unknown, so every step into the parsed document is narrowed rather than assumed.
+          const isRecord = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object';
+          // The push value is taken as a parameter because a read through an index signature does not narrow in place.
+          const noRefFilter = (push: unknown): boolean => !isRecord(push) || !FILTERS.some(key => Object.hasOwn(push, key));
           let found = 0;
           for (const name of names) {
             const file = `.github/workflows/${name}`;
@@ -36,7 +38,7 @@ runs:
             const unfiltered =
               on === 'push' ||
               (Array.isArray(on) && on.includes('push')) ||
-              (push !== undefined && (!isRecord(push) || !FILTERS.some(key => Object.hasOwn(push, key))));
+              (push !== undefined && noRefFilter(push));
             if (!unfiltered) continue;
             found++;
             core.error(`${file}: its push trigger names no ref filter, so every tag push starts this workflow again. Add \`branches: ['**']\` under \`push:\` (or \`tags-ignore: ['**']\`) to keep it on branch pushes.`, {file});
