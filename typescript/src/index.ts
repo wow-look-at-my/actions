@@ -9,7 +9,7 @@ import * as child_process from 'child_process';
 import * as util from 'util';
 import { createRequire } from 'module';
 import * as ts from 'typescript';
-import { parse as parseYaml } from 'yaml';
+import * as yaml from 'yaml';
 import { MAIN_FN, transformScript } from './transform';
 import { highlightSource } from './highlight';
 import { CommentBlock, findCommentBlocks } from './comments';
@@ -556,11 +556,14 @@ async function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: str
 		fs, path, os, child_process, util,
 	});
 
+	// yaml is bundled here, so a script gets it on every runner. Shelling out to
+	// yq instead fails on Windows, which has no yq on PATH.
 	const actionModules: Record<string, unknown> = {
 		'@actions/core': core,
 		'@actions/github': github,
 		'@actions/exec': exec,
 		'@actions/io': io,
+		yaml,
 	};
 
 	const NodeModule = require('module');
@@ -652,7 +655,7 @@ async function unnamedStepPositions(): Promise<{workflow: string; job: string; p
 	const file = path.join(workspace, workflow);
 	if (!workflow || !fs.existsSync(file)) return none;
 
-	const doc = parseYaml(fs.readFileSync(file, 'utf-8')) as WorkflowDoc;
+	const doc = yaml.parse(fs.readFileSync(file, 'utf-8')) as WorkflowDoc;
 	return {workflow, job, positions: unnamedSteps(doc, job)};
 }
 
