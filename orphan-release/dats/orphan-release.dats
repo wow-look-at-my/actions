@@ -85,7 +85,7 @@ shared:
 			  [ -n "${INCLUDE_BRANCH:-}" ] && args+=(--include-branch)
 
 			  # BRANCH and SHA let a case stand somewhere other than the tip of
-			  # master, which is what decides whether the run owns #latest.
+			  # master, which is what decides whether the run publishes #latest.
 			  (
 			    cd "$repo"
 			    export GITHUB_REF_NAME="${BRANCH:-master}" GITHUB_REPOSITORY=owner/repo GITHUB_TOKEN=
