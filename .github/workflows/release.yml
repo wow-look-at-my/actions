@@ -39,7 +39,7 @@ jobs:
             no-all-builds-job/dats/
             yaml-comment-block/dats/
       - uses: ./no-tests-in-yaml
-      # ste-lint/fixtures/*.md break the rules on purpose, so they are not listed.
+      # ste-lint/fixtures/* break the rules on purpose, hence .md.fixture and this glob.
       - uses: ./ste-lint
         with:
           files: '*.md docs/*.md .github/workflows/*.md */README.md */CLAUDE.md'
