@@ -192,7 +192,7 @@ Reusable GitHub Actions.
 ### [ste-lint](ste-lint/)
 
 ```yml
-# Check prose against the mechanical subset of ASD-STE100 Simplified Technical English — sentence length measured over whole sentences rather than wrapped lines, contractions, banned modal verbs, semicolons, comma splices, hard-wrapped paragraphs, and dictionary word choice.
+# Check the prose a change touches against the mechanical subset of ASD-STE100 Simplified Technical English — sentence length measured over whole sentences rather than wrapped lines, contractions, banned modal verbs, semicolons, comma splices, hard-wrapped paragraphs, and dictionary word choice.
 - uses: wow-look-at-my/actions@ste-lint#latest
 ```
 
