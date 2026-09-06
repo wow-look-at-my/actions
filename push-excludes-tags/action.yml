@@ -29,6 +29,7 @@ runs:
             const on: unknown = await $`yq -o=json ${'.["on"]'} ${path.join(dir, name)}`.json();
             // yq hands back unknown, and an array's own `push` method answers
             // `in`, so the mapping form is read through an own-property check.
+            // `.json()` gives back `unknown`, so read the push value out through a cast rather than off `on` directly.
             const named = isRecord(on) && Object.hasOwn(on, 'push');
             const push = named ? (on as Record<string, unknown>).push : undefined;
             const unfiltered =
