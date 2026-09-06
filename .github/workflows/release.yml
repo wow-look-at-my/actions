@@ -161,7 +161,8 @@ jobs:
           workflows: '.github/workflows/*.yml'
 
   detect:
-    if: github.event_name == 'push'
+    # It enumerates every action rather than diffing, so a dispatch republishes the lot, which is what a recovery run wants.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
       node: ${{ steps.find.outputs.node }}
@@ -186,7 +187,8 @@ jobs:
 
   release-node:
     needs: [checks, detect]
-    if: needs.detect.outputs.node != '[]'
+    # A push publishes only behind green checks. A manual dispatch publishes regardless, which is the operator escape hatch for a broken published action that gates its own replacement.
+    if: always() && needs.detect.result == 'success' && needs.detect.outputs.node != '[]' && (github.event_name == 'workflow_dispatch' || needs.checks.result == 'success')
     strategy:
       fail-fast: false
       matrix:
@@ -250,7 +252,8 @@ jobs:
 
   release-composite:
     needs: [checks, detect]
-    if: needs.detect.outputs.composite != '[]'
+    # Same gate as release-node: green checks on a push, operator's word on a dispatch.
+    if: always() && needs.detect.result == 'success' && needs.detect.outputs.composite != '[]' && (github.event_name == 'workflow_dispatch' || needs.checks.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: write
