@@ -9,6 +9,8 @@ runs:
       with:
         script: |
           const FILTERS = ['branches', 'branches-ignore', 'tags', 'tags-ignore'];
+          // A workflow's `on:` is a string, a list of event names, or a map from event to its filters.
+          type On = string | string[] | {push?: Record<string, unknown> | null} | null;
           const dir = path.join(env.GITHUB_WORKSPACE!, '.github', 'workflows');
           if (!fs.existsSync(dir)) {
             core.warning(`no ${dir}, so this run enforced nothing. Check the repo out first.`);
@@ -23,14 +25,13 @@ runs:
           for (const name of names) {
             const file = `.github/workflows/${name}`;
             // The $ runner never shell-splits, so a quoted literal reaches yq with its quotes; the expression is an interpolated argument.
-            const on: unknown = await $`yq -o=json ${'.["on"]'} ${path.join(dir, name)}`.json();
-            const triggers = on !== null && typeof on === 'object' ? on as Record<string, unknown> : null;
-            const push: unknown = triggers === null ? undefined : triggers.push;
-            const filtered = push !== null && typeof push === 'object' && FILTERS.some(key => key in (push as Record<string, unknown>));
+            const on = await $`yq -o=json ${'.["on"]'} ${path.join(dir, name)}`.json<On>();
+            const push = on !== null && typeof on === 'object' && !Array.isArray(on) ? on.push : undefined;
             const unfiltered =
               on === 'push' ||
               (Array.isArray(on) && on.includes('push')) ||
-              (triggers !== null && 'push' in triggers && !filtered);
+              (push !== undefined &&
+                (push === null || typeof push !== 'object' || !FILTERS.some(key => key in push)));
             if (!unfiltered) continue;
             found++;
             core.error(`${file}: its push trigger names no ref filter, so every tag push starts this workflow again. Add \`branches: ['**']\` under \`push:\` (or \`tags-ignore: ['**']\`) to keep it on branch pushes.`, {file});
