@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isDefaultBranch, nextVersion, parseArgs, tagPrefix } from "./args";
+import { isDefaultBranch, nextVersion, parseArgs } from "./args";
 
 test("a value containing a space arrives whole", () => {
 	const options = parseArgs(["--source", "run-once", "--message", "Release the thing"]);
@@ -13,10 +13,10 @@ test("name defaults to the source directory", () => {
 	assert.equal(parseArgs(["--source", "ste-lint", "--name", "lint"]).name, "lint");
 });
 
-test("include-branch takes no value", () => {
-	const options = parseArgs(["--source", "x", "--include-branch"]);
-	assert.equal(options.includeBranch, true);
-	assert.equal(parseArgs(["--source", "x"]).includeBranch, false);
+// It gave a side branch its own tag prefix. Nothing installed those tags, and
+// no caller in the org ever passed it.
+test("include-branch is gone, and an unknown flag is refused rather than ignored", () => {
+	assert.throws(() => parseArgs(["--source", "x", "--include-branch"]), /Unknown option/);
 });
 
 test("source is required", () => {
@@ -45,12 +45,6 @@ test("main and master are the default branch", () => {
 	assert.equal(isDefaultBranch("master"), true);
 	assert.equal(isDefaultBranch("main"), true);
 	assert.equal(isDefaultBranch("claude/fix"), false);
-});
-
-test("the branch qualifies the prefix only off the default branch", () => {
-	assert.equal(tagPrefix("widget", "claude/fix", true), "widget/claude/fix");
-	assert.equal(tagPrefix("widget", "master", true), "widget");
-	assert.equal(tagPrefix("widget", "claude/fix", false), "widget");
 });
 
 test("the next version is one past the highest published number", () => {

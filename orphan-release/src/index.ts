@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { isDefaultBranch, nextVersion, parseArgs, tagPrefix } from "./args";
+import { isDefaultBranch, nextVersion, parseArgs } from "./args";
 
 function git(args: string[], cwd?: string): string {
 	return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }).trim();
@@ -21,11 +21,10 @@ function gitQuiet(args: string[], cwd?: string): string {
  * Whether this run owns the #latest pointer it is about to move.
  *
  * #latest belongs to the default branch, and to nothing else. Whoever installs
- * "latest" gets what master released. A side branch that moves a pointer serves
- * its own tree under that name, and two branches releasing at once race for the
+ * "latest" gets what master released. A side branch that moves it serves its
+ * own tree under that name, and two branches releasing at once race for the
  * lock, so the loser's release fails on "cannot lock ref" over content nothing
- * was wrong with. `--include-branch` gives a side branch its own numbered
- * series and no pointer.
+ * was wrong with.
  *
  * On the default branch the same rule applies over time. Two pushes land close
  * together and the older run can finish last, walking the pointer backwards
@@ -59,7 +58,7 @@ function main(): void {
 	const options = parseArgs(process.argv.slice(2));
 
 	const branch = process.env.GITHUB_REF_NAME || git(["rev-parse", "--abbrev-ref", "HEAD"]);
-	const prefix = tagPrefix(options.name, branch, options.includeBranch);
+	const prefix = options.name;
 
 	// An explicit --version re-pins an existing number. Without one the number
 	// is derived from what is already published.

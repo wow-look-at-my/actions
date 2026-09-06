@@ -205,10 +205,10 @@ tests:
 			- "HAS widget#11"
 			- "MISSING widget#latest"
 
-	# --include-branch is not a way back in. It gives the branch its own numbered
-	# series and no pointer at all: #latest is the default branch's, whatever
-	# prefix a caller asks for.
-	- desc: "--include-branch publishes a number and no pointer"
+	# --include-branch is gone. It minted a branch-qualified prefix nothing ever
+	# installed, so an unrecognised flag now fails the release rather than
+	# publishing a tag under a name no consumer knows.
+	- desc: "--include-branch is refused rather than silently ignored"
 	  exit: 0
 	  inputs:
 		files:
@@ -216,19 +216,20 @@ tests:
 				. {shared.lib.sh}
 				work="$(mktemp -d)"
 				make_origin "$work/origin.git"
-				BRANCH=side INCLUDE_BRANCH=1 \
-				  release "$SCRIPT" "$work/origin.git" "$work/repo" 14 > "$work/log" 2>&1
-				echo "RELEASE_EXIT=$?"
+				if BRANCH=side INCLUDE_BRANCH=1 \
+				  release "$SCRIPT" "$work/origin.git" "$work/repo" 14 > "$work/log" 2>&1; then
+				  echo "RELEASE_EXIT=0"
+				else
+				  echo "RELEASE_FAILED_LOUDLY=yes"
+				fi
+				grep -q 'Unknown option: --include-branch' "$work/log" && echo "NAMED_THE_FLAG"
 				has_ref "$work/origin.git" 'widget/side#14'
-				has_ref "$work/origin.git" 'widget/side#latest'
-				has_ref "$work/origin.git" 'widget#latest'
 	  cmd: env SCRIPT="$PWD/orphan-release/dist/index.js" bash {inputs.run.sh}
 	  outputs:
 		stdout:
-			- "RELEASE_EXIT=0"
-			- "HAS widget/side#14"
-			- "MISSING widget/side#latest"
-			- "MISSING widget#latest"
+			- "RELEASE_FAILED_LOUDLY=yes"
+			- "NAMED_THE_FLAG"
+			- "MISSING widget/side#14"
 
 	# The same rule applied to one branch over time. Two pushes to master land
 	# close together and the older run can finish last; moving the pointer then
