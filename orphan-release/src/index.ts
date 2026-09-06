@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { nextVersion, parseArgs, tagPrefix } from "./args";
+import { isDefaultBranch, nextVersion, parseArgs } from "./args";
 
 function git(args: string[], cwd?: string): string {
 	return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] }).trim();
@@ -17,11 +17,48 @@ function gitQuiet(args: string[], cwd?: string): string {
 	}
 }
 
+/**
+ * Whether this run owns the #latest pointer it is about to move.
+ *
+ * #latest belongs to the default branch, and to nothing else. Whoever installs
+ * "latest" gets what master released. A side branch that moves it serves its
+ * own tree under that name, and two branches releasing at once race for the
+ * lock, so the loser's release fails on "cannot lock ref" over content nothing
+ * was wrong with.
+ *
+ * On the default branch the same rule applies over time. Two pushes land close
+ * together and the older run can finish last, walking the pointer backwards
+ * onto a tree the branch has already left behind. So a run also checks that
+ * the commit it was triggered for is still the tip.
+ *
+ * A remote that cannot be read leaves the tip unknown. The move goes ahead and
+ * says so: a release that silently stops publishing #latest is worse than one
+ * that occasionally re-runs a race.
+ */
+function ownsLatest(branch: string, staging: string): boolean {
+	if (!isDefaultBranch(branch)) {
+		core.info(`[${branch}] #latest belongs to the default branch; leaving it alone`);
+		return false;
+	}
+	const sha = process.env.GITHUB_SHA ?? "";
+	if (sha === "") return true;
+	const tip = gitQuiet(["ls-remote", "origin", `refs/heads/${branch}`], staging).split(/\s+/)[0] ?? "";
+	if (tip === "") {
+		core.warning(`Could not read the tip of ${branch}; moving #latest without that check`);
+		return true;
+	}
+	if (tip !== sha) {
+		core.info(`[${branch}] ${tip.slice(0, 7)} superseded this run's ${sha.slice(0, 7)}; leaving #latest to it`);
+		return false;
+	}
+	return true;
+}
+
 function main(): void {
 	const options = parseArgs(process.argv.slice(2));
 
 	const branch = process.env.GITHUB_REF_NAME || git(["rev-parse", "--abbrev-ref", "HEAD"]);
-	const prefix = tagPrefix(options.name, branch, options.includeBranch);
+	const prefix = options.name;
 
 	// An explicit --version re-pins an existing number. Without one the number
 	// is derived from what is already published.
@@ -71,7 +108,11 @@ function main(): void {
 		const token = process.env.GITHUB_TOKEN ?? "";
 		git(["remote", "add", "origin", `https://x-access-token:${token}@github.com/${repository}`], staging);
 	}
-	for (const tag of [numbered, latest]) {
+	// The numbered tag belongs to this run and always lands. The pointer is the
+	// default branch's, so a side branch never even mints it: a "Created tag"
+	// line for a tag nothing pushes reads as a release that shipped.
+	const owns = ownsLatest(branch, staging);
+	for (const tag of owns ? [numbered, latest] : [numbered]) {
 		git(["tag", tag], staging);
 		core.info(`Created tag: ${tag}`);
 	}
@@ -86,9 +127,10 @@ function main(): void {
 		// A number is immutable: no force, so a stale tag listing fails loudly
 		// rather than rewriting history.
 		git(["push", "origin", `refs/tags/${numbered}`], staging);
-		git(["push", "origin", `+refs/tags/${latest}:refs/tags/${latest}`], staging);
 	} else {
 		git(["push", "--force", "origin", `refs/tags/${numbered}`], staging);
+	}
+	if (owns) {
 		git(["push", "--force", "origin", `refs/tags/${latest}`], staging);
 	}
 	core.endGroup();
