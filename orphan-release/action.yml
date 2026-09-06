@@ -55,4 +55,4 @@ runs:
         [ -n "${{ inputs.exclude }}" ] && args+=(--exclude "${{ inputs.exclude }}")
         [ -n "${{ inputs.message }}" ] && args+=(--message "${{ inputs.message }}")
         [ "${{ inputs.include-branch }}" = "true" ] && args+=(--include-branch)
-        "${{ github.action_path }}/orphan-release.sh" "${args[@]}"
+        node "${{ github.action_path }}/dist/index.js" "${args[@]}"
