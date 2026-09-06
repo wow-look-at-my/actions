@@ -9,6 +9,8 @@ runs:
       with:
         script: |
           const FILTERS = ['branches', 'branches-ignore', 'tags', 'tags-ignore'];
+          // A workflow's `on:` is a string, a list of event names, or a map from event to its filters.
+          type On = string | string[] | {push?: Record<string, unknown> | null} | null;
           const dir = path.join(env.GITHUB_WORKSPACE!, '.github', 'workflows');
           if (!fs.existsSync(dir)) {
             core.warning(`no ${dir}, so this run enforced nothing. Check the repo out first.`);

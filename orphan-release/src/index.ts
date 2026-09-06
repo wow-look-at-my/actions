@@ -18,7 +18,11 @@ function gitQuiet(args: string[], cwd?: string): string {
 }
 
 /**
+<<<<<<< HEAD
  * Whether this run is the one that publishes #latest.
+=======
+ * Whether this run owns the #latest pointer it is about to move.
+>>>>>>> origin/master
  *
  * #latest belongs to the default branch, and to nothing else. Whoever installs
  * "latest" gets what master released. A side branch that moves it serves its
@@ -35,7 +39,11 @@ function gitQuiet(args: string[], cwd?: string): string {
  * says so: a release that silently stops publishing #latest is worse than one
  * that occasionally re-runs a race.
  */
+<<<<<<< HEAD
 function publishesLatest(branch: string, staging: string): boolean {
+=======
+function ownsLatest(branch: string, staging: string): boolean {
+>>>>>>> origin/master
 	if (!isDefaultBranch(branch)) {
 		core.info(`[${branch}] #latest belongs to the default branch; leaving it alone`);
 		return false;
@@ -108,11 +116,19 @@ function main(): void {
 		const token = process.env.GITHUB_TOKEN ?? "";
 		git(["remote", "add", "origin", `https://x-access-token:${token}@github.com/${repository}`], staging);
 	}
+<<<<<<< HEAD
 	// The numbered tag belongs to this run and always lands. The pointer is
 	// master's, so a side branch never even mints it: a "Created tag" line for
 	// a tag nothing pushes reads as a release that shipped.
 	const publishLatest = publishesLatest(branch, staging);
 	for (const tag of publishLatest ? [numbered, latest] : [numbered]) {
+=======
+	// The numbered tag belongs to this run and always lands. The pointer is the
+	// default branch's, so a side branch never even mints it: a "Created tag"
+	// line for a tag nothing pushes reads as a release that shipped.
+	const owns = ownsLatest(branch, staging);
+	for (const tag of owns ? [numbered, latest] : [numbered]) {
+>>>>>>> origin/master
 		git(["tag", tag], staging);
 		core.info(`Created tag: ${tag}`);
 	}
@@ -130,7 +146,11 @@ function main(): void {
 	} else {
 		git(["push", "--force", "origin", `refs/tags/${numbered}`], staging);
 	}
+<<<<<<< HEAD
 	if (publishLatest) {
+=======
+	if (owns) {
+>>>>>>> origin/master
 		git(["push", "--force", "origin", `refs/tags/${latest}`], staging);
 	}
 	core.endGroup();
