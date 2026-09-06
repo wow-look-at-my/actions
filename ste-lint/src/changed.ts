@@ -18,9 +18,12 @@ export type Event = {
 	payload: unknown;
 };
 
+// Which lines of which files a change added or rewrote.
+export type Touched = Map<string, Set<number>>;
+
 export type Scope = {
-	// The files the event changed, or null when the base is unknown.
-	files: string[] | null;
+	// The lines the event changed, or null when the base is unknown.
+	touched: Touched | null;
 	// What this run scoped to, or why it could not.
 	note: string;
 };
@@ -57,13 +60,17 @@ export function baseOf(event: Event): string | null {
 	return branch === null ? null : `refs/heads/${branch}`;
 }
 
-// Lists the files between the base and HEAD.
+// Lists the lines between the base and HEAD, by file.
+//
+// The unit is a line, not a file. A change that edits one sentence of a long
+// document answers for that sentence. It does not inherit every finding the
+// document already carried, which is what turns a check into a wall.
 //
 // `git diff` compares two trees and never needs a common ancestor, so a
 // depth-1 checkout works once the base commit itself is present. That is what
 // the fetch is for: actions/checkout takes one commit by default, and the base
 // is not it.
-export function changedFiles(base: string, git: Git = runGit): string[] {
+export function changedLines(base: string, git: Git = runGit): Touched {
 	let rev = base;
 	if (base.startsWith('refs/')) {
 		git(['fetch', '--no-tags', '--depth=1', 'origin', base]);
@@ -75,24 +82,68 @@ export function changedFiles(base: string, git: Git = runGit): string[] {
 			git(['fetch', '--no-tags', '--depth=1', 'origin', base]);
 		}
 	}
-	const out = git(['diff', '--name-only', '-z', '--diff-filter=ACMRT', rev, 'HEAD']);
-	return out.split('\0').filter((name) => name !== '');
+	return parseHunks(git(['diff', '--unified=0', '--no-color', '--no-renames', '--diff-filter=ACMT', rev, 'HEAD']));
 }
 
-// Resolves the scope for this run. A failure here returns null files, and the
+const FILE_RE = /^\+\+\+ (?:b\/)?(.+)$/;
+// @@ -old,count +new,count @@ -- the "+" side names the lines that now exist.
+const HUNK_RE = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
+
+// Reads a unified diff into the set of lines each file now has that it did not
+// have before. A deletion adds no line, so it contributes nothing.
+export function parseHunks(diff: string): Touched {
+	const touched: Touched = new Map();
+	let file = '';
+	for (const line of diff.split('\n')) {
+		const f = FILE_RE.exec(line);
+		if (f !== null) {
+			file = f[1] === '/dev/null' ? '' : f[1];
+			continue;
+		}
+		const h = HUNK_RE.exec(line);
+		if (h === null || file === '') continue;
+		const start = Number(h[1]);
+		const count = h[2] === undefined ? 1 : Number(h[2]);
+		let lines = touched.get(file);
+		if (lines === undefined) {
+			lines = new Set();
+			touched.set(file, lines);
+		}
+		for (let i = 0; i < count; i++) lines.add(start + i);
+	}
+	return touched;
+}
+
+// Resolves the scope for this run. A failure here returns a null scope, and the
 // caller then lints everything and says so: this decides what to SKIP, and a
 // check that skips on an error is a check that passes for the wrong reason.
 export function scopeOf(event: Event, git: Git = runGit): Scope {
 	const base = baseOf(event);
 	if (base === null) {
-		return {files: null, note: `ste-lint: the ${event.name} event names no base commit, so this run reads the whole tree`};
+		return {touched: null, note: `ste-lint: the ${event.name} event names no base commit, so this run reads the whole tree`};
 	}
 	try {
-		return {files: changedFiles(base, git), note: `ste-lint: scoped to what changed since ${base}`};
+		const touched = changedLines(base, git);
+		const lines = [...touched.values()].reduce((n, set) => n + set.size, 0);
+		return {touched, note: `ste-lint: scoped to ${lines} line(s) across ${touched.size} file(s) changed since ${base}`};
 	} catch (err) {
 		const why = err instanceof Error ? err.message : String(err);
-		return {files: null, note: `ste-lint: could not diff against ${base} (${why}), so this run reads the whole tree`};
+		return {touched: null, note: `ste-lint: could not diff against ${base} (${why}), so this run reads the whole tree`};
 	}
+}
+
+// Keeps the findings that sit on a changed line. A finding is reported as
+// "path:line: ...", which is the line the writer must go and fix.
+export function onTouchedLines<T extends object>(findings: T, touched: Touched): T {
+	const out: Record<string, string[]> = {};
+	for (const [rule, list] of Object.entries(findings) as [string, string[]][]) {
+		out[rule] = list.filter((finding) => {
+			const m = /^(.*?):(\d+):/.exec(finding);
+			if (m === null) return true;
+			return touched.get(m[1])?.has(Number(m[2])) ?? false;
+		});
+	}
+	return out as T;
 }
 
 // Reads the event this run was started by. An unreadable payload is not an
