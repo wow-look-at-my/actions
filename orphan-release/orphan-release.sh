@@ -70,12 +70,7 @@ elif ! [[ "$version" =~ ^[0-9]+$ ]]; then
 	exit 1
 fi
 
-tags=("$prefix#$version")
-# #latest is a shared, mutable pointer every consumer resolves by default --
-# moving it from a non-default branch would serve that branch's unreviewed
-# content to every caller. The numbered tag is immutable and globally
-# unique regardless of branch, so it always publishes.
-[ "$is_default_branch" = true ] && tags+=("$prefix#latest")
+tags=("$prefix#$version" "$prefix#latest")
 first_tag="${tags[0]}"
 [ -z "$message" ] && message="Release $first_tag"
 
@@ -131,15 +126,10 @@ if [ "$auto_version" = true ]; then
 	# Numbered releases are immutable: push the new number WITHOUT force so a
 	# stale/failed tag listing can only fail loudly, never rewrite history.
 	git push origin "refs/tags/$prefix#$version"
-	if [ "$is_default_branch" = true ]; then
-		git push origin "+refs/tags/$prefix#latest:refs/tags/$prefix#latest"
-	fi
+	git push origin "+refs/tags/$prefix#latest:refs/tags/$prefix#latest"
 else
-	# Explicit --version keeps the historical re-pin semantics, still gated
-	# to the default branch for #latest.
+	# Explicit --version keeps the historical re-pin semantics.
 	git push --force origin "refs/tags/$prefix#$version"
-	if [ "$is_default_branch" = true ]; then
-		git push --force origin "refs/tags/$prefix#latest"
-	fi
+	git push --force origin "refs/tags/$prefix#latest"
 fi
 echo "::endgroup::"

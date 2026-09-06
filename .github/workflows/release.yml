@@ -240,9 +240,9 @@ jobs:
             fi
           done
 
-      # A push publishes from master only. A dispatch publishes from whatever ref the operator picked. Versions auto-increment and unchanged actions are skipped.
+      # The default branch, or a dispatch the operator started by hand. This is the only gate on publishing: orphan-release.sh publishes whatever it is asked to. Versions auto-increment and unchanged actions are skipped.
       - name: Create orphan tag
-        if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/master'
+        if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: >
@@ -260,9 +260,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Same rule as release-node: master on a push, the dispatched ref on a dispatch.
+      # Same gate as release-node: the default branch, or a hand-started dispatch.
       - name: Create orphan tags
-        if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/master'
+        if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
