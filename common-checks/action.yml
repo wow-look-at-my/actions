@@ -6,7 +6,7 @@ runs:
   steps:
     # One job of the run holds the claim. see README.md
     - id: claim
-      uses: wow-look-at-my/actions@run-once#latest
+      uses: ./run-once
       with:
         name: common-checks
 
@@ -26,17 +26,17 @@ runs:
         fi
 
     - if: steps.claim.outputs.first == 'true'
-      uses: wow-look-at-my/actions@no-all-builds-job#latest
+      uses: ./no-all-builds-job
 
     - if: steps.claim.outputs.first == 'true'
-      uses: wow-look-at-my/actions@yaml-comment-block#latest
+      uses: ./yaml-comment-block
 
     - if: steps.claim.outputs.first == 'true'
-      uses: wow-look-at-my/actions@no-tests-in-yaml#latest
+      uses: ./no-tests-in-yaml
 
     - if: steps.claim.outputs.first == 'true'
-      uses: wow-look-at-my/actions@push-excludes-tags#latest
+      uses: ./push-excludes-tags
 
     # Every markdown file outside a submodule. There is no input to opt a path out.
     - if: steps.claim.outputs.first == 'true'
-      uses: wow-look-at-my/actions@ste-lint#latest
+      uses: ./ste-lint
