@@ -1,0 +1,44 @@
+name: Push Excludes Tags
+description: Fail CI when a workflow's push trigger names no ref filter, so tag pushes start it again
+
+runs:
+  using: composite
+  steps:
+    - name: Check every workflow's push trigger for a ref filter
+      uses: wow-look-at-my/actions@typescript#latest
+      with:
+        script: |
+          const FILTERS = ['branches', 'branches-ignore', 'tags', 'tags-ignore'];
+          const dir = path.join(env.GITHUB_WORKSPACE!, '.github', 'workflows');
+          if (!fs.existsSync(dir)) {
+            core.warning(`no ${dir}, so this run enforced nothing. Check the repo out first.`);
+            return;
+          }
+          const names = fs.readdirSync(dir).filter(name => /\.ya?ml$/.test(name)).sort();
+          if (names.length === 0) {
+            core.warning(`no workflow file under ${dir}, so this run enforced nothing.`);
+            return;
+          }
+          // `in` reads the prototype, and every array carries Array.prototype.push, so `on: [pull_request]` read as a push trigger with no filter. hasOwn asks about the mapping yq produced.
+          // json() answers unknown, so every step into the parsed document is narrowed rather than assumed.
+          const isRecord = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object';
+          // The push value is taken as a parameter because a read through an index signature does not narrow in place.
+          const noRefFilter = (push: unknown): boolean => !isRecord(push) || !FILTERS.some(key => Object.hasOwn(push, key));
+          let found = 0;
+          for (const name of names) {
+            const file = `.github/workflows/${name}`;
+            // The $ runner never shell-splits, so a quoted literal reaches yq with its quotes; the expression is an interpolated argument.
+            const on: unknown = await $`yq -o=json ${'.["on"]'} ${path.join(dir, name)}`.json();
+            // `.json()` gives back `unknown`, so read the push value out through a cast rather than off `on` directly.
+            const named = isRecord(on) && Object.hasOwn(on, 'push');
+            const push = named ? (on as Record<string, unknown>).push : undefined;
+            const unfiltered =
+              on === 'push' ||
+              (Array.isArray(on) && on.includes('push')) ||
+              (named && noRefFilter(push));
+            if (!unfiltered) continue;
+            found++;
+            core.error(`${file}: its push trigger names no ref filter, so every tag push starts this workflow again. Add \`branches: ['**']\` under \`push:\` (or \`tags-ignore: ['**']\`) to keep it on branch pushes.`, {file});
+          }
+          if (found > 0) core.setFailed(`${found} of ${names.length} workflow(s) still match tag pushes`);
+          else core.info(`OK - every push trigger names a ref filter in ${names.length} file(s)`);
