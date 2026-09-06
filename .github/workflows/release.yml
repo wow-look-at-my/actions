@@ -33,25 +33,14 @@ jobs:
       - uses: ./run-once
         with:
           name: common-checks
-      # dats@master opens by running this repo's own published common-checks, so the suites run from the binary directly and this job stays on its checkout.
-      - name: Download dats
-        id: dats
-        uses: wow-look-at-my/buildhost/.github/actions/buildhost-download@master
-        with:
-          project: dats
-      - name: Install the sandbox backend
-        run: sudo apt-get update && sudo apt-get install -y bubblewrap
       # The guard suites drive dist/, so they run after the build above.
-      - name: Run the guard suites
-        env:
-          DATS_BIN: ${{ steps.dats.outputs.path }}
-        run: |
-          set -euo pipefail
-          bash "$DATS_BIN" test \
-            dats/ \
-            orphan-release/dats/ \
-            secret-server/dats/ \
-            no-all-builds-job/dats/ \
+      - uses: ./dats
+        with:
+          tests: |
+            dats/
+            orphan-release/dats/
+            secret-server/dats/
+            no-all-builds-job/dats/
             yaml-comment-block/dats/
       - uses: ./no-tests-in-yaml
       # ste-lint/fixtures/* break the rules on purpose, hence .md.fixture and this glob.
