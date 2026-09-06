@@ -4,13 +4,12 @@ export type Options = {
 	version: string;
 	exclude: string;
 	message: string;
-	includeBranch: boolean;
 };
 
 // One flag per option, each taking its value as the next argv element, so a
 // value that contains a space arrives whole.
 export function parseArgs(argv: string[]): Options {
-	const options: Options = { source: "", name: "", version: "", exclude: "", message: "", includeBranch: false };
+	const options: Options = { source: "", name: "", version: "", exclude: "", message: "" };
 	const takesValue: Record<string, keyof Options> = {
 		"--source": "source",
 		"--name": "name",
@@ -21,10 +20,6 @@ export function parseArgs(argv: string[]): Options {
 
 	for (let i = 0; i < argv.length; i++) {
 		const flag = argv[i]!;
-		if (flag === "--include-branch") {
-			options.includeBranch = true;
-			continue;
-		}
 		const key = takesValue[flag];
 		if (key === undefined) throw new Error(`Unknown option: ${flag}`);
 		const value = argv[++i];
@@ -44,12 +39,6 @@ export function parseArgs(argv: string[]): Options {
 
 export function isDefaultBranch(branch: string): boolean {
 	return branch === "master" || branch === "main";
-}
-
-// A branch-qualified prefix keeps a side branch's numbers out of the shared
-// series. The default branch owns the unqualified one.
-export function tagPrefix(name: string, branch: string, includeBranch: boolean): string {
-	return includeBranch && !isDefaultBranch(branch) ? `${name}/${branch}` : name;
 }
 
 // The highest number already published under this prefix. A tag carrying
