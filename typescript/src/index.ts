@@ -28,10 +28,10 @@ type ShellArg = string | number | boolean | null | undefined | string[];
  * `String(stream)` when a primitive is needed for a comparison.
  */
 // eslint-disable-next-line local/no-callable-primitive-intersection -- known: $ output is a boxed branded-primitive (the documented TS footgun); pending the primitive-string redesign
-type OutputStream = string & { json<T = any>(): T };
+type OutputStream = string & { json<T = unknown>(): T };
 
 // eslint-disable-next-line @typescript-eslint/no-wrapper-object-types -- known: $ output is a boxed branded-primitive (the documented TS footgun); pending the primitive-string redesign
-function streamJson<T = any>(this: String): T {
+function streamJson<T = unknown>(this: String): T {
 	return JSON.parse(this.toString()) as T;
 }
 
@@ -108,13 +108,13 @@ class StreamPromise implements PromiseLike<OutputStream> {
 
 	then<T = OutputStream, R = never>(
 		onfulfilled?: ((v: OutputStream) => T | PromiseLike<T>) | null,
-		onrejected?: ((e: any) => R | PromiseLike<R>) | null,
+		onrejected?: ((e: unknown) => R | PromiseLike<R>) | null,
 	): Promise<T | R> {
 		return this.resolve().then(onfulfilled, onrejected);
 	}
 
 	/** Run the command and resolve to this stream parsed as JSON. */
-	json<T = any>(): Promise<T> {
+	json<T = unknown>(): Promise<T> {
 		return this.resolve().then((s) => s.json<T>());
 	}
 
@@ -188,7 +188,7 @@ class ExecBuilder implements PromiseLike<ProcessOutput> {
 	 * Run the command and resolve to its stdout parsed as JSON. A terse stdout
 	 * shortcut equivalent to `.stdout.json()`: `await $`...`.json()`.
 	 */
-	json<T = any>(): Promise<T> {
+	json<T = unknown>(): Promise<T> {
 		return this.stdout.json<T>();
 	}
 
@@ -214,7 +214,7 @@ class ExecBuilder implements PromiseLike<ProcessOutput> {
 
 	then<T = ProcessOutput, R = never>(
 		onfulfilled?: ((v: ProcessOutput) => T | PromiseLike<T>) | null,
-		onrejected?: ((e: any) => R | PromiseLike<R>) | null,
+		onrejected?: ((e: unknown) => R | PromiseLike<R>) | null,
 	): Promise<T | R> {
 		return this.run().then(onfulfilled, onrejected);
 	}
@@ -533,14 +533,14 @@ async function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: str
 	// would leave octokit unauthenticated (getOctokit('') throws on first use).
 	let _preAuth: ReturnType<typeof github.getOctokit> | null = null;
 	const octokitProxy = new Proxy(
-		function deprecatedOctokit(token: string, options?: Record<string, unknown>) {
+		function deprecatedOctokit(token: string, options?: Parameters<typeof github.getOctokit>[1]) {
 			core.warning('octokit(token) is deprecated; use the pre-authenticated octokit instance directly, or getOctokit(token) for a custom token');
-			return github.getOctokit(token, options as any);
+			return github.getOctokit(token, options);
 		},
 		{
 			get(_target, prop) {
 				if (!_preAuth) _preAuth = github.getOctokit(githubToken);
-				return (_preAuth as any)[prop];
+				return Reflect.get(_preAuth, prop);
 			},
 		}
 	);
@@ -580,10 +580,13 @@ async function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: str
 	};
 
 	for (const [name, mod] of Object.entries(actionModules)) {
-		(require.cache as any)[name] = {
+		// A cache entry the loader only ever reads `exports` off. The rest of
+		// NodeModule is filled in to keep the shape recognizable, so the cast
+		// stands in for the fields nothing here touches.
+		require.cache[name] = {
 			id: name, filename: name, loaded: true, exports: mod,
 			parent: null, children: [], paths: [],
-		};
+		} as unknown as NodeJS.Module;
 	}
 
 	const scriptFilename = path.join(baseDir, `.user-script-${process.pid}-${Date.now()}.js`);
@@ -608,7 +611,7 @@ async function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: str
 		return await (main as () => Promise<unknown>)();
 	} finally {
 		NodeModule._resolveFilename = origResolve;
-		for (const name of Object.keys(actionModules)) delete (require.cache as any)[name];
+		for (const name of Object.keys(actionModules)) delete require.cache[name];
 	}
 }
 
