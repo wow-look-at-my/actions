@@ -83,13 +83,6 @@ ts0 supplies the compiler, the bundler and `@types/node`, so an action's `packag
 - uses: wow-look-at-my/actions@common-checks#latest
 ```
 
-### [Run dats](dats/)
-
-```yml
-# Download the dats binary from buildhost and run its suites, without a caller hand-rolling the download.
-- uses: wow-look-at-my/actions@dats#latest
-```
-
 ### [Download Executable Artifact](download-exe/)
 
 ```yml
