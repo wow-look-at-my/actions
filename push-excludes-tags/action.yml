@@ -19,27 +19,40 @@ runs:
             core.warning(`no workflow file under ${dir}, so this run enforced nothing.`);
             return;
           }
-          const yaml = require('yaml');
-          // `in` reads the prototype, and every array carries Array.prototype.push, so `on: [pull_request]` read as a push trigger with no filter. hasOwn asks about the parsed mapping instead.
-          const isRecord = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object';
-          // The push value is taken as a parameter because a read through an index signature does not narrow in place.
-          const noRefFilter = (push: unknown): boolean => !isRecord(push) || !FILTERS.some(key => Object.hasOwn(push, key));
+          // This action runs in every consumer repo, on whatever typescript action is published. A `require` of a module that action bundles today fails on an older one, so the trigger is read here with no module at all.
+          const indentOf = (line: string): number => line.length - line.trimStart().length;
+          const skip = (line: string): boolean => line.trim() === '' || line.trimStart().startsWith('#');
+          const strip = (value: string): string => value.replace(/\s+#.*$/, '').trim();
+          const key = (line: string, name: string): RegExpExecArray | null =>
+            new RegExp(`^\\s*(?:${name}|"${name}"|'${name}')\\s*:(.*)$`).exec(line);
+          const unfilteredPush = (text: string): boolean => {
+            const lines = text.split('\n');
+            let at = lines.findIndex(line => indentOf(line) === 0 && key(line, 'on'));
+            if (at < 0) return false;
+            const head = strip(key(lines[at], 'on')![1]);
+            if (head === 'push') return true;
+            if (head.startsWith('[')) return head.slice(1).replace(/].*$/, '').split(',').some(item => strip(item).replace(/['"]/g, '') === 'push');
+            if (head !== '') return false;
+            let push = -1;
+            for (at++; at < lines.length; at++) {
+              if (skip(lines[at])) continue;
+              if (indentOf(lines[at]) === 0) return false;
+              if (key(lines[at], 'push')) { push = at; break; }
+            }
+            if (push < 0) return false;
+            const inline = strip(key(lines[push], 'push')![1]);
+            if (inline !== '') return !FILTERS.some(name => inline.includes(`${name}:`));
+            for (at = push + 1; at < lines.length; at++) {
+              if (skip(lines[at])) continue;
+              if (indentOf(lines[at]) <= indentOf(lines[push])) break;
+              if (FILTERS.some(name => key(lines[at], name))) return false;
+            }
+            return true;
+          };
           let found = 0;
           for (const name of names) {
             const file = `.github/workflows/${name}`;
-            // The bundled parser is YAML 1.2, where `on` is a plain string key, not the 1.1 boolean yq answers with.
-            const doc: unknown = yaml.parse(fs.readFileSync(path.join(dir, name), 'utf-8')) ?? {};
-            const on = isRecord(doc) ? doc['on'] : undefined;
-            // yaml.parse hands back unknown, and an array's own `push` method answers
-            // `in`, so the mapping form is read through an own-property check.
-            // read the push value out through a cast rather than off `on` directly.
-            const named = isRecord(on) && Object.hasOwn(on, 'push');
-            const push = named ? (on as Record<string, unknown>).push : undefined;
-            const unfiltered =
-              on === 'push' ||
-              (Array.isArray(on) && on.includes('push')) ||
-              (named && noRefFilter(push));
-            if (!unfiltered) continue;
+            if (!unfilteredPush(fs.readFileSync(path.join(dir, name), 'utf-8'))) continue;
             found++;
             core.error(`${file}: its push trigger names no ref filter, so every tag push starts this workflow again. Add \`branches: ['**']\` under \`push:\` (or \`tags-ignore: ['**']\`) to keep it on branch pushes.`, {file});
           }

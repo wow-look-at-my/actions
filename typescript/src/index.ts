@@ -570,17 +570,25 @@ async function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: str
 	const origResolve = NodeModule._resolveFilename;
 	const workspaceDir = process.env.GITHUB_WORKSPACE;
 
-	NodeModule._resolveFilename = function (request: string, parent: unknown, isMain: boolean, options: unknown) {
+	// require.resolve() goes through this same hook, so a request nothing can
+	// resolve used to re-enter the fallback until the stack overflowed. The
+	// original resolver is restored across the call, which turns that into the
+	// ordinary "Cannot find module" the caller needs to read.
+	const patched = function (this: unknown, request: string, parent: unknown, isMain: boolean, options: unknown) {
 		if (request in actionModules) return request;
 		try {
 			return origResolve.call(this, request, parent, isMain, options);
 		} catch (e) {
-			if (workspaceDir) {
+			if (!workspaceDir) throw e;
+			NodeModule._resolveFilename = origResolve;
+			try {
 				return createRequire(path.join(workspaceDir, 'noop.js')).resolve(request);
+			} finally {
+				NodeModule._resolveFilename = patched;
 			}
-			throw e;
 		}
 	};
+	NodeModule._resolveFilename = patched;
 
 	for (const [name, mod] of Object.entries(actionModules)) {
 		// A cache entry the loader only ever reads `exports` off. The rest of
