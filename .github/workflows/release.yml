@@ -39,7 +39,7 @@ jobs:
             no-all-builds-job/dats/
             yaml-comment-block/dats/
       - uses: ./no-tests-in-yaml
-      # ste-lint/fixtures/*.md break the rules on purpose, so they are not listed.
+      # The paths are named because the default `**/*.md` skips a dot-directory.
       - uses: ./ste-lint
         with:
           files: '*.md docs/*.md .github/workflows/*.md */README.md */CLAUDE.md'
