@@ -27,7 +27,9 @@ export function expectations(text: string): Record<string, number> {
 	return out;
 }
 
-const files = readdirSync(DIR).filter((f) => f.endsWith('.md') && f !== 'README.md');
+// The extension is deliberately not .md. These files break the rules on purpose,
+// and common-checks lints every .md in the repo with no way to opt a path out.
+const files = readdirSync(DIR).filter((f) => f.endsWith('.fixture'));
 
 test('there are fixtures to walk', () => {
 	assert.ok(files.length > 0, `no fixtures in ${DIR}`);
