@@ -20,6 +20,10 @@ runs:
             return;
           }
           let found = 0;
+          // json() answers unknown, so every step into the parsed document is narrowed rather than assumed.
+          const isRecord = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object';
+          // The push value is taken as a parameter because a read through an index signature does not narrow in place.
+          const noRefFilter = (push: unknown): boolean => !isRecord(push) || !FILTERS.some(key => key in push);
           for (const name of names) {
             const file = `.github/workflows/${name}`;
             // The $ runner never shell-splits, so a quoted literal reaches yq with its quotes; the expression is an interpolated argument.
@@ -27,8 +31,7 @@ runs:
             const unfiltered =
               on === 'push' ||
               (Array.isArray(on) && on.includes('push')) ||
-              (on !== null && typeof on === 'object' && 'push' in on &&
-                (on.push === null || typeof on.push !== 'object' || !FILTERS.some(key => key in on.push)));
+              (isRecord(on) && 'push' in on && noRefFilter(on.push));
             if (!unfiltered) continue;
             found++;
             core.error(`${file}: its push trigger names no ref filter, so every tag push starts this workflow again. Add \`branches: ['**']\` under \`push:\` (or \`tags-ignore: ['**']\`) to keep it on branch pushes.`, {file});
