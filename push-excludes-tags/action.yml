@@ -20,17 +20,21 @@ runs:
             return;
           }
           const yaml = require('yaml');
+          // `in` reads the prototype, and every array carries Array.prototype.push, so `on: [pull_request]` read as a push trigger with no filter. hasOwn asks about the parsed mapping instead.
+          const isRecord = (value: unknown): value is Record<string, unknown> =>
+            value !== null && typeof value === 'object';
           let found = 0;
           for (const name of names) {
             const file = `.github/workflows/${name}`;
             // The bundled parser is YAML 1.2, where `on` is a plain string key, not the 1.1 boolean yq answers with.
-            const doc = yaml.parse(fs.readFileSync(path.join(dir, name), 'utf-8')) ?? {};
-            const on = doc['on'];
+            const doc: unknown = yaml.parse(fs.readFileSync(path.join(dir, name), 'utf-8')) ?? {};
+            const on = isRecord(doc) ? doc['on'] : undefined;
+            const named = isRecord(on) && Object.hasOwn(on, 'push');
+            const push = named ? (on as Record<string, unknown>).push : undefined;
             const unfiltered =
               on === 'push' ||
               (Array.isArray(on) && on.includes('push')) ||
-              (on !== null && typeof on === 'object' && 'push' in on &&
-                (on.push === null || typeof on.push !== 'object' || !FILTERS.some(key => key in on.push)));
+              (named && (!isRecord(push) || !FILTERS.some(key => Object.hasOwn(push, key))));
             if (!unfiltered) continue;
             found++;
             core.error(`${file}: its push trigger names no ref filter, so every tag push starts this workflow again. Add \`branches: ['**']\` under \`push:\` (or \`tags-ignore: ['**']\`) to keep it on branch pushes.`, {file});
