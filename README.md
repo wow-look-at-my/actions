@@ -248,21 +248,6 @@ ts0 supplies the compiler, the bundler and `@types/node`, so an action's `packag
 
 ## Reusable Workflows
 
-### PR Preview (buildhost) -- DELETED
-
-Publish the site with buildhost's own action instead:
-
-```yml
-- uses: wow-look-at-my/buildhost/.github/actions/buildhost-publish-site@master
-  with:
-    branch: ${{ github.ref_name }}
-    source_dir: ./site
-```
-
-It posts the sticky preview comment itself, and it flattens the branch into the one path segment the sites router serves. This workflow wrapped that action and re-implemented the same comment beside it, which is one implementation too many. It could also only deploy a sparse checkout or a run artifact, and the org publishes without GitHub Actions artifacts, so a caller that built its own output had no route through it at all. Calling the action from the job that produced the directory needs no hand-off.
-
-The job grants `id-token: write` (OIDC to buildhost), `pull-requests: write` (the comment), `contents: read`, `actions: read`, `checks: read`, `artifact-metadata: write` and `deployments: write`. A job-level `permissions:` block REPLACES the workflow-level one.
-
 ### Publish to GHCR
 
 ```yml
