@@ -73,7 +73,7 @@ shared:
 			    export GIT_CONFIG_COUNT=1
 			    export GIT_CONFIG_KEY_0="url.$origin.insteadOf"
 			    export GIT_CONFIG_VALUE_0="$REMOTE_URL"
-			    bash "$script" "${args[@]}"
+			    node "$script" "${args[@]}"
 			  )
 			}
 
@@ -114,7 +114,7 @@ tests:
 				  echo "RELEASE_FAILED_LOUDLY=yes"
 				fi
 				has_ref "$work/origin.git" 'widget#7'
-	  cmd: env SCRIPT="$PWD/orphan-release/orphan-release.sh" bash {inputs.run.sh}
+	  cmd: env SCRIPT="$PWD/orphan-release/dist/index.js" bash {inputs.run.sh}
 	  outputs:
 		stdout:
 			- "RELEASE_FAILED_LOUDLY=yes"
@@ -136,7 +136,7 @@ tests:
 				  echo "RELEASE_FAILED_LOUDLY=yes"
 				fi
 				has_ref "$work/origin.git" 'widget#1'
-	  cmd: env SCRIPT="$PWD/orphan-release/orphan-release.sh" bash {inputs.run.sh}
+	  cmd: env SCRIPT="$PWD/orphan-release/dist/index.js" bash {inputs.run.sh}
 	  outputs:
 		stdout:
 			- "RELEASE_FAILED_LOUDLY=yes"
@@ -155,7 +155,7 @@ tests:
 				echo "RELEASE_EXIT=$?"
 				has_ref "$work/origin.git" 'widget#8'
 				has_ref "$work/origin.git" 'widget#latest'
-	  cmd: env SCRIPT="$PWD/orphan-release/orphan-release.sh" bash {inputs.run.sh}
+	  cmd: env SCRIPT="$PWD/orphan-release/dist/index.js" bash {inputs.run.sh}
 	  outputs:
 		stdout:
 			- "RELEASE_EXIT=0"
@@ -177,7 +177,7 @@ tests:
 				echo "OLD_NUMBER_UNMOVED=$([ "$eight" = "$(sha_of "$work/origin.git" 'widget#8')" ] && echo yes || echo no)"
 				echo "LATEST_FOLLOWS_NEWEST=$([ "$(sha_of "$work/origin.git" 'widget#latest')" = "$(sha_of "$work/origin.git" 'widget#9')" ] && echo yes || echo no)"
 				has_ref "$work/origin.git" 'widget#8'
-	  cmd: env SCRIPT="$PWD/orphan-release/orphan-release.sh" bash {inputs.run.sh}
+	  cmd: env SCRIPT="$PWD/orphan-release/dist/index.js" bash {inputs.run.sh}
 	  outputs:
 		stdout:
 			- "OLD_NUMBER_UNMOVED=yes"
