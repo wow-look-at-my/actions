@@ -35,10 +35,9 @@ jobs:
         with:
           name: common-checks
       # The guard suites drive dist/, so they run after the build above.
-      - uses: ./dats
+      - uses: wow-look-at-my/dats@master
         with:
           tests: |
-            dats/
             orphan-release/dats/
             secret-server/dats/
             no-all-builds-job/dats/
