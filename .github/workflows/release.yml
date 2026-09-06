@@ -53,8 +53,7 @@ jobs:
         working-directory: typescript
         run: just lint
       - uses: ./typescript/test
-      # _shared/cache-xfer has no action.yml, so the release matrix never
-      # reaches it. It carries its own ts0.json and tests itself.
+      # No action.yml, so the release matrix never reaches it; it tests itself.
       - name: Shared cache-xfer unit tests
         working-directory: _shared/cache-xfer
         run: ts0 test
@@ -151,9 +150,7 @@ jobs:
       - name: Validate workflow YAML with action-validator
         uses: ./action-validator
         with:
-          # Workflow files only. The actions glob names a directory that does
-          # not exist because the input is required and this step checks
-          # workflows; release-node checks each action.yml's runs.main itself.
+          # A required input this step has no use for: release-node checks each action.yml.
           actions: 'no-such-dir/*/action.yml'
           workflows: '.github/workflows/*.yml'
 
@@ -198,8 +195,7 @@ jobs:
         with:
           action-dir: ${{ matrix.action }}
 
-      # ts0 type-checks the project and runs whatever test files it finds. An
-      # action with none reports that and passes.
+      # Type-checks the project, then runs whatever test files it finds; none is a pass.
       - name: Test
         working-directory: ${{ matrix.action }}
         run: ts0 test
