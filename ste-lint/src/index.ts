@@ -1,6 +1,7 @@
 import * as core from '@actions/core';
 import {globSync} from 'node:fs';
 import {readFileSync} from 'node:fs';
+import {currentEvent, scopeOf} from './changed';
 import {guard} from './guard';
 import {capped, STE_MAX_WORDS} from './inputs';
 import {DEFAULTS, failureReport, hasFailures, lintFiles, type Options} from './lint';
@@ -62,13 +63,26 @@ function main(): void {
 	const ours = matched.filter((name) => !skip(name));
 	if (submodules.length) core.info(`ste-lint: ${matched.length - ours.length} file(s) belong to a submodule: ${submodules.join(' ')}`);
 	const vendored = vendoredPaths(ours);
-	const names = ours.filter((name) => !vendored.has(name));
-	if (vendored.size) core.info(`ste-lint: ${ours.length - names.length} file(s) are marked linguist-vendored or linguist-generated`);
-	if (names.length === 0) {
+	const theirs = ours.filter((name) => !vendored.has(name));
+	if (vendored.size) core.info(`ste-lint: ${ours.length - theirs.length} file(s) are marked linguist-vendored or linguist-generated`);
+	if (theirs.length === 0) {
 		core.setFailed(
 			`ste-lint read none of the ${matched.length} file(s) that ${patterns.join(' ')} matched: every one belongs to another repository. ` +
 				'A check that reads nothing passes for the wrong reason.',
 		);
+		return;
+	}
+
+	// The scope is what this event changed. A file the push did not touch is
+	// somebody else's finding, on somebody else's commit.
+	const scope = scopeOf(currentEvent());
+	core.info(scope.note);
+	const touched = scope.files === null ? null : new Set(scope.files);
+	const names = touched === null ? theirs : theirs.filter((name) => touched.has(name));
+	if (touched !== null && names.length === 0) {
+		core.info('ste-lint: this change touched none of them, so there is nothing to check');
+		core.setOutput('files', 0);
+		core.setOutput('violations', 0);
 		return;
 	}
 	core.info(`ste-lint: ${names.length} file(s)`);
