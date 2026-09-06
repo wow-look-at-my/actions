@@ -27,9 +27,10 @@ export function expectations(text: string): Record<string, number> {
 	return out;
 }
 
-// The extension is deliberately not .md. These files break the rules on purpose,
-// and common-checks lints every .md in the repo with no way to opt a path out.
-const files = readdirSync(DIR).filter((f) => f.endsWith('.fixture'));
+// The suffix keeps these off `**/*.md`. common-checks lints every markdown
+// file in a repository and takes no path to opt out, so a fixture that broke
+// the rules on purpose failed the gate that this checker is the gate for.
+const files = readdirSync(DIR).filter((f) => f.endsWith('.md.fixture'));
 
 test('there are fixtures to walk', () => {
 	assert.ok(files.length > 0, `no fixtures in ${DIR}`);
