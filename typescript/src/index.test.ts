@@ -222,6 +222,18 @@ describe('typescript action', () => {
 		assert.ok(stdout.includes('path:a/b') || stdout.includes('path:a\\b'));
 	});
 
+	// Bundled here rather than resolved from the caller's workspace, so a guard
+	// can read YAML on a Windows runner, which carries no yq.
+	it('supports require of the bundled yaml module', async () => {
+		const { stdout, exitCode } = await runAction(`
+			const yaml = require("yaml");
+			const doc = yaml.parse("on:\\n  push:\\n    branches: ['**']\\n");
+			core.info("branches:" + JSON.stringify(doc["on"].push.branches));
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('branches:["**"]'), stdout);
+	});
+
 	it('supports multiple awaits', async () => {
 		const { stdout, exitCode } = await runAction(`
 			const a = await Promise.resolve(1);
