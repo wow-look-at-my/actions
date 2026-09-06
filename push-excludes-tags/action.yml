@@ -23,9 +23,9 @@ runs:
           let found = 0;
           for (const name of names) {
             const file = `.github/workflows/${name}`;
-            // A parser on YAML 1.1 reads a bare `on` as the boolean true, so the key arrives under either name.
+            // The bundled parser is YAML 1.2, where `on` is a plain string key, not the 1.1 boolean yq answers with.
             const doc = yaml.parse(fs.readFileSync(path.join(dir, name), 'utf-8')) ?? {};
-            const on = doc['on'] ?? doc[true];
+            const on = doc['on'];
             const unfiltered =
               on === 'push' ||
               (Array.isArray(on) && on.includes('push')) ||
