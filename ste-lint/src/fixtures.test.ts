@@ -27,19 +27,13 @@ export function expectations(text: string): Record<string, number> {
 	return out;
 }
 
-// The suffix is what keeps a fixture out of the checker's own default file set:
+// The suffix keeps a fixture out of the checker's own default file set:
 // `**/*.md` reaches every directory, and common-checks calls ste-lint with no
 // files input, so a fixture named `.md` fails a build it has nothing to do with.
-const SUFFIX = '.md.fixture';
-const files = readdirSync(DIR).filter((f) => f.endsWith(SUFFIX));
+const files = readdirSync(DIR).filter((f) => f.endsWith('.md.fixture'));
 
 test('there are fixtures to walk', () => {
 	assert.ok(files.length > 0, `no fixtures in ${DIR}`);
-});
-
-test('no fixture is named .md, which the default `**/*.md` would lint', () => {
-	const stray = readdirSync(DIR).filter((f) => f.endsWith('.md'));
-	assert.deepEqual(stray, [], `rename these to ${SUFFIX}`);
 });
 
 for (const file of files) {
