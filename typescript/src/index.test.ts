@@ -234,6 +234,20 @@ describe('typescript action', () => {
 		assert.ok(stdout.includes('branches:["**"]'), stdout);
 	});
 
+	it('names a module it cannot resolve instead of overflowing the stack', async () => {
+		const { stdout, exitCode } = await runAction(`
+			try {
+				require("no-such-module-anywhere");
+				core.info("resolved:unexpected");
+			} catch (e) {
+				core.info("threw:" + (e instanceof Error ? e.message : String(e)));
+			}
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(!stdout.includes('Maximum call stack'), stdout);
+		assert.ok(stdout.includes('no-such-module-anywhere'), stdout);
+	});
+
 	it('supports multiple awaits', async () => {
 		const { stdout, exitCode } = await runAction(`
 			const a = await Promise.resolve(1);
