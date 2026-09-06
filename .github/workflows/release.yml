@@ -27,7 +27,8 @@ jobs:
         with:
           script: |
             const dirs = ['no-tests-in-yaml', 'no-scripts-action', 'tag-cleanup', 'no-all-builds-job',
-              'yaml-comment-block', 'ste-lint', 'cache-upload', 'cache-download', 'cache-cleanup', 'run-once'];
+              'yaml-comment-block', 'ste-lint', 'cache-upload', 'cache-download', 'cache-cleanup', 'run-once',
+              'orphan-release'];
             await Promise.all(dirs.map(dir => $`just build`.cwd(dir)));
       # This job runs every common-check below from THIS checkout, so it claims the once-per-run slot: otherwise a downstream action pulls in the PUBLISHED copy and the repo cannot publish a fix for its own check.
       - uses: ./run-once
@@ -52,7 +53,6 @@ jobs:
       - uses: ./no-all-builds-job
       - uses: ./yaml-comment-block
       # Dogfooded so its inline script is COMPILED here. An inline script is checked where it runs, so without this the only place it fails is a consumer's build.
-      - uses: ./push-excludes-tags
       - uses: ./push-excludes-tags
       # Type-aware rules against boxed-String output streams.
       - name: Lint typescript action
@@ -240,13 +240,19 @@ jobs:
             fi
           done
 
-      # The default branch, or a dispatch the operator started by hand. This is the only gate on publishing: orphan-release.sh publishes whatever it is asked to. Versions auto-increment and unchanged actions are skipped.
+      # dist/ is not committed, and the matrix build above built the action under release, not this one.
+      - name: Build the release tool
+        if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
+        working-directory: orphan-release
+        run: just build
+
+      # The default branch, or a dispatch the operator started by hand. This is the only gate on publishing: the release tool publishes whatever it is asked to. Versions auto-increment and unchanged actions are skipped.
       - name: Create orphan tag
         if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: >
-          ./orphan-release/orphan-release.sh
+          node ./orphan-release/dist/index.js
           --source "${{ matrix.action }}"
           --exclude "src node_modules tsconfig.json ts0.json justfile package.json pnpm-lock.yaml pnpm-workspace.yaml"
 
@@ -260,6 +266,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: ./.github/actions/setup-and-build
+        with:
+          action-dir: orphan-release
+
       # Same gate as release-node: the default branch, or a hand-started dispatch.
       - name: Create orphan tags
         if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
@@ -267,6 +277,6 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           for action in $(echo '${{ needs.detect.outputs.composite }}' | jq -r '.[]'); do
-            ./orphan-release/orphan-release.sh --source "$action"
+            node ./orphan-release/dist/index.js --source "$action"
           done
 
