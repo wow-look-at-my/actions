@@ -31,14 +31,15 @@ runs:
       uses: wow-look-at-my/buildhost/.github/actions/buildhost-download@master
       with:
         project: ts0
-    # /usr/local/bin, not a private dir on PATH: a sandboxed step mounts the standard paths only.
+    # Standard paths, not the runner temp the download lands in: a sandboxed step mounts only these.
     - name: Put ts0 on PATH
       shell: bash
       env:
         TS0_CJS: ${{ steps.ts0.outputs.path }}
       run: |
-        printf '#!/bin/sh\nexec node "%s" "$@"\n' "$TS0_CJS" > "$RUNNER_TEMP/ts0"
-        sudo install -m 0755 "$RUNNER_TEMP/ts0" /usr/local/bin/ts0
+        sudo install -m 0644 "$TS0_CJS" /usr/local/lib/ts0.cjs
+        printf '#!/bin/sh\nexec node /usr/local/lib/ts0.cjs "$@"\n' > "$RUNNER_TEMP/ts0.shim"
+        sudo install -m 0755 "$RUNNER_TEMP/ts0.shim" /usr/local/bin/ts0
     - name: Build
       if: inputs.action-dir != ''
       working-directory: ${{ inputs.action-dir }}
