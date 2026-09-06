@@ -28,6 +28,7 @@ runs:
             const file = `.github/workflows/${name}`;
             // The $ runner never shell-splits, so a quoted literal reaches yq with its quotes; the expression is an interpolated argument.
             const on: unknown = await $`yq -o=json ${'.["on"]'} ${path.join(dir, name)}`.json();
+            // `.json()` gives back `unknown`, so read the push value out through a cast rather than off `on` directly.
             const named = isRecord(on) && Object.hasOwn(on, 'push');
             const push = named ? (on as Record<string, unknown>).push : undefined;
             const unfiltered =
