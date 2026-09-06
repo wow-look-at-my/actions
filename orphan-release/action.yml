@@ -24,7 +24,7 @@ inputs:
     required: false
     default: ''
   include-branch:
-    description: 'Include branch name in tags for non-main branches. Without it every branch shares one prefix, and only the default branch moves that prefix #latest'
+    description: 'Include branch name in tags for non-main branches, giving that branch its own numbered series. Only the default branch ever publishes a #latest pointer'
     required: false
     default: 'false'
   cleanup:

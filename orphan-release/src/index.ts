@@ -20,13 +20,12 @@ function gitQuiet(args: string[], cwd?: string): string {
 /**
  * Whether this run owns the #latest pointer it is about to move.
  *
- * A prefix decides who is allowed to contend for one. `--include-branch`
- * gives a side branch its own `<name>/<branch>` prefix, so its pointer is
- * uncontended and it moves it freely. Without that flag every branch computes
- * the SAME unqualified prefix, and the pointer belongs to the default branch:
- * a side branch moving it serves that branch's tree to everyone installing
- * "latest", and two branches releasing at once race for the lock. The loser's
- * release then fails on "cannot lock ref" over content nothing was wrong with.
+ * #latest belongs to the default branch, and to nothing else. Whoever installs
+ * "latest" gets what master released. A side branch that moves a pointer serves
+ * its own tree under that name, and two branches releasing at once race for the
+ * lock, so the loser's release fails on "cannot lock ref" over content nothing
+ * was wrong with. `--include-branch` gives a side branch its own numbered
+ * series and no pointer.
  *
  * On the default branch the same rule applies over time. Two pushes land close
  * together and the older run can finish last, walking the pointer backwards
@@ -37,9 +36,9 @@ function gitQuiet(args: string[], cwd?: string): string {
  * says so: a release that silently stops publishing #latest is worse than one
  * that occasionally re-runs a race.
  */
-function ownsLatest(branch: string, sharedPrefix: boolean, staging: string): boolean {
-	if (sharedPrefix && !isDefaultBranch(branch)) {
-		core.info(`[${branch}] Shares the default branch's prefix; leaving #latest to it`);
+function ownsLatest(branch: string, staging: string): boolean {
+	if (!isDefaultBranch(branch)) {
+		core.info(`[${branch}] #latest belongs to the default branch; leaving it alone`);
 		return false;
 	}
 	const sha = process.env.GITHUB_SHA ?? "";
@@ -110,7 +109,11 @@ function main(): void {
 		const token = process.env.GITHUB_TOKEN ?? "";
 		git(["remote", "add", "origin", `https://x-access-token:${token}@github.com/${repository}`], staging);
 	}
-	for (const tag of [numbered, latest]) {
+	// The numbered tag belongs to this run and always lands. The pointer is the
+	// default branch's, so a side branch never even mints it: a "Created tag"
+	// line for a tag nothing pushes reads as a release that shipped.
+	const owns = ownsLatest(branch, staging);
+	for (const tag of owns ? [numbered, latest] : [numbered]) {
 		git(["tag", tag], staging);
 		core.info(`Created tag: ${tag}`);
 	}
@@ -128,9 +131,7 @@ function main(): void {
 	} else {
 		git(["push", "--force", "origin", `refs/tags/${numbered}`], staging);
 	}
-	// The numbered tag belongs to this run and always lands. The pointer can be
-	// shared, so it moves only for the run that owns it.
-	if (ownsLatest(branch, prefix === options.name, staging)) {
+	if (owns) {
 		git(["push", "--force", "origin", `refs/tags/${latest}`], staging);
 	}
 	core.endGroup();

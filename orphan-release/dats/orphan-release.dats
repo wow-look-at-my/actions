@@ -182,10 +182,10 @@ tests:
 			- "HAS widget#8"
 			- "HAS widget#latest"
 
-	# The bug this gate exists for. A side branch shares the unqualified prefix
-	# unless a caller opts into --include-branch, so it used to move #latest
-	# and race master for the lock. It publishes its own number and nothing
-	# else now. Run this suite against the ungated version and it fails here.
+	# The bug this gate exists for. A side branch moved #latest and raced master
+	# for the lock, serving its own tree to everyone installing "latest". It
+	# publishes its own number and nothing else. Run this suite against the
+	# ungated version and it fails here.
 	- desc: "a side branch publishes its number and never moves #latest"
 	  exit: 0
 	  inputs:
@@ -205,10 +205,10 @@ tests:
 			- "HAS widget#11"
 			- "MISSING widget#latest"
 
-	# The boundary of that gate. --include-branch gives the branch its own
-	# prefix, so nothing else can contend that pointer and the branch moves it.
-	# Refusing here would break installing a branch's own latest.
-	- desc: "a branch-scoped #latest is still moved by its own branch"
+	# --include-branch is not a way back in. It gives the branch its own numbered
+	# series and no pointer at all: #latest is the default branch's, whatever
+	# prefix a caller asks for.
+	- desc: "--include-branch publishes a number and no pointer"
 	  exit: 0
 	  inputs:
 		files:
@@ -227,7 +227,7 @@ tests:
 		stdout:
 			- "RELEASE_EXIT=0"
 			- "HAS widget/side#14"
-			- "HAS widget/side#latest"
+			- "MISSING widget/side#latest"
 			- "MISSING widget#latest"
 
 	# The same rule applied to one branch over time. Two pushes to master land
