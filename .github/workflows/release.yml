@@ -33,15 +33,6 @@ jobs:
       - uses: ./run-once
         with:
           name: common-checks
-      # The guard suites drive dist/, so they run after the build above.
-      - uses: wow-look-at-my/dats@master
-        with:
-          tests: |
-            dats/
-            orphan-release/dats/
-            secret-server/dats/
-            no-all-builds-job/dats/
-            yaml-comment-block/dats/
       - uses: ./no-tests-in-yaml
       # ste-lint/fixtures/* break the rules on purpose, hence .md.fixture and this glob.
       - uses: ./ste-lint
@@ -129,6 +120,37 @@ jobs:
         uses: ./cache-cleanup
       - name: Assert cleanup deleted both hand-offs
         run: test "${{ steps.cleanup.outputs.deleted-count }}" -ge 2
+
+  # Deliberately NOT in the release jobs' needs. dats@master opens with `uses:
+  # wow-look-at-my/actions@common-checks#latest`, so gating publication on it
+  # gates publication on this repo's own published output -- and a broken
+  # publish then bricks the only run that could replace it. It has, three times.
+  suites:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write # the guard suites list this run's jobs
+      checks: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-and-build
+      - name: Build the typescript action, which builds the rest
+        run: cd typescript && just build
+      - name: Build the actions the suites drive
+        uses: ./typescript
+        with:
+          script: |
+            const dirs = ['no-all-builds-job', 'yaml-comment-block', 'orphan-release', 'secret-server'];
+            await Promise.all(dirs.map(dir => $`just build`.cwd(dir)));
+      # The guard suites drive dist/, so they run after the build above.
+      - uses: wow-look-at-my/dats@master
+        with:
+          tests: |
+            dats/
+            orphan-release/dats/
+            secret-server/dats/
+            no-all-builds-job/dats/
+            yaml-comment-block/dats/
 
   validate:
     runs-on: ubuntu-latest
