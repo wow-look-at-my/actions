@@ -19,22 +19,21 @@ runs:
             core.warning(`no workflow file under ${dir}, so this run enforced nothing.`);
             return;
           }
+          // `in` reads the prototype, and every array carries Array.prototype.push, so `on: [pull_request]` read as a push trigger with no filter. hasOwn asks about the mapping yq produced.
+          const isRecord = (value: unknown): value is Record<string, unknown> =>
+            value !== null && typeof value === 'object';
           let found = 0;
           for (const name of names) {
             const file = `.github/workflows/${name}`;
             // The $ runner never shell-splits, so a quoted literal reaches yq with its quotes; the expression is an interpolated argument.
             const on: unknown = await $`yq -o=json ${'.["on"]'} ${path.join(dir, name)}`.json();
             // `.json()` gives back `unknown`, so read the push value out through a cast rather than off `on` directly.
-            const pushValue =
-              on !== null && typeof on === 'object' && 'push' in on
-                ? (on as Record<string, unknown>).push
-                : undefined;
+            const named = isRecord(on) && Object.hasOwn(on, 'push');
+            const push = named ? (on as Record<string, unknown>).push : undefined;
             const unfiltered =
               on === 'push' ||
               (Array.isArray(on) && on.includes('push')) ||
-              (pushValue !== undefined &&
-                (pushValue === null || typeof pushValue !== 'object' ||
-                  !FILTERS.some(key => key in (pushValue as Record<string, unknown>))));
+              (named && (!isRecord(push) || !FILTERS.some(key => Object.hasOwn(push, key))));
             if (!unfiltered) continue;
             found++;
             core.error(`${file}: its push trigger names no ref filter, so every tag push starts this workflow again. Add \`branches: ['**']\` under \`push:\` (or \`tags-ignore: ['**']\`) to keep it on branch pushes.`, {file});
