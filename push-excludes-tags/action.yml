@@ -24,11 +24,16 @@ runs:
             const file = `.github/workflows/${name}`;
             // The $ runner never shell-splits, so a quoted literal reaches yq with its quotes; the expression is an interpolated argument.
             const on = await $`yq -o=json ${'.["on"]'} ${path.join(dir, name)}`.json();
+            // yq hands back unknown, and an array's own `push` method answers
+            // `in`, so the mapping form is read through a checked local.
+            const mapping =
+              on !== null && typeof on === 'object' && !Array.isArray(on) ? (on as Record<string, unknown>) : null;
+            const push = mapping !== null && 'push' in mapping ? mapping.push : undefined;
             const unfiltered =
               on === 'push' ||
               (Array.isArray(on) && on.includes('push')) ||
-              (on !== null && typeof on === 'object' && 'push' in on &&
-                (on.push === null || typeof on.push !== 'object' || !FILTERS.some(key => key in on.push)));
+              (mapping !== null && 'push' in mapping &&
+                (push === null || typeof push !== 'object' || !FILTERS.some(key => key in (push as object))));
             if (!unfiltered) continue;
             found++;
             core.error(`${file}: its push trigger names no ref filter, so every tag push starts this workflow again. Add \`branches: ['**']\` under \`push:\` (or \`tags-ignore: ['**']\`) to keep it on branch pushes.`, {file});
