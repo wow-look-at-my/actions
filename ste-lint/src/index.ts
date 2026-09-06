@@ -4,6 +4,15 @@ import {readFileSync} from 'node:fs';
 import {guard} from './guard';
 import {capped, STE_MAX_WORDS} from './inputs';
 import {DEFAULTS, failureReport, hasFailures, lintFiles, type Options} from './lint';
+import {inSubmodule, submodulePaths} from './submodules';
+
+function gitmodules(): string {
+	try {
+		return readFileSync('.gitmodules', 'utf-8');
+	} catch {
+		return '';
+	}
+}
 
 // A patterns input of "" would glob nothing and pass, which is the silent
 // no-op this action exists to prevent, so an empty match is a failure.
@@ -42,9 +51,20 @@ function main(): void {
 		throw new Error(`warn-max-words (${opts.warnMaxWords}) must not exceed hard-max-words (${opts.hardMaxWords})`);
 	}
 
-	const names = [...new Set(patterns.flatMap((p) => globSync(p, {exclude: (n: string) => n.includes('node_modules')})))].sort();
-	if (names.length === 0) {
+	const matched = [...new Set(patterns.flatMap((p) => globSync(p, {exclude: (n: string) => n.includes('node_modules')})))].sort();
+	if (matched.length === 0) {
 		core.setFailed(`ste-lint matched no files: ${patterns.join(' ')}. A check that reads nothing passes for the wrong reason.`);
+		return;
+	}
+	const submodules = submodulePaths(gitmodules());
+	const skip = inSubmodule(submodules);
+	const names = matched.filter((name) => !skip(name));
+	if (submodules.length) core.info(`ste-lint: ${matched.length - names.length} file(s) belong to a submodule: ${submodules.join(' ')}`);
+	if (names.length === 0) {
+		core.setFailed(
+			`ste-lint read none of the ${matched.length} file(s) that ${patterns.join(' ')} matched: every one sits in a submodule. ` +
+				'A check that reads nothing passes for the wrong reason.',
+		);
 		return;
 	}
 	core.info(`ste-lint: ${names.length} file(s)`);
@@ -117,7 +137,8 @@ function main(): void {
 // a number somebody remembers.
 function cli(patterns: string[]): number {
 	const opts: Options = {...DEFAULTS};
-	const names = [...new Set(patterns.flatMap((p) => globSync(p, {exclude: (n: string) => n.includes('node_modules')})))].sort();
+	const skip = inSubmodule(submodulePaths(gitmodules()));
+	const names = [...new Set(patterns.flatMap((p) => globSync(p, {exclude: (n: string) => n.includes('node_modules')})))].sort().filter((name) => !skip(name));
 	if (names.length === 0) {
 		process.stderr.write(`ste-lint matched no files: ${patterns.join(' ')}\n`);
 		return 2;
