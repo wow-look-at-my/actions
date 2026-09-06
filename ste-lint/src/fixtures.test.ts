@@ -30,7 +30,6 @@ export function expectations(text: string): Record<string, number> {
 // The suffix keeps a fixture out of the checker's own default file set:
 // `**/*.md` reaches every directory, and common-checks calls ste-lint with no
 // files input, so a fixture named `.md` fails a build it has nothing to do with.
-const files = readdirSync(DIR).filter((f) => f.endsWith('.md.fixture'));
 
 test('there are fixtures to walk', () => {
 	assert.ok(files.length > 0, `no fixtures in ${DIR}`);
