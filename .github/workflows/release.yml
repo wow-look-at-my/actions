@@ -47,6 +47,8 @@ jobs:
       - uses: ./tag-cleanup
       - uses: ./no-all-builds-job
       - uses: ./yaml-comment-block
+      # Dogfooded so its inline script is COMPILED here. An inline script is checked where it runs, so without this the only place it fails is a consumer's build.
+      - uses: ./push-excludes-tags
       - uses: ./push-excludes-tags
       # Type-aware rules against boxed-String output streams.
       - name: Lint typescript action
