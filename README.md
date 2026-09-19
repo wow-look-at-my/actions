@@ -83,6 +83,13 @@ ts0 supplies the compiler, the bundler and `@types/node`, so an action's `packag
 - uses: wow-look-at-my/actions@common-checks#latest
 ```
 
+### [Disable Windows Defender](disable-windows-defender/)
+
+```yml
+# Stops Defender scanning what a build writes on a Windows runner, and fails when it will not stop.
+- uses: wow-look-at-my/actions@disable-windows-defender#latest
+```
+
 ### [Download Executable Artifact](download-exe/)
 
 ```yml
