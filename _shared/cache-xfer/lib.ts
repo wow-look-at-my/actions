@@ -154,7 +154,17 @@ export interface EnvelopeHeader {
 	fileMode?: number;
 	/** process.platform of the producer. A win32 archive carries no exec bits, so a unix consumer sets them on every file. */
 	producer?: string;
+	/**
+	 * Present when the archive ends in a SUM_BYTES digest of the compressed
+	 * payload. A reader hashes what it feeds the decoder and compares. An
+	 * archive written before this field carries no trailer, so a reader that
+	 * finds the field absent checks nothing and restores as it always did.
+	 */
+	sum?: 'sha256';
 }
+
+/** Length of the digest trailer a `sum: 'sha256'` archive ends with. */
+export const SUM_BYTES = 32;
 
 export function encodeEnvelope(header: EnvelopeHeader): Buffer {
 	const json = Buffer.from(JSON.stringify(header), 'utf8');
@@ -202,6 +212,9 @@ export function parseEnvelope(buf: Buffer): {header: EnvelopeHeader; dataOffset:
 	}
 	if (header.name !== undefined && (typeof header.name !== 'string' || header.name === '')) {
 		throw new Error(`Envelope name ${JSON.stringify(header.name)} is not a non-empty string`);
+	}
+	if (header.sum !== undefined && header.sum !== 'sha256') {
+		throw new Error(`Envelope sum '${String(header.sum)}' is not supported by this version of the action`);
 	}
 	if (header.mode === 'raw') {
 		if (typeof header.basename !== 'string' || header.basename === '' || header.basename === '.' || header.basename === '..' || header.basename.includes('/') || header.basename.includes('\\')) {

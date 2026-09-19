@@ -4,7 +4,31 @@ import * as fsp from 'fs/promises';
 import * as path from 'path';
 import {once} from 'events';
 import {pipeline} from 'stream/promises';
-import {EnvelopeHeader, MAX_HEADER_BYTES, encodeEnvelope, parseEnvelope} from './lib';
+import * as crypto from 'crypto';
+import {Transform} from 'stream';
+import {EnvelopeHeader, MAX_HEADER_BYTES, SUM_BYTES, encodeEnvelope, parseEnvelope} from './lib';
+
+/**
+ * Thrown when an archive's payload does not match the digest its producer
+ * recorded. A caller treats this as a miss: the bytes on hand are not the
+ * bytes that were uploaded, and a build is better off making them again.
+ */
+export class CorruptArchiveError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = 'CorruptArchiveError';
+	}
+}
+
+/** A pass-through that digests everything crossing it. */
+function hashTap(hash: crypto.Hash): Transform {
+	return new Transform({
+		transform(chunk, _encoding, done) {
+			hash.update(chunk);
+			done(null, chunk);
+		}
+	});
+}
 
 // zstd is the fastest codec preinstalled on ALL GitHub-hosted runners:
 // per the actions/runner-images software manifests (checked 2026-07-17),
@@ -144,13 +168,14 @@ export async function packToFile(sourcePath: string, archivePath: string, name: 
 		header = {
 			mode: 'raw',
 			codec: 'zstd',
+			sum: 'sha256',
 			name,
 			basename: path.basename(path.resolve(sourcePath)),
 			fileMode: stats.mode & 0o7777,
 			producer
 		};
 	} else if (stats.isDirectory()) {
-		header = {mode: 'tar', codec: 'zstd', name, producer};
+		header = {mode: 'tar', codec: 'zstd', sum: 'sha256', name, producer};
 	} else {
 		throw new Error(`path '${sourcePath}' is neither a regular file nor a directory`);
 	}
@@ -165,7 +190,10 @@ export async function packToFile(sourcePath: string, archivePath: string, name: 
 
 	const zstd = spawn('zstd', ZSTD_COMPRESS_ARGS, {stdio: ['pipe', 'pipe', 'pipe']});
 	const zstdErr = collectStderr(zstd);
-	const stages: Array<Promise<void>> = [pipeline(zstd.stdout, out), waitExit(zstd, 'zstd', zstdErr)];
+	// The digest covers the compressed payload, so a reader checks it before
+	// it spends anything on decompression.
+	const hash = crypto.createHash('sha256');
+	const stages: Array<Promise<void>> = [pipeline(zstd.stdout, hashTap(hash), out), waitExit(zstd, 'zstd', zstdErr)];
 
 	if (tarSpec === undefined) {
 		stages.push(pipeIntoStdin(fs.createReadStream(sourcePath), zstd.stdin));
@@ -178,6 +206,9 @@ export async function packToFile(sourcePath: string, archivePath: string, name: 
 	}
 
 	await awaitStages(stages);
+	// The trailer goes on last, so its presence also states the archive was
+	// written through to the end.
+	await fsp.appendFile(archivePath, hash.digest());
 	return header;
 }
 
@@ -194,17 +225,55 @@ export async function readEnvelope(archivePath: string): Promise<{header: Envelo
 }
 
 /**
+ * Check the payload against the digest its producer recorded, and return the
+ * offset the payload ends at. An archive with no `sum` field carries no
+ * trailer, so nothing is checked and the whole remainder is payload.
+ *
+ * The check runs before the decoder starts. A corrupt payload otherwise
+ * reaches zstd, which exits 70 and reports a codec error, and a codec error
+ * reads as a bug in the archive format rather than as the damaged download it
+ * is.
+ */
+async function verifyPayload(archivePath: string, header: EnvelopeHeader, dataOffset: number): Promise<number | undefined> {
+	if (header.sum !== 'sha256') {
+		return undefined;
+	}
+	const {size} = await fsp.stat(archivePath);
+	const payloadEnd = size - SUM_BYTES;
+	if (payloadEnd < dataOffset) {
+		throw new CorruptArchiveError(`Hand-off archive is ${size} bytes, too short to hold its envelope and its ${SUM_BYTES} byte digest`);
+	}
+
+	const want = Buffer.alloc(SUM_BYTES);
+	const fh = await fsp.open(archivePath, 'r');
+	try {
+		await fh.read(want, 0, SUM_BYTES, payloadEnd);
+	} finally {
+		await fh.close();
+	}
+
+	const hash = crypto.createHash('sha256');
+	await pipeline(fs.createReadStream(archivePath, {start: dataOffset, end: payloadEnd - 1}), hashTap(hash), new Transform({transform(_chunk, _encoding, done) { done(); }}));
+	const got = hash.digest();
+	if (!got.equals(want)) {
+		throw new CorruptArchiveError(`Hand-off archive payload does not match its recorded digest (want sha256=${want.toString('hex').slice(0, 12)}, got ${got.toString('hex').slice(0, 12)}, ${payloadEnd - dataOffset} bytes)`);
+	}
+	return payloadEnd;
+}
+
+/**
  * Unpack the envelope archive at `archivePath` into the directory `destDir`
  * (created if missing). Returns the envelope header.
  */
 export async function unpackFromFile(archivePath: string, destDir: string): Promise<EnvelopeHeader> {
 	const {header, dataOffset} = await readEnvelope(archivePath);
+	const payloadEnd = await verifyPayload(archivePath, header, dataOffset);
 	await fsp.mkdir(destDir, {recursive: true});
 
 	// Same rule as packToFile: no await between spawning zstd and consuming it.
 	const tarSpec = header.mode === 'tar' ? await tarInvocation() : undefined;
 
-	const src = fs.createReadStream(archivePath, {start: dataOffset});
+	const src = fs.createReadStream(archivePath, payloadEnd === undefined ? {start: dataOffset} : {start: dataOffset, end: payloadEnd - 1});
 	const zstd = spawn('zstd', ZSTD_DECOMPRESS_ARGS, {stdio: ['pipe', 'pipe', 'pipe']});
 	const zstdErr = collectStderr(zstd);
 	const stages: Array<Promise<void>> = [pipeIntoStdin(src, zstd.stdin), waitExit(zstd, 'zstd', zstdErr)];
