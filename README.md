@@ -217,6 +217,13 @@ ts0 supplies the compiler, the bundler and `@types/node`, so an action's `packag
 - uses: wow-look-at-my/actions@ste-lint#latest
 ```
 
+### [Submodule GTE](submodule-gte/)
+
+```yml
+# Fail CI when a branch points a submodule at a commit the base branch has already moved past.
+- uses: wow-look-at-my/actions@submodule-gte#latest
+```
+
 ### [Tag Cleanup](tag-cleanup/)
 
 ```yml
