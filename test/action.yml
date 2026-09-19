@@ -1,0 +1,10 @@
+name: Test submodule-gte
+version: 1
+description: Drive the submodule guard against real superprojects whose gitlink moves each way (never released)
+
+runs:
+  using: composite
+  steps:
+    - uses: wow-look-at-my/dats@master
+      with:
+        tests: submodule-gte/dats
