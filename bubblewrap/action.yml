@@ -1,0 +1,33 @@
+name: Install bubblewrap
+version: 1
+description: Makes bwrap available on Linux runners, skipping the apt index refresh that the runner's own index usually makes unnecessary
+
+runs:
+  using: composite
+  steps:
+    - name: Install bubblewrap
+      # macOS confines with seatbelt, and no Windows step is sandboxed.
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        # A runner image carrying bwrap needs no package at all.
+        if command -v bwrap >/dev/null 2>&1; then
+          echo "bwrap already present: $(command -v bwrap)"
+          bwrap --version
+          exit 0
+        fi
+
+        # `apt-get update` refetches every list and costs more than this install.
+        if sudo apt-get install -y -qq bubblewrap >/dev/null 2>&1; then
+          echo "installed from the runner's apt index"
+          bwrap --version
+          exit 0
+        fi
+
+        # Reached when a mirror rotation leaves the cached index unable to serve it.
+        echo "the cached apt index cannot serve bubblewrap; refreshing it"
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq bubblewrap
+        bwrap --version

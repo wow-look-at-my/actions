@@ -26,6 +26,13 @@ ts0 supplies the compiler, the bundler and `@types/node`, so an action's `packag
     branch: # Branch name to block
 ```
 
+### [Install bubblewrap](bubblewrap/)
+
+```yml
+# Makes bwrap available on Linux runners, skipping the apt index refresh that the runner's own index usually makes unnecessary.
+- uses: wow-look-at-my/actions@bubblewrap#latest
+```
+
 ### [Cache Cleanup](cache-cleanup/)
 
 ```yml
@@ -206,6 +213,7 @@ ts0 supplies the compiler, the bundler and `@types/node`, so an action's `packag
 
 ```yml
 # Check the prose a change touches against the mechanical subset of ASD-STE100 Simplified Technical English — sentence length measured over whole sentences rather than wrapped lines, contractions, banned modal verbs, semicolons, comma splices, hard-wrapped paragraphs, and dictionary word choice.
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/ste-lint/README.md
 - uses: wow-look-at-my/actions@ste-lint#latest
 ```
 
