@@ -28,7 +28,7 @@ jobs:
           script: |
             const dirs = ['no-tests-in-yaml', 'no-scripts-action', 'tag-cleanup', 'no-all-builds-job',
               'ste-lint', 'cache-upload', 'cache-download', 'cache-cleanup', 'run-once',
-              'orphan-release'];
+              'orphan-release', 'submodule-gte'];
             await Promise.all(dirs.map(dir => $`just build`.cwd(dir)));
       # This job runs every common-check below from THIS checkout, so it claims the once-per-run slot: otherwise a downstream action pulls in the PUBLISHED copy and the repo cannot publish a fix for its own check.
       - uses: ./run-once
@@ -42,6 +42,7 @@ jobs:
             secret-server/dats/
       # An action with tests of its own keeps them in its test composite; a guard is dogfooded by running it.
       - uses: ./no-all-builds-job/test
+      - uses: ./submodule-gte/test
       - uses: ./no-tests-in-yaml
       # ste-lint/fixtures/* break the rules on purpose, hence .md.fixture and this glob.
       - uses: ./ste-lint
