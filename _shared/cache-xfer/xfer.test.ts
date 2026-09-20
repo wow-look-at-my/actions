@@ -6,7 +6,7 @@ import {test} from 'node:test';
 import {spawn, spawnSync} from 'node:child_process';
 import {Readable} from 'node:stream';
 import {CorruptArchiveError, packToFile, pipeIntoStdin, readEnvelope, trace, unpackFromFile} from './xfer';
-import {encodeEnvelope} from './lib';
+import {EnvelopeHeader, encodeEnvelope} from './lib';
 
 // Local pack/unpack round-trips (spawns real tar + zstd; no cache service).
 
@@ -174,7 +174,7 @@ test('a truncated archive is a CorruptArchiveError', async t => {
 	});
 });
 
-test('an archive written before the digest still restores', async t => {
+test('an archive carrying no digest is refused, never read unchecked', async t => {
 	const src = await tempDir();
 	const work = await tempDir();
 	const dest = path.join(await tempDir(), 'restored');
@@ -189,16 +189,16 @@ test('an archive written before the digest still restores', async t => {
 	await packToFile(src, archive, 'legacy-handoff');
 
 	// Rewrite it the way a producer without the field wrote it: the header
-	// loses `sum`, and the trailer goes with it.
+	// loses `sum`, and the trailer goes with it. Reading one unchecked is the
+	// hole this refusal closes.
 	const bytes = await fsp.readFile(archive);
 	const {header, dataOffset} = await readEnvelope(archive);
-	delete header.sum;
+	const legacyHeader: Record<string, unknown> = {...header};
+	delete legacyHeader.sum;
 	const legacy = path.join(work, 'legacy.wxfr');
-	await fsp.writeFile(legacy, Buffer.concat([encodeEnvelope(header), bytes.subarray(dataOffset, bytes.length - 32)]));
+	await fsp.writeFile(legacy, Buffer.concat([encodeEnvelope(legacyHeader as unknown as EnvelopeHeader), bytes.subarray(dataOffset, bytes.length - 32)]));
 
-	const restored = await unpackFromFile(legacy, dest);
-	assert.equal(restored.sum, undefined);
-	assert.equal(await fsp.readFile(path.join(dest, 'one.txt'), 'utf8'), 'older producer, no trailer');
+	await assert.rejects(unpackFromFile(legacy, dest), /sum .* is missing or not supported/);
 });
 
 // A child that exits 0 having read only a prefix of what we send closes its

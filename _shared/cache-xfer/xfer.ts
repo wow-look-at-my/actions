@@ -226,18 +226,15 @@ export async function readEnvelope(archivePath: string): Promise<{header: Envelo
 
 /**
  * Check the payload against the digest its producer recorded, and return the
- * offset the payload ends at. An archive with no `sum` field carries no
- * trailer, so nothing is checked and the whole remainder is payload.
+ * offset the payload ends at. Every archive carries the digest, so there is
+ * no path through here that checks nothing.
  *
  * The check runs before the decoder starts. A corrupt payload otherwise
  * reaches zstd, which exits 70 and reports a codec error, and a codec error
  * reads as a bug in the archive format rather than as the damaged download it
  * is.
  */
-async function verifyPayload(archivePath: string, header: EnvelopeHeader, dataOffset: number): Promise<number | undefined> {
-	if (header.sum !== 'sha256') {
-		return undefined;
-	}
+async function verifyPayload(archivePath: string, header: EnvelopeHeader, dataOffset: number): Promise<number> {
 	const {size} = await fsp.stat(archivePath);
 	const payloadEnd = size - SUM_BYTES;
 	if (payloadEnd < dataOffset) {
@@ -273,7 +270,7 @@ export async function unpackFromFile(archivePath: string, destDir: string): Prom
 	// Same rule as packToFile: no await between spawning zstd and consuming it.
 	const tarSpec = header.mode === 'tar' ? await tarInvocation() : undefined;
 
-	const src = fs.createReadStream(archivePath, payloadEnd === undefined ? {start: dataOffset} : {start: dataOffset, end: payloadEnd - 1});
+	const src = fs.createReadStream(archivePath, {start: dataOffset, end: payloadEnd - 1});
 	const zstd = spawn('zstd', ZSTD_DECOMPRESS_ARGS, {stdio: ['pipe', 'pipe', 'pipe']});
 	const zstdErr = collectStderr(zstd);
 	const stages: Array<Promise<void>> = [pipeIntoStdin(src, zstd.stdin), waitExit(zstd, 'zstd', zstdErr)];
