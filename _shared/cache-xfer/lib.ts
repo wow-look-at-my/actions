@@ -23,8 +23,14 @@ export const KEY_PREFIX = 'cache-xfer';
  *
  * v2: run-id-first key layout (`cache-xfer-<run_id>-<name>-<attempt>`) and
  * the envelope header now carries the hand-off `name` (nameless discovery).
+ *
+ * v3: every archive ends in a sha256 of its payload, and a reader checks it.
+ * The bump is what makes the check total. A v2 archive carries no digest, so
+ * a reader that accepted one would keep an unchecked path open forever. Under
+ * v3 that archive is never looked up, and a producer and a consumer of one
+ * run always agree because both are the same action version.
  */
-export const VERSION_SEED = 'wow-look-at-my/actions/cache-xfer/v2';
+export const VERSION_SEED = 'wow-look-at-my/actions/cache-xfer/v3';
 
 /**
  * TRANSITION (remove with the named-download legacy fallback once the v2
@@ -154,7 +160,18 @@ export interface EnvelopeHeader {
 	fileMode?: number;
 	/** process.platform of the producer. A win32 archive carries no exec bits, so a unix consumer sets them on every file. */
 	producer?: string;
+	/**
+	 * Every archive ends in a SUM_BYTES digest of its compressed payload, and
+	 * a reader hashes what it feeds the decoder and compares. The field is
+	 * required: an optional one leaves a path that checks nothing, and a
+	 * damaged archive takes that path. The v3 version seed keeps an older
+	 * archive out of the lookup, so nothing has to read one.
+	 */
+	sum: 'sha256';
 }
+
+/** Length of the digest trailer a `sum: 'sha256'` archive ends with. */
+export const SUM_BYTES = 32;
 
 export function encodeEnvelope(header: EnvelopeHeader): Buffer {
 	const json = Buffer.from(JSON.stringify(header), 'utf8');
@@ -202,6 +219,9 @@ export function parseEnvelope(buf: Buffer): {header: EnvelopeHeader; dataOffset:
 	}
 	if (header.name !== undefined && (typeof header.name !== 'string' || header.name === '')) {
 		throw new Error(`Envelope name ${JSON.stringify(header.name)} is not a non-empty string`);
+	}
+	if (header.sum !== 'sha256') {
+		throw new Error(`Envelope sum '${String(header.sum)}' is missing or not supported by this version of the action`);
 	}
 	if (header.mode === 'raw') {
 		if (typeof header.basename !== 'string' || header.basename === '' || header.basename === '.' || header.basename === '..' || header.basename.includes('/') || header.basename.includes('\\')) {

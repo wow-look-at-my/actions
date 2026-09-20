@@ -5,7 +5,8 @@ import * as path from 'node:path';
 import {test} from 'node:test';
 import {spawn, spawnSync} from 'node:child_process';
 import {Readable} from 'node:stream';
-import {packToFile, pipeIntoStdin, readEnvelope, trace, unpackFromFile} from './xfer';
+import {CorruptArchiveError, packToFile, pipeIntoStdin, readEnvelope, trace, unpackFromFile} from './xfer';
+import {EnvelopeHeader, encodeEnvelope} from './lib';
 
 // Local pack/unpack round-trips (spawns real tar + zstd; no cache service).
 
@@ -101,6 +102,103 @@ test('unpackFromFile rejects a non-envelope file', async () => {
 	await fsp.writeFile(bogus, 'this is not an envelope at all');
 	await assert.rejects(unpackFromFile(bogus, path.join(work, 'out')), /magic/);
 	await fsp.rm(work, {recursive: true, force: true});
+});
+
+test('a packed archive records a digest of its payload', async t => {
+	const src = await tempDir();
+	const work = await tempDir();
+	t.after(async () => {
+		for (const dir of [src, work]) {
+			await fsp.rm(dir, {recursive: true, force: true});
+		}
+	});
+	await fsp.writeFile(path.join(src, 'one.txt'), 'a body worth checking');
+
+	const archive = path.join(work, 'archive.wxfr');
+	const packed = await packToFile(src, archive, 'sum-handoff');
+	assert.equal(packed.sum, 'sha256');
+
+	const {header} = await readEnvelope(archive);
+	assert.equal(header.sum, 'sha256');
+});
+
+test('a flipped payload byte is a CorruptArchiveError, not a codec error', async t => {
+	const src = await tempDir();
+	const work = await tempDir();
+	const dest = path.join(await tempDir(), 'restored');
+	t.after(async () => {
+		for (const dir of [src, work, path.dirname(dest)]) {
+			await fsp.rm(dir, {recursive: true, force: true});
+		}
+	});
+	// Enough body that a flipped byte lands inside the payload, past the
+	// envelope header and well before the trailer.
+	await fsp.writeFile(path.join(src, 'big.txt'), 'incompressible-ish '.repeat(4096));
+
+	const archive = path.join(work, 'archive.wxfr');
+	await packToFile(src, archive, 'corrupt-handoff');
+
+	const bytes = await fsp.readFile(archive);
+	const target = Math.floor(bytes.length / 2);
+	bytes[target] = bytes[target] ^ 0xff;
+	await fsp.writeFile(archive, bytes);
+
+	await assert.rejects(unpackFromFile(archive, dest), (error: unknown) => {
+		assert.ok(error instanceof CorruptArchiveError, `want CorruptArchiveError, got ${String(error)}`);
+		assert.match((error as Error).message, /does not match its recorded digest/);
+		return true;
+	});
+});
+
+test('a truncated archive is a CorruptArchiveError', async t => {
+	const src = await tempDir();
+	const work = await tempDir();
+	const dest = path.join(await tempDir(), 'restored');
+	t.after(async () => {
+		for (const dir of [src, work, path.dirname(dest)]) {
+			await fsp.rm(dir, {recursive: true, force: true});
+		}
+	});
+	await fsp.writeFile(path.join(src, 'one.txt'), 'a body worth checking '.repeat(512));
+
+	const archive = path.join(work, 'archive.wxfr');
+	await packToFile(src, archive, 'cut-handoff');
+
+	// What a cut download leaves behind: the tail, digest included, is gone.
+	const bytes = await fsp.readFile(archive);
+	await fsp.writeFile(archive, bytes.subarray(0, bytes.length - 64));
+
+	await assert.rejects(unpackFromFile(archive, dest), (error: unknown) => {
+		assert.ok(error instanceof CorruptArchiveError, `want CorruptArchiveError, got ${String(error)}`);
+		return true;
+	});
+});
+
+test('an archive carrying no digest is refused, never read unchecked', async t => {
+	const src = await tempDir();
+	const work = await tempDir();
+	const dest = path.join(await tempDir(), 'restored');
+	t.after(async () => {
+		for (const dir of [src, work, path.dirname(dest)]) {
+			await fsp.rm(dir, {recursive: true, force: true});
+		}
+	});
+	await fsp.writeFile(path.join(src, 'one.txt'), 'older producer, no trailer');
+
+	const archive = path.join(work, 'archive.wxfr');
+	await packToFile(src, archive, 'legacy-handoff');
+
+	// Rewrite it the way a producer without the field wrote it: the header
+	// loses `sum`, and the trailer goes with it. Reading one unchecked is the
+	// hole this refusal closes.
+	const bytes = await fsp.readFile(archive);
+	const {header, dataOffset} = await readEnvelope(archive);
+	const legacyHeader: Record<string, unknown> = {...header};
+	delete legacyHeader.sum;
+	const legacy = path.join(work, 'legacy.wxfr');
+	await fsp.writeFile(legacy, Buffer.concat([encodeEnvelope(legacyHeader as unknown as EnvelopeHeader), bytes.subarray(dataOffset, bytes.length - 32)]));
+
+	await assert.rejects(unpackFromFile(legacy, dest), /sum .* is missing or not supported/);
 });
 
 // A child that exits 0 having read only a prefix of what we send closes its
