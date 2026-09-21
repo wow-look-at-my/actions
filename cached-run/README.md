@@ -5,9 +5,9 @@ Run a script with its output paths restored from cache first and saved after. Th
 ```yaml
 - uses: wow-look-at-my/actions@cached-run#latest
   with:
-    key: ${{ hashFiles('src/**', 'Cargo.lock') }}
     paths: target/release
     run: |
+      # ${{ hashFiles('src/**', 'Cargo.lock') }}
       cargo build --release
 ```
 
@@ -23,16 +23,28 @@ Run a script with its output paths restored from cache first and saved after. Th
 | --- | --- | --- |
 | `run` | required | The script to run. |
 | `paths` | required | Output paths to restore then save, one per line. |
-| `key` | `''` | Extra text mixed into the digest. Put a lockfile hash here. |
+| `key` | `''` | Readable text in the key, also mixed into the digest. |
 | `restore-keys` | `''` | Fallback prefixes for a partial restore. |
 | `working-directory` | `.` | Where to run the script. |
 | `skip-on-hit` | `true` | Skip the script on an exact hit. Set it false for a warm cache. |
 
 Outputs: `cache-key`, `cache-hit`, `cache-matched-key`, `skipped`, `cache-saved`.
 
-## Picking a key
+## Naming what the script reads
 
-The script text is in the digest. The files the script READS are not. A build whose result depends on sources must name them: put `hashFiles(...)` in the `key` input. Without that, an edit to your sources hits the same key and restores a stale build.
+The script text is in the digest. The files the script READS are not. An edit to your sources therefore hits the same key and restores a stale build, unless you name those sources.
+
+Name them in a comment. The runner expands `${{ }}` in the caller's context before the action sees the input. The hash arrives as part of the script text, which the digest already covers.
+
+```yaml
+    run: |
+      # ${{ hashFiles('src/**', 'Cargo.lock') }}
+      cargo build --release
+```
+
+This works for anything an expression reaches: a matrix leg, a toolchain version, a variable. Put it in a comment and it is in the key.
+
+The `key` input does the same job. It also appears in the key as readable text. Reach for it to tell entries apart in the cache list, not because a comment cannot carry the value.
 
 ## Output cache or warm cache
 
@@ -43,10 +55,11 @@ Set `skip-on-hit: false` when the paths FEED the run rather than being its produ
 ```yaml
 - uses: wow-look-at-my/actions@cached-run#latest
   with:
-    key: ${{ hashFiles('go.sum') }}
     skip-on-hit: false
     paths: ~/.cache/go-build
-    run: go build ./...
+    run: |
+      # ${{ hashFiles('go.sum') }}
+      go build ./...
 ```
 
 A `restore-keys` match is a partial result. The script always runs after one, whatever `skip-on-hit` says.
