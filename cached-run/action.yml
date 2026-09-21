@@ -10,7 +10,7 @@ inputs:
     description: 'The output paths to restore before the run and save after it, one per line. Sorted and deduplicated before use, so reordering them does not change the key.'
     required: true
   key:
-    description: 'Readable text carried in the cache key, and mixed into the digest. To name files the script reads, prefer a `# ${{ hashFiles(...) }}` comment inside `run`: the runner expands it before this action sees it, so it lands in the script text the digest already covers.'
+    description: 'Readable text carried in the cache key, and mixed into the digest. To name files the script reads, prefer a hashFiles comment on its own line inside `run`. The runner expands the expression before this action sees it, so the hash lands in the script text the digest already covers. See the README.'
     required: false
     default: ''
   restore-keys:
