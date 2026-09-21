@@ -6,6 +6,8 @@ description: >-
   plain files: dpkg does not record them as installed, maintainer scripts and
   update-alternatives do not run, and only `ldconfig` is re-run. Suits build and
   test dependencies; not packages that need a service, a user or an alternative.
+  On a non-Linux runner it installs nothing and succeeds, so a matrix calls it
+  without an `if:` guard; it says so, and sets `skipped` to true.
 
 inputs:
   packages:
@@ -21,6 +23,8 @@ outputs:
     description: 'true when the files came from the cache and apt never ran'
   installed-packages:
     description: 'Space-separated packages the cache holds, including pulled-in dependencies'
+  skipped:
+    description: 'true when the runner is not Linux, so nothing was installed'
 
 runs:
   using: node24

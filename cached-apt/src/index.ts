@@ -53,9 +53,17 @@ async function packArchive(archive: string, listFile: string): Promise<void> {
 }
 
 async function main(): Promise<void> {
+	// A no-op rather than a failure, so a cross-platform matrix calls this
+	// unconditionally. It is announced, never silent: a caller that needed the
+	// packages finds out here instead of at the compile that misses them.
 	if (process.platform !== 'linux') {
-		throw new Error(`cached-apt needs a Linux runner with apt; this one is ${process.platform}`);
+		core.setOutput('skipped', 'true');
+		core.setOutput('cache-hit', 'false');
+		core.setOutput('installed-packages', '');
+		core.notice(`cached-apt installed nothing: apt needs Linux and this runner is ${process.platform}. Install these packages another way here.`);
+		return;
 	}
+	core.setOutput('skipped', 'false');
 
 	const packages = normalizePackages(core.getInput('packages', {required: true}));
 	if (packages.length === 0) {
