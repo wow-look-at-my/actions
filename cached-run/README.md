@@ -44,7 +44,7 @@ A skipped run writes nothing to `GITHUB_ENV` or `GITHUB_PATH`. A script that exp
       echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 ```
 
-Only what the run appends is recorded. A variable the job already had is left alone. An entry saved before the action recorded these carries nothing. The hit says so in a warning. It does not leave a caller to find the variable missing.
+Only what the run appends is recorded. A variable the job already had is left alone. Every entry of the current key scheme stores this record. A hit that carries none is damaged. The step then fails by name rather than leaving a caller to find the variable missing.
 
 ## Naming what the script reads
 

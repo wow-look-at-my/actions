@@ -2,7 +2,10 @@ import * as os from 'os';
 import * as path from 'path';
 import {buildKey, normalizeList} from '../../_shared/cache-key/lib';
 
-export const SCHEME = 'cached-run-v1';
+// v2 stores the run's exports beside its output paths. An entry written under
+// v1 carries no record of them, so a hit on one restores paths and leaves a
+// caller that reads an exported variable without it.
+export const SCHEME = 'cached-run-v2';
 
 export interface PlanEnv {
 	RUN_SCRIPT?: string;

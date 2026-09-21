@@ -97,8 +97,8 @@ runs:
       run: |
         set -euo pipefail
         if [ ! -d "$ENV_DIR" ]; then
-          echo "::warning::cached-run: the hit carries no record of what the run exported, so GITHUB_ENV and GITHUB_PATH keep what the job already had. An entry saved before this action recorded them does this."
-          exit 0
+          echo "::error::cached-run: this entry carries no record of what the run exported. Every entry of this key scheme stores one, so the entry is damaged. A caller that reads an exported variable would see it missing instead."
+          exit 1
         fi
         cat "$ENV_DIR/env" >> "$GITHUB_ENV"
         cat "$ENV_DIR/path" >> "$GITHUB_PATH"
