@@ -27,8 +27,9 @@ Run a script with its output paths restored from cache first and saved after. Th
 | `restore-keys` | `''` | Fallback prefixes for a partial restore. |
 | `working-directory` | `.` | Where to run the script. |
 | `skip-on-hit` | `true` | Skip the script on an exact hit. Set it false for a warm cache. |
+| `save-on` | `default-branch` | Which refs may write an entry: `default-branch` or `any`. |
 
-Outputs: `cache-key`, `cache-hit`, `cache-matched-key`, `skipped`, `cache-saved`.
+Outputs: `cache-key`, `cache-hit`, `cache-matched-key`, `skipped`, `cache-saved`, `save-allowed`.
 
 ## The environment the script exports
 
@@ -79,6 +80,26 @@ Set `skip-on-hit: false` when the paths FEED the run rather than being its produ
 ```
 
 A `restore-keys` match is a partial result. The script always runs after one, whatever `skip-on-hit` says.
+
+## Which refs write
+
+Only the default branch writes an entry. Every ref still RESTORES one, because GitHub already lets a branch read the default branch's cache. So a feature branch keeps every hit it had.
+
+A branch that writes gets its own cache scope. Only that branch can read what it wrote, and the entry still spends the repository's shared budget. A multi-gigabyte dependency tree saved by each feature branch evicts the default branch's copy, which is the one every branch reads.
+
+```yaml
+- uses: wow-look-at-my/actions@cached-run#latest
+  with:
+    save-on: any
+    paths: target/debug/deps
+    run: |
+      # ${{ hashFiles('Cargo.lock') }}
+      cargo build
+```
+
+Set `save-on: any` where a branch needs its own entry. A branch that changes the key finds nothing on the default branch. One editing a lockfile does this. It then runs its script on every push until it merges. That is the cost this default accepts, and `any` is how to decline it.
+
+An event that carries no repository leaves the default branch unknown. The action writes nothing and says so, because guessing spends the budget the default exists to protect. `save-on: any` overrides that too.
 
 ## Tests
 
