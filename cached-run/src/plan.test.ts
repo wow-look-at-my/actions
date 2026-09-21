@@ -59,6 +59,21 @@ test('two calls in one job get two sentinels', () => {
 	assert.notStrictEqual(plan(env()).sentinel, plan(env({RUN_SCRIPT: 'make test'})).sentinel);
 });
 
+test('the environment a run exports is cached beside the paths it produced', () => {
+	const result = plan(env({RUNNER_TEMP: '/runner/tmp', RAW_PATHS: 'dist/'}));
+	assert.strictEqual(result.envDir, `/runner/tmp/cached-run-${result.digest}.env`);
+	assert.deepStrictEqual(result.cachePaths, ['dist/', result.envDir]);
+});
+
+// The caller's own paths decide what a hit means. Keying on the action's
+// directory too would move every key for a reason no caller asked for.
+test('the environment directory is not in the key', () => {
+	const result = plan(env({RUNNER_TEMP: '/runner/tmp'}));
+	const elsewhere = plan(env({RUNNER_TEMP: '/somewhere/else'}));
+	assert.strictEqual(result.key, elsewhere.key);
+	assert.notStrictEqual(result.envDir, elsewhere.envDir);
+});
+
 test('the extra key separates two callers running the identical script', () => {
 	const alpha = plan(env({EXTRA_KEY: 'alpha'}));
 	const beta = plan(env({EXTRA_KEY: 'beta'}));

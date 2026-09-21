@@ -30,6 +30,22 @@ Run a script with its output paths restored from cache first and saved after. Th
 
 Outputs: `cache-key`, `cache-hit`, `cache-matched-key`, `skipped`, `cache-saved`.
 
+## The environment the script exports
+
+A skipped run writes nothing to `GITHUB_ENV` or `GITHUB_PATH`. A script that exported a variable therefore exported it on a miss and not on a hit. The action now records what the run appended to both files. It caches that beside the paths and replays it on a hit. Exporting from inside the script works the same either way.
+
+```yaml
+- uses: wow-look-at-my/actions@cached-run#latest
+  with:
+    paths: ~/go/bin
+    run: |
+      go install example.com/tool@v1
+      echo "TOOL=$(go env GOPATH)/bin/tool" >> "$GITHUB_ENV"
+      echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+```
+
+Only what the run appends is recorded. A variable the job already had is left alone. An entry saved before the action recorded these carries nothing. The hit says so in a warning. It does not leave a caller to find the variable missing.
+
 ## Naming what the script reads
 
 The script text is in the digest. The files the script READS are not. An edit to your sources therefore hits the same key and restores a stale build, unless you name those sources.
