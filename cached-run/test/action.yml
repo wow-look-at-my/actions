@@ -1,69 +1,29 @@
 name: Test cached-run
 version: 1
-description: Dogfood cached-run and check the key, the sentinel gate and the skip-on-hit path (never released)
+description: Dogfood cached-run against the real Actions cache (never released)
 
 runs:
   using: composite
   steps:
-    # A unique discriminator per run, so a rerun of this workflow starts cold rather than reading its own earlier entry.
+    # A namespace unique to the run, so a rerun starts cold instead of reading its own earlier entry. cached-run/dats covers the key logic itself.
     - name: Pick a cache namespace unique to this run
       id: ns
       shell: bash
-      run: |
-        set -euo pipefail
-        echo "ns=cached-run-test-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT:-1}" >> "$GITHUB_OUTPUT"
+      run: echo "ns=cached-run-test-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT:-1}" >> "$GITHUB_OUTPUT"
 
     - name: Cold run, which must execute and save
       id: cold
       uses: ./cached-run
       with:
         key: ${{ steps.ns.outputs.ns }}-basic
-        paths: |
-          .cached-run-test/out
+        paths: .cached-run-test/out
         run: |
           mkdir -p .cached-run-test/out
           echo "built once" > .cached-run-test/out/marker.txt
 
-    - name: The cold run missed, ran and saved
-      shell: bash
-      env:
-        HIT: ${{ steps.cold.outputs.cache-hit }}
-        SKIPPED: ${{ steps.cold.outputs.skipped }}
-        SAVED: ${{ steps.cold.outputs.cache-saved }}
-        KEY: ${{ steps.cold.outputs.cache-key }}
-      run: |
-        set -euo pipefail
-        fail=0
-        if [ "$HIT" = "true" ]; then
-          echo "::error::a fresh namespace reported a cache hit"
-          fail=1
-        fi
-        if [ "$SKIPPED" != "false" ]; then
-          echo "::error::the cold run was skipped, so the script never ran"
-          fail=1
-        fi
-        if [ "$SAVED" != "true" ]; then
-          echo "::error::the cold run did not save a cache entry"
-          fail=1
-        fi
-        if [ ! -f .cached-run-test/out/marker.txt ]; then
-          echo "::error::the script did not produce its output file"
-          fail=1
-        fi
-        case "$KEY" in
-          cached-run-v1-*) ;;
-          *)
-            echo "::error::the key does not carry the expected prefix: ${KEY}"
-            fail=1
-            ;;
-        esac
-        exit "$fail"
-
     - name: Drop the outputs so a restore is observable
       shell: bash
-      run: |
-        set -euo pipefail
-        rm -rf .cached-run-test
+      run: rm -rf .cached-run-test
 
     - name: Warm run of the same script, with skip-on-hit
       id: warm
@@ -71,77 +31,59 @@ runs:
       with:
         key: ${{ steps.ns.outputs.ns }}-basic
         skip-on-hit: 'true'
-        paths: |
-          .cached-run-test/out
+        paths: .cached-run-test/out
         run: |
           mkdir -p .cached-run-test/out
           echo "built again" > .cached-run-test/out/marker.txt
 
-    - name: The warm run hit, skipped the script and restored the files
+    - name: Read back what the hit restored
+      id: restored
+      shell: bash
+      run: |
+        set -euo pipefail
+        printf 'marker=' >> "$GITHUB_OUTPUT"
+        cat .cached-run-test/out/marker.txt >> "$GITHUB_OUTPUT"
+
+    - name: The entry round-tripped, and the hit skipped the script
       shell: bash
       env:
-        HIT: ${{ steps.warm.outputs.cache-hit }}
-        SKIPPED: ${{ steps.warm.outputs.skipped }}
-        SAVED: ${{ steps.warm.outputs.cache-saved }}
+        COLD_HIT: ${{ steps.cold.outputs.cache-hit }}
+        COLD_SAVED: ${{ steps.cold.outputs.cache-saved }}
         COLD_KEY: ${{ steps.cold.outputs.cache-key }}
+        WARM_HIT: ${{ steps.warm.outputs.cache-hit }}
+        WARM_SKIPPED: ${{ steps.warm.outputs.skipped }}
+        WARM_SAVED: ${{ steps.warm.outputs.cache-saved }}
         WARM_KEY: ${{ steps.warm.outputs.cache-key }}
+        MARKER: ${{ steps.restored.outputs.marker }}
       run: |
         set -euo pipefail
         fail=0
-        if [ "$WARM_KEY" != "$COLD_KEY" ]; then
-          echo "::error::the same script and paths produced two different keys: ${COLD_KEY} then ${WARM_KEY}"
+        if [ "$COLD_HIT" = "true" ]; then
+          echo "::error::a fresh namespace reported a cache hit"
           fail=1
         fi
-        if [ "$HIT" != "true" ]; then
+        if [ "$COLD_SAVED" != "true" ]; then
+          echo "::error::the cold run did not save a cache entry"
+          fail=1
+        fi
+        if [ "$WARM_KEY" != "$COLD_KEY" ]; then
+          echo "::error::one script and one path list produced two keys: ${COLD_KEY} then ${WARM_KEY}"
+          fail=1
+        fi
+        if [ "$WARM_HIT" != "true" ]; then
           echo "::error::the second call missed a key the first call saved"
           fail=1
         fi
-        if [ "$SKIPPED" != "true" ]; then
+        if [ "$WARM_SKIPPED" != "true" ]; then
           echo "::error::skip-on-hit was set on an exact hit and the script ran anyway"
           fail=1
         fi
-        if [ "$SAVED" = "true" ]; then
+        if [ "$WARM_SAVED" = "true" ]; then
           echo "::error::the warm run re-saved a key that was already present"
           fail=1
         fi
-        if [ ! -f .cached-run-test/out/marker.txt ]; then
-          echo "::error::the hit restored no files"
-          fail=1
-        fi
-        content="$(cat .cached-run-test/out/marker.txt)"
-        if [ "$content" != "built once" ]; then
-          echo "::error::the restored file holds '${content}', so the skipped script overwrote it"
-          fail=1
-        fi
-        exit "$fail"
-
-    - name: Changing one character of the script changes the key
-      id: edited
-      uses: ./cached-run
-      with:
-        key: ${{ steps.ns.outputs.ns }}-basic
-        skip-on-hit: 'true'
-        paths: |
-          .cached-run-test/out
-        run: |
-          mkdir -p .cached-run-test/out
-          echo "built again." > .cached-run-test/out/marker.txt
-
-    - name: The edited script missed, because its text is part of the key
-      shell: bash
-      env:
-        BASE_KEY: ${{ steps.cold.outputs.cache-key }}
-        EDITED_KEY: ${{ steps.edited.outputs.cache-key }}
-        HIT: ${{ steps.edited.outputs.cache-hit }}
-      run: |
-        set -euo pipefail
-        fail=0
-        if [ "$EDITED_KEY" = "$BASE_KEY" ]; then
-          echo "::error::two different scripts hashed to one key: ${EDITED_KEY}"
-          fail=1
-        fi
-        if [ "$HIT" = "true" ]; then
-          echo "::error::a script that never ran before reported a hit"
+        if [ "$MARKER" != "built once" ]; then
+          echo "::error::the restored file holds '${MARKER}', so the skipped script overwrote what the cache returned"
           fail=1
         fi
         exit "$fail"
@@ -151,13 +93,12 @@ runs:
       uses: ./cached-run
       with:
         key: ${{ steps.ns.outputs.ns }}-early
-        paths: |
-          .cached-run-test/early
+        paths: .cached-run-test/early
         run: |
           mkdir -p .cached-run-test/early
           echo partial > .cached-run-test/early/marker.txt
           exit 0
-          echo "unreachable" > .cached-run-test/early/never.txt
+          echo unreachable > .cached-run-test/early/never.txt
 
     - name: The early exit tripped the sentinel gate
       shell: bash
@@ -173,6 +114,4 @@ runs:
     - name: Clean up
       if: always()
       shell: bash
-      run: |
-        set -euo pipefail
-        rm -rf .cached-run-test
+      run: rm -rf .cached-run-test

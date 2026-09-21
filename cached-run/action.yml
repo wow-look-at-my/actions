@@ -1,0 +1,127 @@
+name: Cached Run
+version: 1
+description: Run a script with its output paths restored from cache first and saved after, keyed by the script text and the path list
+
+inputs:
+  run:
+    description: 'The script to run. `set -euo pipefail` is prepended and a sentinel `touch` is appended; the cache is saved only when that sentinel appears.'
+    required: true
+  paths:
+    description: 'The output paths to restore before the run and save after it, one per line. Sorted and deduplicated before use, so reordering them does not change the key.'
+    required: true
+  key:
+    description: 'Extra text mixed into the cache key. Put a lockfile hash here when the run depends on files its own text does not name.'
+    required: false
+    default: ''
+  restore-keys:
+    description: 'Fallback key prefixes for a partial restore, one per line, passed through to actions/cache/restore.'
+    required: false
+    default: ''
+  working-directory:
+    description: 'The directory to run the script in.'
+    required: false
+    default: '.'
+  skip-on-hit:
+    description: 'Skip the run on an exact key hit. Correct only when the cached paths are the whole result of the run, so a hit leaves nothing to do.'
+    required: false
+    default: 'false'
+
+outputs:
+  cache-key:
+    description: 'The computed primary cache key'
+    value: ${{ steps.plan.outputs.key }}
+  cache-hit:
+    description: 'Whether the primary key hit exactly'
+    value: ${{ steps.restore.outputs.cache-hit }}
+  cache-matched-key:
+    description: 'The key that actually restored, primary or a restore-keys fallback; empty on a miss'
+    value: ${{ steps.restore.outputs.cache-matched-key }}
+  skipped:
+    description: 'Whether the run was skipped because of an exact hit'
+    value: ${{ steps.decide.outputs.skip }}
+  cache-saved:
+    description: 'Whether this run saved a new cache entry'
+    value: ${{ steps.verify.outputs.save == 'true' }}
+
+runs:
+  using: composite
+  steps:
+    # Split from the run step so the key exists before the restore, and so the restore's hit can gate the run.
+    - name: Plan the cache key
+      id: plan
+      shell: bash
+      env:
+        RUN_SCRIPT: ${{ inputs.run }}
+        RAW_PATHS: ${{ inputs.paths }}
+        EXTRA_KEY: ${{ inputs.key }}
+        RUNNER_OS_NAME: ${{ runner.os }}
+        RUNNER_ARCH_NAME: ${{ runner.arch }}
+      run: "$GITHUB_ACTION_PATH/plan.sh"
+
+    - name: Restore the cached output paths
+      id: restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ steps.plan.outputs.paths }}
+        key: ${{ steps.plan.outputs.key }}
+        restore-keys: ${{ inputs.restore-keys }}
+
+    # A restore-keys fallback is a partial result, so only an exact hit can skip the run.
+    - name: Decide whether the run is still needed
+      id: decide
+      shell: bash
+      env:
+        CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
+        SKIP_ON_HIT: ${{ inputs.skip-on-hit }}
+      run: |
+        set -euo pipefail
+        if [ "$CACHE_HIT" = "true" ] && [ "$SKIP_ON_HIT" = "true" ]; then
+          echo "skip=true" >> "$GITHUB_OUTPUT"
+          echo 'Exact cache hit and skip-on-hit is set, so the script does not run.'
+        else
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Run the script
+      id: run
+      if: steps.decide.outputs.skip != 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        SENTINEL: ${{ steps.plan.outputs.sentinel }}
+      run: |
+        set -euo pipefail
+        rm -f "$SENTINEL"
+        ${{ inputs.run }}
+        touch "$SENTINEL"
+
+    # The sentinel catches what an exit code cannot: a script that hit its own `exit 0` or `exec` and never reached its last line.
+    - name: Check the run reached its final line
+      id: verify
+      if: steps.decide.outputs.skip != 'true'
+      shell: bash
+      env:
+        SENTINEL: ${{ steps.plan.outputs.sentinel }}
+        CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
+      run: |
+        set -euo pipefail
+        if [ ! -f "$SENTINEL" ]; then
+          echo '::warning::cached-run: the script exited 0 without reaching its last line, so nothing is cached. An early exit 0 or an exec does this.'
+          echo "save=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        rm -f "$SENTINEL"
+        if [ "$CACHE_HIT" = "true" ]; then
+          echo "save=false" >> "$GITHUB_OUTPUT"
+          echo 'The primary key is already in the cache, so there is nothing new to save.'
+        else
+          echo "save=true" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Save the output paths
+      id: save
+      if: steps.verify.outputs.save == 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ steps.plan.outputs.paths }}
+        key: ${{ steps.plan.outputs.key }}

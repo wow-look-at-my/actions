@@ -40,6 +40,7 @@ jobs:
           tests: |
             orphan-release/dats/
             secret-server/dats/
+            cached-run/dats/
       # An action with tests of its own keeps them in its test composite; a guard is dogfooded by running it.
       - uses: ./no-all-builds-job/test
       - uses: ./submodule-gte/test
@@ -56,6 +57,7 @@ jobs:
       - uses: ./push-excludes-tags
       - uses: ./typescript/test
       - uses: ./_shared/cache-xfer/test
+      - uses: ./cached-run/test
 
   # The shared cache-xfer tests on NT: its tar and path handling, and that a unix-origin hand-off runs there.
   cache-xfer-windows:
