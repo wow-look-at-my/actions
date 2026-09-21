@@ -76,7 +76,7 @@ ts0 supplies the compiler, the bundler and `@types/node`, so an action's `packag
 ### [Cached apt](cached-apt/)
 
 ```yml
-# Install apt packages on a Linux runner from a cache of the files they dropped, skipping `apt-get update` and `apt-get install` on a hit. Restored packages are plain files: dpkg does not record them as installed, maintainer scripts and update-alternatives do not run, and only `ldconfig` is re-run. Suits build and test dependencies; not packages that need a service, a user or an alternative..
+# Install apt packages on a Linux runner from a cache of the files they dropped, skipping `apt-get update` and `apt-get install` on a hit. Restored packages are plain files: dpkg does not record them as installed, maintainer scripts and update-alternatives do not run, and only `ldconfig` is re-run. Suits build and test dependencies; not packages that need a service, a user or an alternative. On a non-Linux runner it installs nothing and succeeds, so a matrix calls it without an `if:` guard; it says so, and sets `skipped` to true..
 # Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/cached-apt/README.md
 - uses: wow-look-at-my/actions@cached-apt#latest
   with:

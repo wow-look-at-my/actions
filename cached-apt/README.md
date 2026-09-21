@@ -26,6 +26,9 @@ Separate packages with whitespace, newlines or commas. The list is sorted and de
 | --- | --- |
 | `cache-hit` | `true` when the files came from the cache. |
 | `installed-packages` | The packages the cache holds, including the dependencies apt pulled in. |
+| `skipped` | `true` when the runner is not Linux, so nothing was installed. |
+
+On a runner that is not Linux the action installs nothing and succeeds. A cross-platform matrix therefore calls it with no `if:` guard. It is not silent about it. A notice names the platform, and `skipped` reads `true`.
 
 ## How it works
 
