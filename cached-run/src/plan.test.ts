@@ -15,7 +15,7 @@ function env(overrides: Partial<PlanEnv> = {}): PlanEnv {
 }
 
 test('the key carries the action scheme and the platform', () => {
-	assert.ok(plan(env()).key.startsWith('cached-run-v1-Linux-X64-'), plan(env()).key);
+	assert.ok(plan(env()).key.startsWith('cached-run-v2-Linux-X64-'), plan(env()).key);
 });
 
 test('one script and one path list produce one key twice', () => {
