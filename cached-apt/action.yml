@@ -1,0 +1,27 @@
+name: Cached apt
+version: 1
+description: >-
+  Install apt packages on a Linux runner from a cache of the files they dropped,
+  skipping `apt-get update` and `apt-get install` on a hit. Restored packages are
+  plain files: dpkg does not record them as installed, maintainer scripts and
+  update-alternatives do not run, and only `ldconfig` is re-run. Suits build and
+  test dependencies; not packages that need a service, a user or an alternative.
+
+inputs:
+  packages:
+    description: 'apt packages to install, separated by whitespace, newlines or commas'
+    required: true
+  key:
+    description: 'Extra text mixed into the cache key; change it to discard every existing entry'
+    required: false
+    default: ''
+
+outputs:
+  cache-hit:
+    description: 'true when the files came from the cache and apt never ran'
+  installed-packages:
+    description: 'Space-separated packages the cache holds, including pulled-in dependencies'
+
+runs:
+  using: node24
+  main: dist/index.js
