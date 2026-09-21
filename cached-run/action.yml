@@ -22,9 +22,9 @@ inputs:
     required: false
     default: '.'
   skip-on-hit:
-    description: 'Skip the run on an exact key hit. Correct only when the cached paths are the whole result of the run, so a hit leaves nothing to do.'
+    description: 'Skip the run on an exact key hit, because the cached paths already hold what the run produces. Set it false for a warm cache, where the paths feed the run rather than being its product.'
     required: false
-    default: 'false'
+    default: 'true'
 
 outputs:
   cache-key:

@@ -27,12 +27,12 @@ runs:
       shell: bash
       run: rm -rf .cached-run-test
 
-    - name: Warm run of that same script, with skip-on-hit
+    # No skip-on-hit here, so this covers the default.
+    - name: Warm run of that same script
       id: warm
       uses: ./cached-run
       with:
         key: ${{ steps.ns.outputs.ns }}-basic
-        skip-on-hit: 'true'
         paths: .cached-run-test/out
         run: |
           mkdir -p .cached-run-test/out
@@ -100,6 +100,46 @@ runs:
         fi
         if [ "$RAN" != "no" ]; then
           echo "::error::the uncached stamp is on disk, so the skipped script ran after all"
+          fail=1
+        fi
+        exit "$fail"
+
+    # The warm-cache opt-out: the same exact hit, and the script must run anyway.
+    - name: The same script again with skip-on-hit off
+      id: noskip
+      uses: ./cached-run
+      with:
+        key: ${{ steps.ns.outputs.ns }}-basic
+        skip-on-hit: 'false'
+        paths: .cached-run-test/out
+        run: |
+          mkdir -p .cached-run-test/out
+          echo built > .cached-run-test/out/marker.txt
+          touch .cached-run-test/ran
+
+    - name: skip-on-hit off ran the script on a hit, and saved nothing new
+      shell: bash
+      env:
+        HIT: ${{ steps.noskip.outputs.cache-hit }}
+        SKIPPED: ${{ steps.noskip.outputs.skipped }}
+        SAVED: ${{ steps.noskip.outputs.cache-saved }}
+      run: |
+        set -euo pipefail
+        fail=0
+        if [ "$HIT" != "true" ]; then
+          echo "::error::the third call reported cache-hit=${HIT} on a key already in the cache"
+          fail=1
+        fi
+        if [ "$SKIPPED" != "false" ]; then
+          echo "::error::skip-on-hit was off and the run was skipped anyway"
+          fail=1
+        fi
+        if [ ! -f .cached-run-test/ran ]; then
+          echo "::error::skip-on-hit was off and the script still did not run"
+          fail=1
+        fi
+        if [ "$SAVED" = "true" ]; then
+          echo "::error::a key already in the cache was saved a second time"
           fail=1
         fi
         exit "$fail"
