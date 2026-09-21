@@ -56,7 +56,7 @@ runs:
         EXTRA_KEY: ${{ inputs.key }}
         RUNNER_OS_NAME: ${{ runner.os }}
         RUNNER_ARCH_NAME: ${{ runner.arch }}
-      run: "$GITHUB_ACTION_PATH/plan.sh"
+      run: node "$GITHUB_ACTION_PATH/dist/index.js"
 
     - name: Restore the cached output paths
       id: restore

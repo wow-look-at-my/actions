@@ -42,4 +42,4 @@ A `restore-keys` match is a partial result. The script still runs after one.
 
 ## Tests
 
-`cached-run/dats/plan.dats` covers the key logic with no runner and no network. Run it with `dats cached-run/dats/plan.dats`. `cached-run/test` dogfoods the real cache round trip from CI.
+`ts0 test` in this directory covers the key logic with no runner and no network. The digest itself lives in `_shared/cache-key`, which `cached-apt` keys on too, and carries its own suite. `cached-run/test` dogfoods the real cache round trip from CI.

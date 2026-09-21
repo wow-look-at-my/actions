@@ -1,0 +1,11 @@
+name: Test cache-key
+version: 1
+description: The shared cache-key unit tests (never released)
+
+runs:
+  using: composite
+  steps:
+    - name: Shared cache-key unit tests
+      working-directory: _shared/cache-key
+      shell: bash
+      run: ts0 test

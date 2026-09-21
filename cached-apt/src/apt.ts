@@ -1,4 +1,4 @@
-import * as crypto from 'crypto';
+import {buildKey, CacheKey, normalizeList, sanitizeLabel} from '../../_shared/cache-key/lib';
 
 export const CACHE_VERSION = 'cached-apt-v1';
 
@@ -20,16 +20,7 @@ export interface Stats {
 	isDirectory(): boolean;
 }
 
-// Splits on whitespace and commas so a caller can write one package per line, a
-// single line, or a comma list. Sorted and deduped, so two orderings of the same
-// set share one cache entry.
-export function normalizePackages(input: string): string[] {
-	const names = input
-		.split(/[\s,]+/)
-		.map(name => name.trim())
-		.filter(name => name !== '');
-	return [...new Set(names)].sort();
-}
+export const normalizePackages = normalizeList;
 
 // A package name apt accepts, optionally arch-qualified and optionally pinned
 // to a version. Anything else is a typo or an injected argument. A pin reaches
@@ -40,35 +31,30 @@ export function validatePackageName(name: string): void {
 	}
 }
 
-// A label a cache key can carry: the human-readable half of the key, next to the
-// digest that actually distinguishes entries.
-export function sanitizeLabel(label: string): string {
-	return label
-		.replace(/[^A-Za-z0-9._-]+/g, '-')
-		.replace(/^-+|-+$/g, '')
-		.slice(0, 48);
-}
+export {sanitizeLabel};
 
 // The digest covers everything that changes which files an install produces. It
 // deliberately excludes apt sources and `apt-get update` state: those move on
 // their own and would miss the cache on every run.
+function spec(parts: KeyParts): Parameters<typeof buildKey>[0] {
+	return {
+		scheme: CACHE_VERSION,
+		platform: [parts.osId, parts.osVersion, parts.arch],
+		label: parts.extraKey,
+		fields: {packages: parts.packages}
+	};
+}
+
+export function cacheKey(parts: KeyParts): CacheKey {
+	return buildKey(spec(parts));
+}
+
 export function computeDigest(parts: KeyParts): string {
-	const payload = JSON.stringify({
-		version: CACHE_VERSION,
-		packages: parts.packages,
-		osId: parts.osId,
-		osVersion: parts.osVersion,
-		arch: parts.arch,
-		extraKey: parts.extraKey
-	});
-	return crypto.createHash('sha256').update(payload).digest('hex').slice(0, 40);
+	return cacheKey(parts).digest;
 }
 
 export function computeCacheKey(parts: KeyParts): string {
-	const pieces = [parts.osId, parts.osVersion, parts.arch, parts.extraKey]
-		.map(piece => sanitizeLabel(piece))
-		.filter(piece => piece !== '');
-	return `${CACHE_VERSION}-${pieces.join('-')}-${computeDigest(parts)}`;
+	return cacheKey(parts).key;
 }
 
 // Only `ii` means the files are on disk: a removed package stays listed at
