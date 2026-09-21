@@ -73,6 +73,27 @@ ts0 supplies the compiler, the bundler and `@types/node`, so an action's `packag
     path: # File or directory to hand off (a directory is captured as its contents)
 ```
 
+### [Cached apt](cached-apt/)
+
+```yml
+# Install apt packages on a Linux runner from a cache of the files they dropped, skipping `apt-get update` and `apt-get install` on a hit. Restored packages are plain files: dpkg does not record them as installed, maintainer scripts and update-alternatives do not run, and only `ldconfig` is re-run. Suits build and test dependencies; not packages that need a service, a user or an alternative. On a non-Linux runner it installs nothing and succeeds, so a matrix calls it without an `if:` guard; it says so, and sets `skipped` to true..
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/cached-apt/README.md
+- uses: wow-look-at-my/actions@cached-apt#latest
+  with:
+    packages: # apt packages to install, separated by whitespace, newlines or commas
+```
+
+### [Cached Run](cached-run/)
+
+```yml
+# Run a script with its output paths restored from cache first and saved after, keyed by the script text and the path list.
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/cached-run/README.md
+- uses: wow-look-at-my/actions@cached-run#latest
+  with:
+    run: # The script to run. `set -euo pipefail` is prepended and a sentinel `touch` is appended; the cache is saved only when that sentinel appears.
+    paths: # The output paths to restore before the run and save after it, one per line. Sorted and deduplicated before use, so reordering them does not change the key.
+```
+
 ### [Cloudflare Pages](cloudflare-pages/)
 
 ```yml
