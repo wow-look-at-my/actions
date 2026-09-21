@@ -1,0 +1,41 @@
+name: Test cached-apt on a runner without apt
+version: 1
+description: Dogfood cached-apt off Linux and check it succeeds having installed nothing (never released)
+
+runs:
+  using: composite
+  steps:
+    # The point is that no `if:` guard sits here. A caller must be able to call this from a matrix unconditionally.
+    - name: Ask for a package this runner cannot have
+      id: call
+      uses: ./cached-apt
+      with:
+        packages: cmatrix
+
+    - name: The call succeeded, installed nothing and said so
+      shell: bash
+      env:
+        SKIPPED: ${{ steps.call.outputs.skipped }}
+        HIT: ${{ steps.call.outputs.cache-hit }}
+        PKGS: ${{ steps.call.outputs.installed-packages }}
+        OS: ${{ runner.os }}
+      run: |
+        set -euo pipefail
+        fail=0
+        if [ "$OS" = "Linux" ]; then
+          echo "::error::this harness only means anything off Linux, and it ran on ${OS}"
+          fail=1
+        fi
+        if [ "$SKIPPED" != "true" ]; then
+          echo "::error::cached-apt reported skipped=${SKIPPED} on ${OS}, so it did not take the no-op path"
+          fail=1
+        fi
+        if [ "$HIT" != "false" ]; then
+          echo "::error::cached-apt reported cache-hit=${HIT} on a runner where it never looked at the cache"
+          fail=1
+        fi
+        if [ -n "$PKGS" ]; then
+          echo "::error::cached-apt claims it installed '${PKGS}' on ${OS}"
+          fail=1
+        fi
+        exit "$fail"
