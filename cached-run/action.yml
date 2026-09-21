@@ -31,8 +31,8 @@ outputs:
     description: 'The computed primary cache key'
     value: ${{ steps.plan.outputs.key }}
   cache-hit:
-    description: 'Whether the primary key hit exactly'
-    value: ${{ steps.restore.outputs.cache-hit }}
+    description: 'Whether the primary key hit exactly, as `true` or `false`'
+    value: ${{ steps.decide.outputs.hit }}
   cache-matched-key:
     description: 'The key that actually restored, primary or a restore-keys fallback; empty on a miss'
     value: ${{ steps.restore.outputs.cache-matched-key }}
@@ -75,6 +75,12 @@ runs:
         SKIP_ON_HIT: ${{ inputs.skip-on-hit }}
       run: |
         set -euo pipefail
+        # actions/cache reports a miss as an empty string, so normalize it before a caller compares it.
+        if [ "$CACHE_HIT" = "true" ]; then
+          echo "hit=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "hit=false" >> "$GITHUB_OUTPUT"
+        fi
         if [ "$CACHE_HIT" = "true" ] && [ "$SKIP_ON_HIT" = "true" ]; then
           echo "skip=true" >> "$GITHUB_OUTPUT"
           echo 'Exact cache hit and skip-on-hit is set, so the script does not run.'

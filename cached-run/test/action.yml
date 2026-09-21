@@ -11,6 +11,7 @@ runs:
       shell: bash
       run: echo "ns=cached-run-test-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT:-1}" >> "$GITHUB_OUTPUT"
 
+    # Both calls run the SAME script text, because a difference there is meant to change the key. The `ran` stamp sits outside `paths`, so only the script itself can put it back.
     - name: Cold run, which must execute and save
       id: cold
       uses: ./cached-run
@@ -19,13 +20,14 @@ runs:
         paths: .cached-run-test/out
         run: |
           mkdir -p .cached-run-test/out
-          echo "built once" > .cached-run-test/out/marker.txt
+          echo built > .cached-run-test/out/marker.txt
+          touch .cached-run-test/ran
 
-    - name: Drop the outputs so a restore is observable
+    - name: Drop everything, so only a restore can bring the outputs back
       shell: bash
       run: rm -rf .cached-run-test
 
-    - name: Warm run of the same script, with skip-on-hit
+    - name: Warm run of that same script, with skip-on-hit
       id: warm
       uses: ./cached-run
       with:
@@ -34,15 +36,24 @@ runs:
         paths: .cached-run-test/out
         run: |
           mkdir -p .cached-run-test/out
-          echo "built again" > .cached-run-test/out/marker.txt
+          echo built > .cached-run-test/out/marker.txt
+          touch .cached-run-test/ran
 
-    - name: Read back what the hit restored
-      id: restored
+    - name: Record what is on disk after the warm run
+      id: disk
       shell: bash
       run: |
         set -euo pipefail
-        printf 'marker=' >> "$GITHUB_OUTPUT"
-        cat .cached-run-test/out/marker.txt >> "$GITHUB_OUTPUT"
+        restored=no
+        ran=no
+        if [ -f .cached-run-test/out/marker.txt ]; then
+          restored=yes
+        fi
+        if [ -f .cached-run-test/ran ]; then
+          ran=yes
+        fi
+        echo "restored=${restored}" >> "$GITHUB_OUTPUT"
+        echo "ran=${ran}" >> "$GITHUB_OUTPUT"
 
     - name: The entry round-tripped, and the hit skipped the script
       shell: bash
@@ -54,12 +65,13 @@ runs:
         WARM_SKIPPED: ${{ steps.warm.outputs.skipped }}
         WARM_SAVED: ${{ steps.warm.outputs.cache-saved }}
         WARM_KEY: ${{ steps.warm.outputs.cache-key }}
-        MARKER: ${{ steps.restored.outputs.marker }}
+        RESTORED: ${{ steps.disk.outputs.restored }}
+        RAN: ${{ steps.disk.outputs.ran }}
       run: |
         set -euo pipefail
         fail=0
-        if [ "$COLD_HIT" = "true" ]; then
-          echo "::error::a fresh namespace reported a cache hit"
+        if [ "$COLD_HIT" != "false" ]; then
+          echo "::error::a fresh namespace reported cache-hit=${COLD_HIT}, and a miss must read false"
           fail=1
         fi
         if [ "$COLD_SAVED" != "true" ]; then
@@ -82,8 +94,12 @@ runs:
           echo "::error::the warm run re-saved a key that was already present"
           fail=1
         fi
-        if [ "$MARKER" != "built once" ]; then
-          echo "::error::the restored file holds '${MARKER}', so the skipped script overwrote what the cache returned"
+        if [ "$RESTORED" != "yes" ]; then
+          echo "::error::the hit restored no files, so the cached path never came back"
+          fail=1
+        fi
+        if [ "$RAN" != "no" ]; then
+          echo "::error::the uncached stamp is on disk, so the skipped script ran after all"
           fail=1
         fi
         exit "$fail"
