@@ -62,7 +62,7 @@ runs:
       id: restore
       uses: actions/cache/restore@v4
       with:
-        path: ${{ steps.plan.outputs.paths }}
+        path: ${{ steps.plan.outputs.cache-paths }}
         key: ${{ steps.plan.outputs.key }}
         restore-keys: ${{ inputs.restore-keys }}
 
@@ -88,6 +88,21 @@ runs:
           echo "skip=false" >> "$GITHUB_OUTPUT"
         fi
 
+    # A skipped run exports nothing, and a caller that read its exports from a step of its own would have to know which ones the script sets. The cache carries them instead.
+    - name: Replay what the cached run exported
+      if: steps.decide.outputs.skip == 'true'
+      shell: bash
+      env:
+        ENV_DIR: ${{ steps.plan.outputs.envdir }}
+      run: |
+        set -euo pipefail
+        if [ ! -d "$ENV_DIR" ]; then
+          echo "::warning::cached-run: the hit carries no record of what the run exported, so GITHUB_ENV and GITHUB_PATH keep what the job already had. An entry saved before this action recorded them does this."
+          exit 0
+        fi
+        cat "$ENV_DIR/env" >> "$GITHUB_ENV"
+        cat "$ENV_DIR/path" >> "$GITHUB_PATH"
+
     - name: Run the script
       id: run
       if: steps.decide.outputs.skip != 'true'
@@ -95,11 +110,18 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       env:
         SENTINEL: ${{ steps.plan.outputs.sentinel }}
+        ENV_DIR: ${{ steps.plan.outputs.envdir }}
       run: |
         set -euo pipefail
         rm -f "$SENTINEL"
+        # Where GITHUB_ENV and GITHUB_PATH stand before the script writes to them, so what it appends can be told apart from what the job already had.
+        env_mark=$(wc -c < "$GITHUB_ENV")
+        path_mark=$(wc -c < "$GITHUB_PATH")
         ${{ inputs.run }}
         touch "$SENTINEL"
+        mkdir -p "$ENV_DIR"
+        tail -c "+$((env_mark + 1))" "$GITHUB_ENV" > "$ENV_DIR/env"
+        tail -c "+$((path_mark + 1))" "$GITHUB_PATH" > "$ENV_DIR/path"
 
     # The sentinel catches what an exit code cannot: a script that hit its own `exit 0` or `exec` and never reached its last line.
     - name: Check the run reached its final line
@@ -129,5 +151,5 @@ runs:
       if: steps.verify.outputs.save == 'true'
       uses: actions/cache/save@v4
       with:
-        path: ${{ steps.plan.outputs.paths }}
+        path: ${{ steps.plan.outputs.cache-paths }}
         key: ${{ steps.plan.outputs.key }}

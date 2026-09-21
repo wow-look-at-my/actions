@@ -7,6 +7,8 @@ try {
 	core.setOutput('digest', result.digest);
 	core.setOutput('sentinel', result.sentinel);
 	core.setOutput('paths', result.paths.join('\n'));
+	core.setOutput('envdir', result.envDir);
+	core.setOutput('cache-paths', result.cachePaths.join('\n'));
 	core.info(`cached-run key: ${result.key}`);
 	core.info(`cached-run paths:\n${result.paths.join('\n')}`);
 } catch (error) {
