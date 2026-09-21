@@ -1,0 +1,173 @@
+name: Test cached-run
+version: 1
+description: Dogfood cached-run against the real Actions cache (never released)
+
+runs:
+  using: composite
+  steps:
+    # A namespace unique to the run, so a rerun starts cold instead of reading its own earlier entry. cached-run/dats covers the key logic itself.
+    - name: Pick a cache namespace unique to this run
+      id: ns
+      shell: bash
+      run: echo "ns=cached-run-test-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT:-1}" >> "$GITHUB_OUTPUT"
+
+    # Both calls run the SAME script text, because a difference there is meant to change the key. The `ran` stamp sits outside `paths`, so only the script itself can put it back.
+    - name: Cold run, which must execute and save
+      id: cold
+      uses: ./cached-run
+      with:
+        key: ${{ steps.ns.outputs.ns }}-basic
+        paths: .cached-run-test/out
+        run: |
+          mkdir -p .cached-run-test/out
+          echo built > .cached-run-test/out/marker.txt
+          touch .cached-run-test/ran
+
+    - name: Drop everything, so only a restore can bring the outputs back
+      shell: bash
+      run: rm -rf .cached-run-test
+
+    # No skip-on-hit here, so this covers the default.
+    - name: Warm run of that same script
+      id: warm
+      uses: ./cached-run
+      with:
+        key: ${{ steps.ns.outputs.ns }}-basic
+        paths: .cached-run-test/out
+        run: |
+          mkdir -p .cached-run-test/out
+          echo built > .cached-run-test/out/marker.txt
+          touch .cached-run-test/ran
+
+    - name: Record what is on disk after the warm run
+      id: disk
+      shell: bash
+      run: |
+        set -euo pipefail
+        restored=no
+        ran=no
+        if [ -f .cached-run-test/out/marker.txt ]; then
+          restored=yes
+        fi
+        if [ -f .cached-run-test/ran ]; then
+          ran=yes
+        fi
+        echo "restored=${restored}" >> "$GITHUB_OUTPUT"
+        echo "ran=${ran}" >> "$GITHUB_OUTPUT"
+
+    - name: The entry round-tripped, and the hit skipped the script
+      shell: bash
+      env:
+        COLD_HIT: ${{ steps.cold.outputs.cache-hit }}
+        COLD_SAVED: ${{ steps.cold.outputs.cache-saved }}
+        COLD_KEY: ${{ steps.cold.outputs.cache-key }}
+        WARM_HIT: ${{ steps.warm.outputs.cache-hit }}
+        WARM_SKIPPED: ${{ steps.warm.outputs.skipped }}
+        WARM_SAVED: ${{ steps.warm.outputs.cache-saved }}
+        WARM_KEY: ${{ steps.warm.outputs.cache-key }}
+        RESTORED: ${{ steps.disk.outputs.restored }}
+        RAN: ${{ steps.disk.outputs.ran }}
+      run: |
+        set -euo pipefail
+        fail=0
+        if [ "$COLD_HIT" != "false" ]; then
+          echo "::error::a fresh namespace reported cache-hit=${COLD_HIT}, and a miss must read false"
+          fail=1
+        fi
+        if [ "$COLD_SAVED" != "true" ]; then
+          echo "::error::the cold run did not save a cache entry"
+          fail=1
+        fi
+        if [ "$WARM_KEY" != "$COLD_KEY" ]; then
+          echo "::error::one script and one path list produced two keys: ${COLD_KEY} then ${WARM_KEY}"
+          fail=1
+        fi
+        if [ "$WARM_HIT" != "true" ]; then
+          echo "::error::the second call missed a key the first call saved"
+          fail=1
+        fi
+        if [ "$WARM_SKIPPED" != "true" ]; then
+          echo "::error::skip-on-hit was set on an exact hit and the script ran anyway"
+          fail=1
+        fi
+        if [ "$WARM_SAVED" = "true" ]; then
+          echo "::error::the warm run re-saved a key that was already present"
+          fail=1
+        fi
+        if [ "$RESTORED" != "yes" ]; then
+          echo "::error::the hit restored no files, so the cached path never came back"
+          fail=1
+        fi
+        if [ "$RAN" != "no" ]; then
+          echo "::error::the uncached stamp is on disk, so the skipped script ran after all"
+          fail=1
+        fi
+        exit "$fail"
+
+    # The warm-cache opt-out: the same exact hit, and the script must run anyway.
+    - name: The same script again with skip-on-hit off
+      id: noskip
+      uses: ./cached-run
+      with:
+        key: ${{ steps.ns.outputs.ns }}-basic
+        skip-on-hit: 'false'
+        paths: .cached-run-test/out
+        run: |
+          mkdir -p .cached-run-test/out
+          echo built > .cached-run-test/out/marker.txt
+          touch .cached-run-test/ran
+
+    - name: skip-on-hit off ran the script on a hit, and saved nothing new
+      shell: bash
+      env:
+        HIT: ${{ steps.noskip.outputs.cache-hit }}
+        SKIPPED: ${{ steps.noskip.outputs.skipped }}
+        SAVED: ${{ steps.noskip.outputs.cache-saved }}
+      run: |
+        set -euo pipefail
+        fail=0
+        if [ "$HIT" != "true" ]; then
+          echo "::error::the third call reported cache-hit=${HIT} on a key already in the cache"
+          fail=1
+        fi
+        if [ "$SKIPPED" != "false" ]; then
+          echo "::error::skip-on-hit was off and the run was skipped anyway"
+          fail=1
+        fi
+        if [ ! -f .cached-run-test/ran ]; then
+          echo "::error::skip-on-hit was off and the script still did not run"
+          fail=1
+        fi
+        if [ "$SAVED" = "true" ]; then
+          echo "::error::a key already in the cache was saved a second time"
+          fail=1
+        fi
+        exit "$fail"
+
+    - name: A script that exits early saves nothing
+      id: early
+      uses: ./cached-run
+      with:
+        key: ${{ steps.ns.outputs.ns }}-early
+        paths: .cached-run-test/early
+        run: |
+          mkdir -p .cached-run-test/early
+          echo partial > .cached-run-test/early/marker.txt
+          exit 0
+          echo unreachable > .cached-run-test/early/never.txt
+
+    - name: The early exit tripped the sentinel gate
+      shell: bash
+      env:
+        SAVED: ${{ steps.early.outputs.cache-saved }}
+      run: |
+        set -euo pipefail
+        if [ "$SAVED" = "true" ]; then
+          echo "::error::a script that never reached its last line still saved a cache entry"
+          exit 1
+        fi
+
+    - name: Clean up
+      if: always()
+      shell: bash
+      run: rm -rf .cached-run-test
