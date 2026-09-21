@@ -12,6 +12,14 @@ set -euo pipefail
 : "${GITHUB_OUTPUT?GITHUB_OUTPUT is not set}"
 EXTRA_KEY="${EXTRA_KEY:-}"
 
+# A composite runner does not enforce `required: true`, so an omitted input
+# arrives as an empty string and would otherwise cache whatever happened to be
+# on disk under a key nothing produced.
+if [ -z "${RUN_SCRIPT//[[:space:]]/}" ]; then
+	echo '::error::cached-run: the run input is empty. Give it a script, or drop the action and call actions/cache directly.' >&2
+	exit 1
+fi
+
 # Leading space breaks the glob actions/cache reads, so trim both ends. Sorting
 # makes the key indifferent to the order the caller listed the paths in.
 paths="$(printf '%s\n' "$RAW_PATHS" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' | sort -u || true)"

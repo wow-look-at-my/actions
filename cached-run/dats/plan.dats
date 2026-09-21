@@ -160,6 +160,19 @@ tests:
 		stdout:
 			- "PLAN_FAILED"
 
+	- desc: "an empty run input fails loudly, because a composite runner does not enforce required"
+	  exit: 0
+	  inputs:
+		files:
+			run.sh: |
+				. {shared.lib.sh}
+				export RUN_SCRIPT='   ' RAW_PATHS='build/' EXTRA_KEY=''
+				plan || true
+	  cmd: env PLAN="$PWD/cached-run/plan.sh" bash {inputs.run.sh}
+	  outputs:
+		stdout:
+			- "PLAN_FAILED"
+
 	- desc: "the extra key separates two callers running the identical script"
 	  exit: 0
 	  inputs:
