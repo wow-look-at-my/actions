@@ -25,6 +25,10 @@ inputs:
     description: 'Skip the run on an exact key hit, because the cached paths already hold what the run produces. Set it false for a warm cache, where the paths feed the run rather than being its product.'
     required: false
     default: 'true'
+  save-on:
+    description: 'Which refs may WRITE an entry: `default-branch` (the default) or `any`. Restoring is untouched either way, because a branch already reads the default branch''s entries. A branch that writes gets its own scope, which only that branch reads, and the entry still costs the repository''s shared budget.'
+    required: false
+    default: 'default-branch'
 
 outputs:
   cache-key:
@@ -42,6 +46,9 @@ outputs:
   cache-saved:
     description: 'Whether this run saved a new cache entry'
     value: ${{ steps.verify.outputs.save == 'true' }}
+  save-allowed:
+    description: 'Whether this ref may write an entry at all, as `true` or `false`'
+    value: ${{ steps.plan.outputs.save-allowed }}
 
 runs:
   using: composite
@@ -56,6 +63,9 @@ runs:
         EXTRA_KEY: ${{ inputs.key }}
         RUNNER_OS_NAME: ${{ runner.os }}
         RUNNER_ARCH_NAME: ${{ runner.arch }}
+        SAVE_ON: ${{ inputs.save-on }}
+        # The repository's own default branch, so a repo whose default is `main` gates on `main`.
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       run: node "$GITHUB_ACTION_PATH/dist/index.js"
 
     - name: Restore the cached output paths
@@ -131,6 +141,7 @@ runs:
       env:
         SENTINEL: ${{ steps.plan.outputs.sentinel }}
         CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
+        SAVE_ALLOWED: ${{ steps.plan.outputs.save-allowed }}
       run: |
         set -euo pipefail
         if [ ! -f "$SENTINEL" ]; then
@@ -142,6 +153,9 @@ runs:
         if [ "$CACHE_HIT" = "true" ]; then
           echo "save=false" >> "$GITHUB_OUTPUT"
           echo 'The primary key is already in the cache, so there is nothing new to save.'
+        elif [ "$SAVE_ALLOWED" != "true" ]; then
+          echo "save=false" >> "$GITHUB_OUTPUT"
+          echo 'This ref does not write cache entries, so the run produced its paths and saved nothing. The plan step said which policy decided that.'
         else
           echo "save=true" >> "$GITHUB_OUTPUT"
         fi

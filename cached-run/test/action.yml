@@ -11,12 +11,13 @@ runs:
       shell: bash
       run: echo "ns=cached-run-test-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT:-1}" >> "$GITHUB_OUTPUT"
 
-    # Both calls run the SAME script text, because a difference there is meant to change the key. The `ran` stamp sits outside `paths`, so only the script itself can put it back.
+    # Both calls run the SAME script text, because a difference there is meant to change the key. The `ran` stamp sits outside `paths`, so only the script itself can put it back. `save-on: any` runs throughout: this suite runs on a feature branch, where the default policy writes nothing and every warm case below would have nothing to hit.
     - name: Cold run, which must execute and save
       id: cold
       uses: ./cached-run
       with:
         key: ${{ steps.ns.outputs.ns }}-basic
+        save-on: any
         paths: .cached-run-test/out
         run: |
           mkdir -p .cached-run-test/out
@@ -33,6 +34,7 @@ runs:
       uses: ./cached-run
       with:
         key: ${{ steps.ns.outputs.ns }}-basic
+        save-on: any
         paths: .cached-run-test/out
         run: |
           mkdir -p .cached-run-test/out
@@ -111,6 +113,7 @@ runs:
       with:
         key: ${{ steps.ns.outputs.ns }}-basic
         skip-on-hit: 'false'
+        save-on: any
         paths: .cached-run-test/out
         run: |
           mkdir -p .cached-run-test/out
@@ -149,6 +152,7 @@ runs:
       uses: ./cached-run
       with:
         key: ${{ steps.ns.outputs.ns }}-early
+        save-on: any
         paths: .cached-run-test/early
         run: |
           mkdir -p .cached-run-test/early
@@ -166,6 +170,49 @@ runs:
           echo "::error::a script that never reached its last line still saved a cache entry"
           exit 1
         fi
+
+    # The ref gate, which is the default. This suite runs on a feature branch, so a cold key here must execute and leave the cache untouched.
+    - name: A cold run under the default save-on writes nothing from this ref
+      id: gated
+      uses: ./cached-run
+      with:
+        key: ${{ steps.ns.outputs.ns }}-gated
+        paths: .cached-run-test/gated
+        run: |
+          mkdir -p .cached-run-test/gated
+          echo built > .cached-run-test/gated/marker.txt
+
+    - name: The run happened and the entry did not
+      shell: bash
+      env:
+        ALLOWED: ${{ steps.gated.outputs.save-allowed }}
+        HIT: ${{ steps.gated.outputs.cache-hit }}
+        SAVED: ${{ steps.gated.outputs.cache-saved }}
+        SKIPPED: ${{ steps.gated.outputs.skipped }}
+      run: |
+        set -euo pipefail
+        fail=0
+        if [ "$ALLOWED" != "false" ]; then
+          echo "::error::save-allowed reads ${ALLOWED} on a ref that is not the default branch"
+          fail=1
+        fi
+        if [ "$HIT" != "false" ]; then
+          echo "::error::a fresh namespace reported cache-hit=${HIT}, and a miss must read false"
+          fail=1
+        fi
+        if [ "$SKIPPED" != "false" ]; then
+          echo "::error::a miss was skipped, so the gated run never produced its paths"
+          fail=1
+        fi
+        if [ ! -f .cached-run-test/gated/marker.txt ]; then
+          echo "::error::the gate stopped the script as well as the save"
+          fail=1
+        fi
+        if [ "$SAVED" = "true" ]; then
+          echo "::error::a ref that may not write reported cache-saved=true"
+          fail=1
+        fi
+        exit "$fail"
 
     - name: Clean up
       if: always()
