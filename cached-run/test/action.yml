@@ -171,8 +171,8 @@ runs:
           exit 1
         fi
 
-    # The ref gate, which is the default. This suite runs on a feature branch, so a cold key here must execute and leave the cache untouched.
-    - name: A cold run under the default save-on writes nothing from this ref
+    # The ref gate, which is the default. This suite runs on every branch, the default one too, so the expected save follows the ref.
+    - name: A cold run under the default save-on saves only from the default branch
       id: gated
       uses: ./cached-run
       with:
@@ -182,9 +182,10 @@ runs:
           mkdir -p .cached-run-test/gated
           echo built > .cached-run-test/gated/marker.txt
 
-    - name: The run happened and the entry did not
+    - name: The run happened, and the entry exists only on the default branch
       shell: bash
       env:
+        ON_DEFAULT: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
         ALLOWED: ${{ steps.gated.outputs.save-allowed }}
         HIT: ${{ steps.gated.outputs.cache-hit }}
         SAVED: ${{ steps.gated.outputs.cache-saved }}
@@ -192,8 +193,12 @@ runs:
       run: |
         set -euo pipefail
         fail=0
-        if [ "$ALLOWED" != "false" ]; then
-          echo "::error::save-allowed reads ${ALLOWED} on a ref that is not the default branch"
+        if [ "$ALLOWED" != "$ON_DEFAULT" ]; then
+          echo "::error::save-allowed reads ${ALLOWED}, and this ref being the default branch reads ${ON_DEFAULT}"
+          fail=1
+        fi
+        if [ "$ON_DEFAULT" = "true" ] && [ "$SAVED" != "true" ]; then
+          echo "::error::the default branch may write, and the cold run reported cache-saved=${SAVED}"
           fail=1
         fi
         if [ "$HIT" != "false" ]; then
@@ -208,7 +213,7 @@ runs:
           echo "::error::the gate stopped the script as well as the save"
           fail=1
         fi
-        if [ "$SAVED" = "true" ]; then
+        if [ "$ON_DEFAULT" != "true" ] && [ "$SAVED" = "true" ]; then
           echo "::error::a ref that may not write reported cache-saved=true"
           fail=1
         fi
