@@ -44,7 +44,7 @@ runs:
       run: |
         url="$(grep -oE 'https://dl\.pazer\.build/ts0/esbuild-[0-9][0-9.]*' "$TS0_CJS" | sort -u)"
         arch="$(case "$RUNNER_ARCH" in ARM64) echo arm64 ;; *) echo amd64 ;; esac)"
-        curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 --connect-timeout 30 --speed-limit 1 --speed-time 30"$url?os=linux&arch=$arch" -o "$RUNNER_TEMP/ts0-esbuild"
+        curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 --connect-timeout 30 --speed-limit 1 --speed-time 30 "$url?os=linux&arch=$arch" -o "$RUNNER_TEMP/ts0-esbuild"
         sudo install -m 0755 "$RUNNER_TEMP/ts0-esbuild" /usr/local/lib/ts0-esbuild
         sudo install -m 0644 "$TS0_CJS" /usr/local/lib/ts0.cjs
         printf '#!/bin/sh\nESBUILD_BINARY_PATH=/usr/local/lib/ts0-esbuild exec node /usr/local/lib/ts0.cjs "$@"\n' > "$RUNNER_TEMP/ts0.shim"
