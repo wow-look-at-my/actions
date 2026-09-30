@@ -36,19 +36,18 @@ runs:
       uses: wow-look-at-my/buildhost/.github/actions/buildhost-download@master
       with:
         project: ts0
-    # ts0's own esbuild fetch has no retry and hides the network error. curl retries and names it. The shim alone sets ESBUILD_BINARY_PATH, because an npm esbuild rejects a binary of another version.
-    - name: Put ts0 and its esbuild on PATH
+    # ts0's own esbuild fetch has no retry. This one retries, and the ts0 launcher points ts0 at it. The version must match the esbuild that ts0 bundles.
+    - name: Download ts0's esbuild
+      id: esbuild
+      uses: wow-look-at-my/buildhost/.github/actions/buildhost-download@master
+      with:
+        project: ts0/esbuild-0.28.1
+    - name: Put ts0 on PATH
       shell: bash
-      env:
-        TS0_CJS: ${{ steps.ts0.outputs.path }}
       run: |
-        url="$(grep -oE 'https://dl\.pazer\.build/ts0/esbuild-[0-9][0-9.]*' "$TS0_CJS" | sort -u)"
-        arch="$(case "$RUNNER_ARCH" in ARM64) echo arm64 ;; *) echo amd64 ;; esac)"
-        curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 --connect-timeout 30 --speed-limit 1 --speed-time 30 "$url?os=linux&arch=$arch" -o "$RUNNER_TEMP/ts0-esbuild"
-        sudo install -m 0755 "$RUNNER_TEMP/ts0-esbuild" /usr/local/lib/ts0-esbuild
-        sudo install -m 0644 "$TS0_CJS" /usr/local/lib/ts0.cjs
-        printf '#!/bin/sh\nESBUILD_BINARY_PATH=/usr/local/lib/ts0-esbuild exec node /usr/local/lib/ts0.cjs "$@"\n' > "$RUNNER_TEMP/ts0.shim"
-        sudo install -m 0755 "$RUNNER_TEMP/ts0.shim" /usr/local/bin/ts0
+        sudo cp "${{ steps.ts0.outputs.path }}" /usr/local/lib/ts0.cjs
+        sudo cp "${{ steps.esbuild.outputs.path }}" /usr/local/lib/ts0-esbuild
+        sudo cp "${{ github.action_path }}/ts0" /usr/local/bin/ts0
     - name: Build
       if: inputs.action-dir != ''
       working-directory: ${{ inputs.action-dir }}
