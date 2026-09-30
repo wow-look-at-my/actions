@@ -1,0 +1,133 @@
+# cached-run
+
+Run a script with its output paths restored from cache first and saved after. The cache key is a hash of the script text and the path list. An edit to either one gets you a fresh cache in place of a stale one.
+
+```yaml
+- uses: wow-look-at-my/actions@cached-run#latest
+  with:
+    paths: target/release
+    run: |
+      # ${{ hashFiles('src/**', 'Cargo.lock') }}
+      cargo build --release
+```
+
+## What it does for you
+
+- Puts `set -euo pipefail` in front of your script. A failing command then stops it.
+- Adds `touch <sentinel>` at the end and saves the cache only when that file appears. A script that hits its own `exit 0` or an `exec` saves nothing.
+- Hashes the full script text, the sorted path list, `runner.os`, `runner.arch` and the `key` input into one digest. A reorder of the paths does not change it.
+
+## Inputs
+
+| Input | Default | Description |
+| --- | --- | --- |
+| `run` | required | The script to run. |
+| `paths` | required | Output paths to restore then save, one per line. |
+| `key` | `''` | Readable text in the key, also mixed into the digest. |
+| `restore-keys` | `''` | Fallback prefixes for a partial restore. |
+| `working-directory` | `.` | Where to run the script. |
+| `skip-on-hit` | `true` | Skip the script on an exact hit. Set it false for a warm cache. |
+| `save-on` | `default-branch` | Which refs may write an entry: `default-branch` or `any`. |
+
+Outputs: `cache-key`, `cache-hit`, `cache-matched-key`, `skipped`, `cache-saved`, `save-allowed`.
+
+## The environment the script exports
+
+A skipped run writes nothing to `GITHUB_ENV` or `GITHUB_PATH`. A script that exported a variable therefore exported it on a miss and not on a hit. The action now records what the run appended to both files. It caches that beside the paths and replays it on a hit. Exporting from inside the script works the same either way.
+
+```yaml
+- uses: wow-look-at-my/actions@cached-run#latest
+  with:
+    paths: ~/go/bin
+    run: |
+      go install example.com/tool@v1
+      echo "TOOL=$(go env GOPATH)/bin/tool" >> "$GITHUB_ENV"
+      echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+```
+
+Only what the run appends is recorded. A variable the job already had is left alone. Every entry of the current key scheme stores this record. A hit that carries none is damaged. The step then fails by name rather than leaving a caller to find the variable missing.
+
+## Naming what the script reads
+
+The script text is in the digest. The files the script READS are not. An edit to your sources therefore hits the same key and restores a stale build, unless you name those sources.
+
+Name them in a comment. The runner expands `${{ }}` in the caller's context before the action sees the input. The hash arrives as part of the script text, which the digest already covers.
+
+```yaml
+    run: |
+      # ${{ hashFiles('src/**', 'Cargo.lock') }}
+      cargo build --release
+```
+
+This works for anything an expression reaches: a matrix leg, a toolchain version, a variable. Put it in a comment and it is in the key.
+
+The `key` input does the same job. It also appears in the key as readable text. Reach for it to tell entries apart in the cache list, not because a comment cannot carry the value.
+
+## Output cache or warm cache
+
+An exact hit means the same script, the same paths and the same platform produced what is in the cache. Nothing is left to do. The script is therefore skipped, which is the default.
+
+Set `skip-on-hit: false` when the paths FEED the run rather than being its product. A compiler cache such as `ccache` or `~/.cache/go-build` works this way. The restore makes the run faster. The run itself must still happen.
+
+```yaml
+- uses: wow-look-at-my/actions@cached-run#latest
+  with:
+    skip-on-hit: false
+    paths: ~/.cache/go-build
+    run: |
+      # ${{ hashFiles('go.sum') }}
+      go build ./...
+```
+
+A `restore-keys` match is a partial result. The script always runs after one, whatever `skip-on-hit` says.
+
+A fallback reaches only an entry written with the same `key` label and the same `paths`. Its prefix is `cached-run-v2-<runner.os>-<runner.arch>-<key>-`.
+
+## Which refs write
+
+Only the default branch writes an entry. Every ref still RESTORES one, because GitHub already lets a branch read the default branch's cache. So a feature branch keeps every hit it had.
+
+A branch that writes gets its own cache scope. Only that branch can read what it wrote, and the entry still spends the repository's shared budget. A multi-gigabyte dependency tree saved by each feature branch evicts the default branch's copy, which is the one every branch reads.
+
+```yaml
+- uses: wow-look-at-my/actions@cached-run#latest
+  with:
+    save-on: any
+    paths: target/debug/deps
+    run: |
+      # ${{ hashFiles('Cargo.lock') }}
+      cargo build
+```
+
+Set `save-on: any` where a branch needs its own entry. A branch that changes the key finds nothing on the default branch. One editing a lockfile does this. It then runs its script on every push until it merges. That is the cost this default accepts, and `any` is how to decline it.
+
+An event that carries no repository leaves the default branch unknown. The action writes nothing and says so, because guessing spends the budget the default exists to protect. `save-on: any` overrides that too.
+
+## Cargo dependencies
+
+Cargo mode needs no input. It turns on when `paths` names a profile dir's `deps`, `build` or `.fingerprint`, and the working directory is in a cargo workspace.
+
+```yaml
+- uses: wow-look-at-my/actions@cached-run#latest
+  with:
+    key: rustdeps-dev
+    skip-on-hit: false
+    paths: |
+      ~/.cargo/registry/index
+      ~/.cargo/registry/cache
+      target/debug/deps
+      target/debug/build
+      target/debug/.fingerprint
+    run: cargo test --locked --workspace --no-run
+```
+
+- **Key.** The key follows the resolved registry and git dependencies with their features. It also follows `rustc -vV`, the toolchain file, `.cargo/config.toml`, the root `[profile.*]` tables and the `CARGO_PROFILE_*`/`RUSTFLAGS` environment. A lint table, a comment or a path dependency moves none of that. The plan step logs every input in a group before it hashes them, so runs' logs diff to the input that moved the key.
+- **Fallback.** Unless `restore-keys` is set, a new key restores the newest older entry of the same label, and the build compiles only the difference.
+- **Recorded builds.** While the script runs, a `cargo` shim sits first on `PATH`. It records each call's arguments, directory and environment, then execs the real cargo, so the output is the build's own. A cargo run by absolute path bypasses it.
+- **What is saved.** After the script, each recorded build replays as a no-op query with `--message-format=json`, which names every unit the build used. A workspace entry leaves the entry before the save and comes back after it, because cargo cannot reuse one on another checkout. An entry that no unit claims is left from an older dependency set and is removed, so a fallback never grows the entry.
+- **Mismatch.** A replay that compiles anything fails the step, because its unit list will then delete good artifacts. A script that ran no cargo build saves its dirs as they are, with a warning.
+- **Missed inputs.** With `skip-on-hit: false`, an exact hit still runs the script. A registry unit that compiles then raises a warning that names it, because the key missed an input that changes the build set.
+
+## Tests
+
+`ts0 test` in this directory covers the key logic with no runner and no network. The digest itself lives in `_shared/cache-key`, which `cached-apt` keys on too, and carries its own suite. `cached-run/test` dogfoods the real cache round trip from CI.
