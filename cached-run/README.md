@@ -81,6 +81,8 @@ Set `skip-on-hit: false` when the paths FEED the run rather than being its produ
 
 A `restore-keys` match is a partial result. The script always runs after one, whatever `skip-on-hit` says.
 
+A fallback reaches only an entry written with the same `key` label and the same `paths`. Its prefix is `cached-run-v2-<runner.os>-<runner.arch>-<key>-`.
+
 ## Which refs write
 
 Only the default branch writes an entry. Every ref still RESTORES one, because GitHub already lets a branch read the default branch's cache. So a feature branch keeps every hit it had.
