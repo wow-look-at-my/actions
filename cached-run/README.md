@@ -123,7 +123,7 @@ An event that carries no repository leaves the default branch unknown. The actio
     run: cargo test --locked --workspace --no-run
 ```
 
-- **Key.** The key follows the resolved registry and git dependencies with their features, `rustc -vV`, the toolchain file, `.cargo/config.toml`, the root `[profile.*]` tables and the `CARGO_PROFILE_*`/`RUSTFLAGS` environment. A lint table, a comment or a path dependency moves none of that. The plan step logs every input in a group before it hashes them, so runs' logs diff to the input that moved the key.
+- **Key.** The key follows the resolved registry and git dependencies with their features. It also follows `rustc -vV`, the toolchain file, `.cargo/config.toml`, the root `[profile.*]` tables and the `CARGO_PROFILE_*`/`RUSTFLAGS` environment. A lint table, a comment or a path dependency moves none of that. The plan step logs every input in a group before it hashes them, so runs' logs diff to the input that moved the key.
 - **Fallback.** Unless `restore-keys` is set, a new key restores the newest older entry of the same label, and the build compiles only the difference.
 - **What is saved.** After the script, a no-op `cargo <args> --message-format=json` names every unit the build used. The script's own output is untouched. A workspace entry leaves the entry before the save and comes back after it, because cargo cannot reuse one on another checkout. An entry that no unit claims is left from an older dependency set and is removed, so a fallback never grows the entry.
 - **Mismatch.** A query that compiles anything fails the step: the `cargo` input is not what the script built, and its unit list will delete good artifacts. Put every flag and variable that changes the build in `cargo` or in the step's `env`.
