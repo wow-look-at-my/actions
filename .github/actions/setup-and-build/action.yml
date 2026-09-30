@@ -36,24 +36,19 @@ runs:
       uses: wow-look-at-my/buildhost/.github/actions/buildhost-download@master
       with:
         project: ts0
-    # Standard paths, not the runner temp the download lands in: a sandboxed step mounts only these.
-    - name: Put ts0 on PATH
+    # ts0's own esbuild fetch has no retry and hides the network error. curl retries and names it. The shim alone sets ESBUILD_BINARY_PATH, because an npm esbuild rejects a binary of another version.
+    - name: Put ts0 and its esbuild on PATH
       shell: bash
       env:
         TS0_CJS: ${{ steps.ts0.outputs.path }}
       run: |
-        sudo install -m 0644 "$TS0_CJS" /usr/local/lib/ts0.cjs
-        printf '#!/bin/sh\nexec node /usr/local/lib/ts0.cjs "$@"\n' > "$RUNNER_TEMP/ts0.shim"
-        sudo install -m 0755 "$RUNNER_TEMP/ts0.shim" /usr/local/bin/ts0
-    # ts0's own esbuild fetch has no retry and hides the network error. curl retries and names it, and ESBUILD_BINARY_PATH stops ts0 from fetching at all.
-    - name: Fetch ts0's esbuild
-      shell: bash
-      run: |
-        url="$(grep -oE 'https://dl\.pazer\.build/ts0/esbuild-[0-9][0-9.]*' /usr/local/lib/ts0.cjs | sort -u)"
+        url="$(grep -oE 'https://dl\.pazer\.build/ts0/esbuild-[0-9][0-9.]*' "$TS0_CJS" | sort -u)"
         arch="$(case "$RUNNER_ARCH" in ARM64) echo arm64 ;; *) echo amd64 ;; esac)"
-        curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 --max-time 300 "$url?os=linux&arch=$arch" -o "$RUNNER_TEMP/esbuild"
-        sudo install -m 0755 "$RUNNER_TEMP/esbuild" /usr/local/bin/esbuild
-        echo "ESBUILD_BINARY_PATH=/usr/local/bin/esbuild" >> "$GITHUB_ENV"
+        curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 --max-time 300 "$url?os=linux&arch=$arch" -o "$RUNNER_TEMP/ts0-esbuild"
+        sudo install -m 0755 "$RUNNER_TEMP/ts0-esbuild" /usr/local/lib/ts0-esbuild
+        sudo install -m 0644 "$TS0_CJS" /usr/local/lib/ts0.cjs
+        printf '#!/bin/sh\nESBUILD_BINARY_PATH=/usr/local/lib/ts0-esbuild exec node /usr/local/lib/ts0.cjs "$@"\n' > "$RUNNER_TEMP/ts0.shim"
+        sudo install -m 0755 "$RUNNER_TEMP/ts0.shim" /usr/local/bin/ts0
     - name: Build
       if: inputs.action-dir != ''
       working-directory: ${{ inputs.action-dir }}
