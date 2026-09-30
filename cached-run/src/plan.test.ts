@@ -61,8 +61,23 @@ test('two calls in one job get two sentinels', () => {
 
 test('the environment a run exports is cached beside the paths it produced', () => {
 	const result = plan(env({RUNNER_TEMP: '/runner/tmp', RAW_PATHS: 'dist/'}));
-	assert.strictEqual(result.envDir, `/runner/tmp/cached-run-${result.digest}.env`);
+	assert.match(result.envDir, /^\/runner\/tmp\/cached-run-[0-9a-f]{16}\.env$/);
 	assert.deepStrictEqual(result.cachePaths, ['dist/', result.envDir]);
+});
+
+// actions/cache versions an entry by its path list, and restore-keys only
+// matches an entry of the same version.
+test('a changed script keeps the cached path list, so restore-keys can reach the older entry', () => {
+	const before = plan(env({EXTRA_KEY: 'deps'}));
+	const after = plan(env({EXTRA_KEY: 'deps', RUN_SCRIPT: 'make build # new lockfile'}));
+	assert.notStrictEqual(before.key, after.key);
+	assert.deepStrictEqual(before.cachePaths, after.cachePaths);
+});
+
+test('two calls with another label or other paths keep their exports apart', () => {
+	const base = plan(env({EXTRA_KEY: 'deps'}));
+	assert.notStrictEqual(base.envDir, plan(env({EXTRA_KEY: 'tools'})).envDir);
+	assert.notStrictEqual(base.envDir, plan(env({EXTRA_KEY: 'deps', RAW_PATHS: 'dist/'})).envDir);
 });
 
 // The caller's own paths decide what a hit means. Keying on the action's

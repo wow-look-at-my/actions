@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import * as os from 'os';
 import * as path from 'path';
 import {buildKey, normalizeList} from '../../_shared/cache-key/lib';
@@ -61,9 +62,8 @@ export function plan(env: PlanEnv): Plan {
 	// Derived from the digest, so two cached-run calls in one job never share a
 	// sentinel and read each other's completion as their own.
 	const sentinel = path.join(env.RUNNER_TEMP ?? os.tmpdir(), `cached-run-${digest}.done`);
-	// A skipped run exports nothing, so what it exported last time travels with
-	// the paths it produced. Keyed off the digest, not added to it: the caller's
-	// paths decide what a hit means, and this directory is the action's own.
-	const envDir = path.join(env.RUNNER_TEMP ?? os.tmpdir(), `cached-run-${digest}.env`);
+	// A skipped run exports nothing.
+	const slot = crypto.createHash('sha256').update(JSON.stringify({label: env.EXTRA_KEY ?? '', paths}), 'utf8').digest('hex').slice(0, 16);
+	const envDir = path.join(env.RUNNER_TEMP ?? os.tmpdir(), `cached-run-${slot}.env`);
 	return {key, digest, sentinel, paths, envDir, cachePaths: [...paths, envDir]};
 }

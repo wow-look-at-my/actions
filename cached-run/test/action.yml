@@ -147,6 +147,51 @@ runs:
         fi
         exit "$fail"
 
+    - name: Drop everything again, so only the fallback can bring the outputs back
+      shell: bash
+      run: rm -rf .cached-run-test
+
+    # Another script is another key. The prefix names the basic entry, which only restores if the cached path list matches.
+    - name: A changed script falls back to the older entry through restore-keys
+      id: fallback
+      uses: ./cached-run
+      with:
+        key: ${{ steps.ns.outputs.ns }}-basic
+        restore-keys: cached-run-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.ns.outputs.ns }}-basic-
+        save-on: any
+        paths: .cached-run-test/out
+        run: |
+          test -f .cached-run-test/out/marker.txt
+          touch .cached-run-test/ran
+
+    - name: The fallback restored the older entry and ran the script
+      shell: bash
+      env:
+        COLD_KEY: ${{ steps.cold.outputs.cache-key }}
+        KEY: ${{ steps.fallback.outputs.cache-key }}
+        HIT: ${{ steps.fallback.outputs.cache-hit }}
+        MATCHED: ${{ steps.fallback.outputs.cache-matched-key }}
+      run: |
+        set -euo pipefail
+        fail=0
+        if [ "$KEY" = "$COLD_KEY" ]; then
+          echo "::error::a changed script kept the key ${KEY}"
+          fail=1
+        fi
+        if [ "$HIT" != "false" ]; then
+          echo "::error::a fallback reported cache-hit=${HIT}, and only an exact hit reads true"
+          fail=1
+        fi
+        if [ "$MATCHED" != "$COLD_KEY" ]; then
+          echo "::error::restore-keys matched '${MATCHED}', not the older entry ${COLD_KEY}"
+          fail=1
+        fi
+        if [ ! -f .cached-run-test/ran ]; then
+          echo "::error::a fallback is a partial result, and the script did not run"
+          fail=1
+        fi
+        exit "$fail"
+
     - name: A script that exits early saves nothing
       id: early
       uses: ./cached-run
