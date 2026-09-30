@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {test} from 'node:test';
-import {compiledSince, digestOf, entryHash, keyInputs, parseUnits, profileDirs, profileTables, putBack, queryUnits, sortOut} from './cargo';
+import {compiledSince, digestOf, entryHash, isCargoProject, keyInputs, parseUnits, profileDirs, profileTables, putBack, queryUnits, readInvocations, replayArgs, shimScript, sortOut} from './cargo';
 
 const H_APP = 'aaaaaaaaaaaaaaaa';
 const H_SERDE = '1111111111111111';
@@ -129,6 +129,16 @@ function workspace(root: string): void {
 	write('app/src/main.rs', 'fn main() { println!("{}", stash_lib::n()); }\n');
 }
 
+test('a recorded build replays as a query that runs nothing', () => {
+	assert.deepStrictEqual(replayArgs(['test', '--locked', '--workspace', '--no-run']), ['test', '--locked', '--workspace', '--no-run', '--message-format=json']);
+	assert.deepStrictEqual(replayArgs(['+1.94.1', 'test', '-p', 'x']), ['+1.94.1', 'test', '-p', 'x', '--no-run', '--message-format=json']);
+	assert.deepStrictEqual(replayArgs(['run', '--release', '--', '--flag']), ['build', '--release', '--message-format=json']);
+	assert.deepStrictEqual(replayArgs(['build', '--message-format=short']), ['build', '--message-format=json']);
+	assert.strictEqual(replayArgs(['metadata', '--no-deps']), null);
+	assert.strictEqual(replayArgs(['fmt', '--check']), null);
+	assert.strictEqual(replayArgs(['--version']), null);
+});
+
 test('the key follows profile tables and ignores lint tables and comments', () => {
 	const root = tmp('key');
 	workspace(root);
@@ -141,15 +151,31 @@ test('the key follows profile tables and ignores lint tables and comments', () =
 	assert.ok(keyInputs(root, {CARGO_PROFILE_DEV_DEBUG: '0'}).includes('CARGO_PROFILE_DEV_DEBUG=0'), 'the key inputs omit the profile environment');
 });
 
-test('after sorting and putting back, cargo builds nothing and the query compiles nothing', () => {
+test('a build through the shim replays to its units, and after the put-back cargo builds nothing', () => {
 	const root = tmp('cargo');
 	workspace(root);
+	assert.ok(isCargoProject(root), 'a workspace did not read as a cargo project');
+	assert.ok(!isCargoProject(tmp('plain')), 'a plain dir read as a cargo project');
 	const target = path.join(root, 'target');
+	const shimDir = path.join(root, 'shim');
+	const log = path.join(root, 'calls');
+	fs.mkdirSync(shimDir);
+	fs.writeFileSync(path.join(shimDir, 'cargo'), shimScript(), {mode: 0o755});
+	const realCargo = childProcess.execFileSync('bash', ['-c', 'command -v cargo'], {encoding: 'utf8'}).trim();
+	const env = {...process.env, PATH: `${shimDir}:${process.env.PATH}`, CACHED_RUN_REAL_CARGO: realCargo, CACHED_RUN_CARGO_LOG: log};
+	// The target dir rides the environment the shim records, so the replay needs it from there.
 	const build = () =>
-		childProcess.spawnSync('cargo', ['build', '--offline', '-p', 'stash-app', '--target-dir', target], {cwd: root, encoding: 'utf8'});
-	assert.strictEqual(build().status, 0);
+		childProcess.spawnSync('cargo', ['build', '--offline', '-p', 'stash-app'], {cwd: root, encoding: 'utf8', env: {...env, CARGO_TARGET_DIR: target}});
+	const first = build();
+	assert.strictEqual(first.status, 0, first.stderr);
+	assert.ok(first.stderr.includes('Compiling stash-app'), 'the build output did not reach the caller through the shim');
 
-	const units = queryUnits([['build', '--offline', '-p', 'stash-app', '--target-dir', target]], root);
+	const calls = readInvocations(log);
+	assert.strictEqual(calls.length, 1);
+	assert.deepStrictEqual(calls[0].args, ['build', '--offline', '-p', 'stash-app']);
+	assert.strictEqual(calls[0].env.CARGO_TARGET_DIR, target);
+
+	const units = queryUnits(calls, realCargo);
 	assert.deepStrictEqual(units.compiled, [], 'the query after a build compiled something');
 	assert.strictEqual(units.workspace.size > 0, true, 'the query named no workspace unit');
 

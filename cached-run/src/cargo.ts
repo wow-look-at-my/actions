@@ -12,13 +12,79 @@ export function entryHash(name: string): string | null {
 	return match === null ? null : match[1];
 }
 
-/** The cargo commands the script builds with, one per line, blank lines dropped. */
-export function cargoCommands(raw: string): string[][] {
-	return raw
-		.split('\n')
-		.map((line) => line.trim())
-		.filter((line) => line !== '')
-		.map((line) => line.split(/\s+/));
+/**
+ * A `cargo` that records each call and then execs the real one, so the build's output is the build's.
+ * It keeps the arguments, the directory and the whole environment, which is what a replay needs to match.
+ */
+export function shimScript(): string {
+	return [
+		'#!/usr/bin/env bash',
+		'd="$CACHED_RUN_CARGO_LOG/$(date +%s%N)-$$"',
+		'mkdir -p "$d"',
+		'pwd > "$d/cwd"',
+		'printf \'%s\\0\' "$@" > "$d/args"',
+		'env -0 > "$d/env"',
+		'exec "$CACHED_RUN_REAL_CARGO" "$@"',
+		''
+	].join('\n');
+}
+
+export interface Invocation {
+	cwd: string;
+	args: string[];
+	env: NodeJS.ProcessEnv;
+}
+
+function nulList(file: string): string[] {
+	return fs.readFileSync(file, 'utf8').split('\0').filter((s) => s !== '');
+}
+
+/** The calls the shim recorded, oldest first. */
+export function readInvocations(logDir: string): Invocation[] {
+	if (!fs.existsSync(logDir)) {
+		return [];
+	}
+	return fs
+		.readdirSync(logDir)
+		.sort()
+		.map((name) => {
+			const dir = path.join(logDir, name);
+			const env: NodeJS.ProcessEnv = {};
+			for (const pair of nulList(path.join(dir, 'env'))) {
+				const eq = pair.indexOf('=');
+				if (eq > 0) {
+					env[pair.slice(0, eq)] = pair.slice(eq + 1);
+				}
+			}
+			return {cwd: fs.readFileSync(path.join(dir, 'cwd'), 'utf8').trim(), args: nulList(path.join(dir, 'args')), env};
+		});
+}
+
+const BUILDS: Record<string, string> = {build: 'build', b: 'build', run: 'build', r: 'build', test: 'test', t: 'test', bench: 'bench', check: 'check', c: 'check', clippy: 'clippy', rustc: 'rustc'};
+
+/**
+ * The same call as a no-op query: JSON messages, and nothing run. Null for a call that builds nothing.
+ * `run` becomes `build`, `test` and `bench` get `--no-run`, and whatever follows `--` goes to the program, so it goes.
+ */
+export function replayArgs(args: string[]): string[] | null {
+	const cut = args.indexOf('--');
+	const own = (cut === -1 ? args : args.slice(0, cut)).filter((a) => !a.startsWith('--message-format'));
+	const at = own.findIndex((a) => !a.startsWith('-') && !a.startsWith('+'));
+	if (at === -1 || !(own[at] in BUILDS)) {
+		return null;
+	}
+	const sub = BUILDS[own[at]];
+	const out = [...own.slice(0, at), sub, ...own.slice(at + 1)];
+	if ((sub === 'test' || sub === 'bench') && !out.includes('--no-run')) {
+		out.push('--no-run');
+	}
+	out.push('--message-format=json');
+	return out;
+}
+
+/** Whether `dir` is inside a cargo workspace. */
+export function isCargoProject(dir: string): boolean {
+	return childProcess.spawnSync('cargo', ['metadata', '--no-deps', '--format-version', '1'], {cwd: dir, stdio: 'ignore'}).status === 0;
 }
 
 /** A profile dir is the parent of a cached `deps`, `build` or `.fingerprint` path. */
@@ -140,14 +206,29 @@ export function parseUnits(messages: string): Units {
 	return units;
 }
 
-/** Runs each command as a no-op query after the build, so every unit reports itself. */
-export function queryUnits(commands: string[][], cwd: string): Units {
+/** Replays each recorded build as a no-op query, in its own directory and environment, so every unit reports itself. */
+export function queryUnits(invocations: Invocation[], cargo: string): Units {
 	let messages = '';
-	for (const args of commands) {
-		messages += run('cargo', [...args, '--message-format=json'], cwd);
+	const seen = new Set<string>();
+	let workspaceDir = '';
+	for (const call of invocations) {
+		const args = replayArgs(call.args);
+		if (args === null) {
+			continue;
+		}
+		const id = JSON.stringify([call.cwd, args, call.env]);
+		if (seen.has(id)) {
+			continue;
+		}
+		seen.add(id);
+		workspaceDir ||= call.cwd;
+		messages += childProcess.execFileSync(cargo, args, {cwd: call.cwd, env: call.env, encoding: 'utf8', maxBuffer: 1 << 30, stdio: ['ignore', 'pipe', 'inherit']});
 	}
 	const units = parseUnits(messages);
-	const metadata = JSON.parse(run('cargo', ['metadata', '--no-deps', '--format-version', '1'], cwd));
+	if (workspaceDir === '') {
+		return units;
+	}
+	const metadata = JSON.parse(run(cargo, ['metadata', '--no-deps', '--format-version', '1'], workspaceDir));
 	units.members = [
 		...new Set<string>((metadata.packages as Array<{name: string; targets: Array<{name: string}>}>).flatMap((p) => [p.name, ...p.targets.map((t) => t.name)]))
 	].sort();

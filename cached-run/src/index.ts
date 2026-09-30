@@ -1,12 +1,17 @@
 import * as core from '@actions/core';
-import {cargoCommands, compiledSince, digestOf, keyInputs, profileDirs, putBack, queryUnits, sortOut} from './cargo';
+import * as fs from 'fs';
+import * as path from 'path';
+import {compiledSince, digestOf, isCargoProject, keyInputs, profileDirs, putBack, queryUnits, readInvocations, shimScript, sortOut} from './cargo';
+import {normalizeList} from '../../_shared/cache-key/lib';
 import {plan} from './plan';
 import {saveGate} from './save_gate';
 
 function planStep(): void {
-	const cargo = cargoCommands(process.env.CARGO_COMMANDS ?? '');
+	// Cargo mode is on when the cached paths hold a cargo profile dir and this directory is a cargo workspace.
+	const cargo = profileDirs(normalizeList(process.env.RAW_PATHS ?? '')).length > 0 && isCargoProject(process.cwd());
+	core.setOutput('cargo', String(cargo));
 	let cargoDigest = '';
-	if (cargo.length > 0) {
+	if (cargo) {
 		const inputs = keyInputs(process.cwd(), process.env);
 		core.startGroup('cached-run: cargo key inputs');
 		core.info(inputs);
@@ -24,7 +29,14 @@ function planStep(): void {
 	core.setOutput('stash', result.stash);
 	core.setOutput('started-ms', String(Date.now()));
 	// Cargo mode falls back to the newest older entry of its own label unless the caller named prefixes.
-	const restoreKeys = process.env.RESTORE_KEYS?.trim() || (cargo.length > 0 ? result.prefix : '');
+	const restoreKeys = process.env.RESTORE_KEYS?.trim() || (cargo ? result.prefix : '');
+	if (cargo) {
+		const shimDir = path.join(process.env.RUNNER_TEMP ?? '/tmp', `cached-run-${result.digest}.bin`);
+		fs.mkdirSync(shimDir, {recursive: true});
+		fs.writeFileSync(path.join(shimDir, 'cargo'), shimScript(), {mode: 0o755});
+		core.setOutput('shim-dir', shimDir);
+		core.setOutput('cargo-log', path.join(process.env.RUNNER_TEMP ?? '/tmp', `cached-run-${result.digest}.calls`));
+	}
 	core.setOutput('restore-keys', restoreKeys);
 	core.info(`cached-run key: ${result.key}`);
 	core.info(`cached-run paths:\n${result.paths.join('\n')}`);
@@ -43,12 +55,13 @@ function planStep(): void {
 }
 
 function postStep(): void {
-	const cargo = cargoCommands(process.env.CARGO_COMMANDS ?? '');
 	const dirs = profileDirs((process.env.PLAN_PATHS ?? '').split('\n'));
-	if (dirs.length === 0) {
-		throw new Error('cargo mode needs a cached deps, build or .fingerprint path, and paths names none');
+	const calls = readInvocations(process.env.CARGO_LOG ?? '');
+	const units = queryUnits(calls, process.env.REAL_CARGO || 'cargo');
+	if (units.workspace.size + units.registry.size === 0) {
+		core.warning(`cached-run: the script ran no cargo build (${calls.length} cargo calls recorded), so the cached dirs are saved as they are`);
+		return;
 	}
-	const units = queryUnits(cargo, process.env.CARGO_DIR || '.');
 	if (units.compiled.length > 0) {
 		throw new Error(`the query after the run compiled ${units.compiled.length} units, so the cargo input is not what the script built. Put every flag and variable that changes the build in the cargo input or the step's env. First: ${units.compiled.slice(0, 5).join(' ')}`);
 	}

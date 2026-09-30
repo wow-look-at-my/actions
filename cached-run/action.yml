@@ -29,10 +29,6 @@ inputs:
     description: 'Which refs may WRITE an entry: `default-branch` (the default) or `any`. Restoring is untouched either way, because a branch already reads the default branch''s entries. A branch that writes gets its own scope, which only that branch reads, and the entry still costs the repository''s shared budget.'
     required: false
     default: 'default-branch'
-  cargo:
-    description: 'Cargo mode for a dependency cache. The cargo arguments the script builds with, one command per line (for example `test --locked --workspace --no-run`). The key then follows the resolved registry dependencies instead of the manifests, and a new key falls back to the newest older entry. After the run, workspace artifacts are held out of the entry and put back after the save, and units no build used are removed. See the README.'
-    required: false
-    default: ''
 
 outputs:
   cache-key:
@@ -67,7 +63,6 @@ runs:
         RAW_PATHS: ${{ inputs.paths }}
         EXTRA_KEY: ${{ inputs.key }}
         RESTORE_KEYS: ${{ inputs.restore-keys }}
-        CARGO_COMMANDS: ${{ inputs.cargo }}
         RUNNER_OS_NAME: ${{ runner.os }}
         RUNNER_ARCH_NAME: ${{ runner.arch }}
         SAVE_ON: ${{ inputs.save-on }}
@@ -128,9 +123,16 @@ runs:
       env:
         SENTINEL: ${{ steps.plan.outputs.sentinel }}
         ENV_DIR: ${{ steps.plan.outputs.envdir }}
+        SHIM_DIR: ${{ steps.plan.outputs.shim-dir }}
+        CARGO_LOG: ${{ steps.plan.outputs.cargo-log }}
       run: |
         set -euo pipefail
         rm -f "$SENTINEL"
+        # Cargo mode records each cargo call for the post step. The shim execs the real cargo, so the output is unchanged.
+        if [ -n "$SHIM_DIR" ]; then
+          export CACHED_RUN_REAL_CARGO="$(command -v cargo)" CACHED_RUN_CARGO_LOG="$CARGO_LOG"
+          export PATH="$SHIM_DIR:$PATH"
+        fi
         # Where GITHUB_ENV and GITHUB_PATH stand before the script writes to them, so what it appends can be told apart from what the job already had.
         env_mark=$(wc -c < "$GITHUB_ENV")
         path_mark=$(wc -c < "$GITHUB_PATH")
@@ -140,19 +142,18 @@ runs:
         tail -c "+$((env_mark + 1))" "$GITHUB_ENV" > "$ENV_DIR/env"
         tail -c "+$((path_mark + 1))" "$GITHUB_PATH" > "$ENV_DIR/path"
 
-    # A no-op query after the build names every unit it used. The script's own output is untouched.
+    # Each recorded build replays as a no-op query, which names every unit it used.
     - name: Sort the cargo artifacts for the save
       id: cargo-post
-      if: steps.decide.outputs.skip != 'true' && inputs.cargo != ''
+      if: steps.decide.outputs.skip != 'true' && steps.plan.outputs.cargo == 'true'
       shell: bash
       env:
-        CARGO_DIR: ${{ inputs.working-directory }}
-        CARGO_COMMANDS: ${{ inputs.cargo }}
+        CARGO_LOG: ${{ steps.plan.outputs.cargo-log }}
         PLAN_PATHS: ${{ steps.plan.outputs.paths }}
         STASH: ${{ steps.plan.outputs.stash }}
         STARTED_MS: ${{ steps.plan.outputs.started-ms }}
         CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
-      run: node "$GITHUB_ACTION_PATH/dist/index.js" post
+      run: REAL_CARGO="$(command -v cargo)" node "$GITHUB_ACTION_PATH/dist/index.js" post
 
     # The sentinel catches what an exit code cannot: a script that hit its own `exit 0` or `exec` and never reached its last line.
     - name: Check the run reached its final line
