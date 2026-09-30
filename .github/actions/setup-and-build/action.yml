@@ -25,7 +25,12 @@ runs:
     - uses: pnpm/action-setup@v4
       with:
         version: latest
-    - uses: extractions/setup-just@v2
+    # setup-just looks the release up through the GitHub API, which sometimes answers "Server Error". The second step fails the job if the retry fails too.
+    - id: just
+      uses: extractions/setup-just@v2
+      continue-on-error: true
+    - if: steps.just.outcome == 'failure'
+      uses: extractions/setup-just@v2
     - name: Download ts0
       id: ts0
       uses: wow-look-at-my/buildhost/.github/actions/buildhost-download@master
