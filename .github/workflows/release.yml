@@ -18,10 +18,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./cache-rg/test
-      # node24 actions: dist/ is not committed, so build before `uses: ./...`. The typescript action builds the rest.
+      # Toolchain only -- every node24 action this job runs is built below.
       - uses: ./.github/actions/setup-and-build
-        with:
-          action-dir: typescript
+      # node24 actions: dist/ is not committed, so build before `uses: ./...`.
+      - name: Build the typescript action, which builds the rest
+        run: cd typescript && just build
       - name: Build the actions this job runs
         uses: ./typescript
         with:
@@ -142,6 +143,11 @@ jobs:
       - uses: ./.github/actions/setup-and-build
         with:
           action-dir: ${{ matrix.action }}
+
+      # Type-checks the project, then runs whatever test files it finds; none is a pass.
+      - name: Test
+        working-directory: ${{ matrix.action }}
+        run: ts0 test
 
       - name: Validate action.yml
         run: |
