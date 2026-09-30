@@ -28,6 +28,7 @@ Run a script with its output paths restored from cache first and saved after. Th
 | `working-directory` | `.` | Where to run the script. |
 | `skip-on-hit` | `true` | Skip the script on an exact hit. Set it false for a warm cache. |
 | `save-on` | `default-branch` | Which refs may write an entry: `default-branch` or `any`. |
+| `cargo` | `''` | Cargo mode: the cargo arguments the script builds with, one command per line. See "Cargo dependencies". |
 
 Outputs: `cache-key`, `cache-hit`, `cache-matched-key`, `skipped`, `cache-saved`, `save-allowed`.
 
@@ -102,6 +103,31 @@ A branch that writes gets its own cache scope. Only that branch can read what it
 Set `save-on: any` where a branch needs its own entry. A branch that changes the key finds nothing on the default branch. One editing a lockfile does this. It then runs its script on every push until it merges. That is the cost this default accepts, and `any` is how to decline it.
 
 An event that carries no repository leaves the default branch unknown. The action writes nothing and says so, because guessing spends the budget the default exists to protect. `save-on: any` overrides that too.
+
+## Cargo dependencies
+
+`cargo` turns on a mode for a cargo dependency cache. Give it the cargo arguments the script builds with, one command per line. List the profile dirs' `deps`, `build` and `.fingerprint` in `paths`.
+
+```yaml
+- uses: wow-look-at-my/actions@cached-run#latest
+  with:
+    key: rustdeps-dev
+    skip-on-hit: false
+    cargo: test --locked --workspace --no-run
+    paths: |
+      ~/.cargo/registry/index
+      ~/.cargo/registry/cache
+      target/debug/deps
+      target/debug/build
+      target/debug/.fingerprint
+    run: cargo test --locked --workspace --no-run
+```
+
+- **Key.** The key follows the resolved registry and git dependencies with their features, `rustc -vV`, the toolchain file, `.cargo/config.toml`, the root `[profile.*]` tables and the `CARGO_PROFILE_*`/`RUSTFLAGS` environment. A lint table, a comment or a path dependency moves none of that. The plan step logs every input in a group before it hashes them, so runs' logs diff to the input that moved the key.
+- **Fallback.** Unless `restore-keys` is set, a new key restores the newest older entry of the same label, and the build compiles only the difference.
+- **What is saved.** After the script, a no-op `cargo <args> --message-format=json` names every unit the build used. The script's own output is untouched. A workspace entry leaves the entry before the save and comes back after it, because cargo cannot reuse one on another checkout. An entry that no unit claims is left from an older dependency set and is removed, so a fallback never grows the entry.
+- **Mismatch.** A query that compiles anything fails the step: the `cargo` input is not what the script built, and its unit list will delete good artifacts. Put every flag and variable that changes the build in `cargo` or in the step's `env`.
+- **Missed inputs.** With `skip-on-hit: false`, an exact hit still runs the script. A registry unit that compiles then raises a warning that names it, because the key missed an input that changes the build set.
 
 ## Tests
 

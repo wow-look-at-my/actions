@@ -29,6 +29,10 @@ inputs:
     description: 'Which refs may WRITE an entry: `default-branch` (the default) or `any`. Restoring is untouched either way, because a branch already reads the default branch''s entries. A branch that writes gets its own scope, which only that branch reads, and the entry still costs the repository''s shared budget.'
     required: false
     default: 'default-branch'
+  cargo:
+    description: 'Cargo mode for a dependency cache. The cargo arguments the script builds with, one command per line (for example `test --locked --workspace --no-run`). The key then follows the resolved registry dependencies instead of the manifests, and a new key falls back to the newest older entry. After the run, workspace artifacts are held out of the entry and put back after the save, and units no build used are removed. See the README.'
+    required: false
+    default: ''
 
 outputs:
   cache-key:
@@ -57,10 +61,13 @@ runs:
     - name: Plan the cache key
       id: plan
       shell: bash
+      working-directory: ${{ inputs.working-directory }}
       env:
         RUN_SCRIPT: ${{ inputs.run }}
         RAW_PATHS: ${{ inputs.paths }}
         EXTRA_KEY: ${{ inputs.key }}
+        RESTORE_KEYS: ${{ inputs.restore-keys }}
+        CARGO_COMMANDS: ${{ inputs.cargo }}
         RUNNER_OS_NAME: ${{ runner.os }}
         RUNNER_ARCH_NAME: ${{ runner.arch }}
         SAVE_ON: ${{ inputs.save-on }}
@@ -74,7 +81,7 @@ runs:
       with:
         path: ${{ steps.plan.outputs.cache-paths }}
         key: ${{ steps.plan.outputs.key }}
-        restore-keys: ${{ inputs.restore-keys }}
+        restore-keys: ${{ steps.plan.outputs.restore-keys }}
 
     # A restore-keys fallback is a partial result, so only an exact hit can skip the run.
     - name: Decide whether the run is still needed
@@ -133,6 +140,20 @@ runs:
         tail -c "+$((env_mark + 1))" "$GITHUB_ENV" > "$ENV_DIR/env"
         tail -c "+$((path_mark + 1))" "$GITHUB_PATH" > "$ENV_DIR/path"
 
+    # A no-op query after the build names every unit it used. The script's own output is untouched.
+    - name: Sort the cargo artifacts for the save
+      id: cargo-post
+      if: steps.decide.outputs.skip != 'true' && inputs.cargo != ''
+      shell: bash
+      env:
+        CARGO_DIR: ${{ inputs.working-directory }}
+        CARGO_COMMANDS: ${{ inputs.cargo }}
+        PLAN_PATHS: ${{ steps.plan.outputs.paths }}
+        STASH: ${{ steps.plan.outputs.stash }}
+        STARTED_MS: ${{ steps.plan.outputs.started-ms }}
+        CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
+      run: node "$GITHUB_ACTION_PATH/dist/index.js" post
+
     # The sentinel catches what an exit code cannot: a script that hit its own `exit 0` or `exec` and never reached its last line.
     - name: Check the run reached its final line
       id: verify
@@ -167,3 +188,12 @@ runs:
       with:
         path: ${{ steps.plan.outputs.cache-paths }}
         key: ${{ steps.plan.outputs.key }}
+
+    # always(), so a failed save still hands the workspace artifacts back to the steps after this action.
+    - name: Put the workspace artifacts back
+      if: always() && steps.cargo-post.outcome != 'skipped'
+      shell: bash
+      env:
+        PLAN_PATHS: ${{ steps.plan.outputs.paths }}
+        STASH: ${{ steps.plan.outputs.stash }}
+      run: node "$GITHUB_ACTION_PATH/dist/index.js" restore
