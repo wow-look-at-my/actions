@@ -40,6 +40,21 @@ runs:
         sudo install -m 0644 "$TS0_CJS" /usr/local/lib/ts0.cjs
         printf '#!/bin/sh\nexec node /usr/local/lib/ts0.cjs "$@"\n' > "$RUNNER_TEMP/ts0.shim"
         sudo install -m 0755 "$RUNNER_TEMP/ts0.shim" /usr/local/bin/ts0
+    # ts0 fetches its esbuild binary on its first build and fails outright on one bad fetch. A throwaway build takes that fetch here, with retries.
+    - name: Fetch ts0's esbuild
+      shell: bash
+      run: |
+        dir="$RUNNER_TEMP/ts0-prime"
+        mkdir -p "$dir/src"
+        printf 'export {};\n' > "$dir/src/index.ts"
+        printf '{"entry": "src/index.ts", "outfile": "dist/index.js", "target": "node", "format": "cjs"}\n' > "$dir/ts0.json"
+        for attempt in 1 2 3 4 5; do
+          if (cd "$dir" && ts0 build); then exit 0; fi
+          echo "ts0 could not fetch esbuild (attempt $attempt), retrying in 10s"
+          sleep 10
+        done
+        echo "::error::ts0 could not fetch its esbuild binary from dl.pazer.build after 5 attempts"
+        exit 1
     - name: Build
       if: inputs.action-dir != ''
       working-directory: ${{ inputs.action-dir }}
