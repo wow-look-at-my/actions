@@ -28,6 +28,10 @@ export interface Plan {
 	envDir: string;
 	/** What the cache stores: the caller's paths, plus those exports. */
 	cachePaths: string[];
+	/** The key up to its digest. A restore-keys prefix that reaches every older entry of this label. */
+	prefix: string;
+	/** Where cargo mode moves workspace artifacts while the save runs. */
+	stash: string;
 }
 
 function required(env: PlanEnv, name: 'RUNNER_OS_NAME' | 'RUNNER_ARCH_NAME'): string {
@@ -38,7 +42,8 @@ function required(env: PlanEnv, name: 'RUNNER_OS_NAME' | 'RUNNER_ARCH_NAME'): st
 	return value;
 }
 
-export function plan(env: PlanEnv): Plan {
+/** `cargoDigest` is the dependency-set digest in cargo mode. It keys the entry beside the script. */
+export function plan(env: PlanEnv, cargoDigest = ''): Plan {
 	// A composite runner does not enforce `required: true`, so an omitted input
 	// arrives as an empty string. Taking it would cache whatever happened to be
 	// at those paths under a key no script produced.
@@ -56,7 +61,7 @@ export function plan(env: PlanEnv): Plan {
 		platform: [required(env, 'RUNNER_OS_NAME'), required(env, 'RUNNER_ARCH_NAME')],
 		label: env.EXTRA_KEY ?? '',
 		// The script text and the path list both change what a hit MEANS.
-		fields: {run: script, paths}
+		fields: cargoDigest === '' ? {run: script, paths} : {run: script, paths, cargo: cargoDigest}
 	});
 
 	// Derived from the digest, so two cached-run calls in one job never share a
@@ -65,5 +70,7 @@ export function plan(env: PlanEnv): Plan {
 	// A skipped run exports nothing.
 	const slot = crypto.createHash('sha256').update(JSON.stringify({label: env.EXTRA_KEY ?? '', paths}), 'utf8').digest('hex').slice(0, 16);
 	const envDir = path.join(env.RUNNER_TEMP ?? os.tmpdir(), `cached-run-${slot}.env`);
-	return {key, digest, sentinel, paths, envDir, cachePaths: [...paths, envDir]};
+	const stash = path.join(env.RUNNER_TEMP ?? os.tmpdir(), `cached-run-${digest}.stash`);
+	const prefix = key.slice(0, key.length - digest.length);
+	return {key, digest, sentinel, paths, envDir, cachePaths: [...paths, envDir], prefix, stash};
 }

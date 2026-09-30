@@ -103,6 +103,31 @@ Set `save-on: any` where a branch needs its own entry. A branch that changes the
 
 An event that carries no repository leaves the default branch unknown. The action writes nothing and says so, because guessing spends the budget the default exists to protect. `save-on: any` overrides that too.
 
+## Cargo dependencies
+
+Cargo mode needs no input. It turns on when `paths` names a profile dir's `deps`, `build` or `.fingerprint`, and the working directory is in a cargo workspace.
+
+```yaml
+- uses: wow-look-at-my/actions@cached-run#latest
+  with:
+    key: rustdeps-dev
+    skip-on-hit: false
+    paths: |
+      ~/.cargo/registry/index
+      ~/.cargo/registry/cache
+      target/debug/deps
+      target/debug/build
+      target/debug/.fingerprint
+    run: cargo test --locked --workspace --no-run
+```
+
+- **Key.** The key follows the resolved registry and git dependencies with their features. It also follows `rustc -vV`, the toolchain file, `.cargo/config.toml`, the root `[profile.*]` tables and the `CARGO_PROFILE_*`/`RUSTFLAGS` environment. A lint table, a comment or a path dependency moves none of that. The plan step logs every input in a group before it hashes them, so runs' logs diff to the input that moved the key.
+- **Fallback.** Unless `restore-keys` is set, a new key restores the newest older entry of the same label, and the build compiles only the difference.
+- **Recorded builds.** While the script runs, a `cargo` shim sits first on `PATH`. It records each call's arguments, directory and environment, then execs the real cargo, so the output is the build's own. A cargo run by absolute path bypasses it.
+- **What is saved.** After the script, each recorded build replays as a no-op query with `--message-format=json`, which names every unit the build used. A workspace entry leaves the entry before the save and comes back after it, because cargo cannot reuse one on another checkout. An entry that no unit claims is left from an older dependency set and is removed, so a fallback never grows the entry.
+- **Mismatch.** A replay that compiles anything fails the step, because its unit list will then delete good artifacts. A script that ran no cargo build saves its dirs as they are, with a warning.
+- **Missed inputs.** With `skip-on-hit: false`, an exact hit still runs the script. A registry unit that compiles then raises a warning that names it, because the key missed an input that changes the build set.
+
 ## Tests
 
 `ts0 test` in this directory covers the key logic with no runner and no network. The digest itself lives in `_shared/cache-key`, which `cached-apt` keys on too, and carries its own suite. `cached-run/test` dogfoods the real cache round trip from CI.

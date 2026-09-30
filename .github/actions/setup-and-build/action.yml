@@ -25,21 +25,29 @@ runs:
     - uses: pnpm/action-setup@v4
       with:
         version: latest
-    - uses: extractions/setup-just@v2
+    # setup-just looks the release up through the GitHub API, which sometimes answers "Server Error". The second step fails the job if the retry fails too.
+    - id: just
+      uses: extractions/setup-just@v2
+      continue-on-error: true
+    - if: steps.just.outcome == 'failure'
+      uses: extractions/setup-just@v2
     - name: Download ts0
       id: ts0
       uses: wow-look-at-my/buildhost/.github/actions/buildhost-download@master
       with:
         project: ts0
-    # Standard paths, not the runner temp the download lands in: a sandboxed step mounts only these.
+    # ts0's own esbuild fetch has no retry. This one retries, and the ts0 launcher points ts0 at it. The version must match the esbuild that ts0 bundles.
+    - name: Download ts0's esbuild
+      id: esbuild
+      uses: wow-look-at-my/buildhost/.github/actions/buildhost-download@master
+      with:
+        project: ts0/esbuild-0.28.1
     - name: Put ts0 on PATH
       shell: bash
-      env:
-        TS0_CJS: ${{ steps.ts0.outputs.path }}
       run: |
-        sudo install -m 0644 "$TS0_CJS" /usr/local/lib/ts0.cjs
-        printf '#!/bin/sh\nexec node /usr/local/lib/ts0.cjs "$@"\n' > "$RUNNER_TEMP/ts0.shim"
-        sudo install -m 0755 "$RUNNER_TEMP/ts0.shim" /usr/local/bin/ts0
+        sudo cp "${{ steps.ts0.outputs.path }}" /usr/local/lib/ts0.cjs
+        sudo cp "${{ steps.esbuild.outputs.path }}" /usr/local/lib/ts0-esbuild
+        sudo cp "${{ github.action_path }}/ts0" /usr/local/bin/ts0
     - name: Build
       if: inputs.action-dir != ''
       working-directory: ${{ inputs.action-dir }}
