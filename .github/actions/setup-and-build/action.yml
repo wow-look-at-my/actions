@@ -45,21 +45,15 @@ runs:
         sudo install -m 0644 "$TS0_CJS" /usr/local/lib/ts0.cjs
         printf '#!/bin/sh\nexec node /usr/local/lib/ts0.cjs "$@"\n' > "$RUNNER_TEMP/ts0.shim"
         sudo install -m 0755 "$RUNNER_TEMP/ts0.shim" /usr/local/bin/ts0
-    # ts0 fetches its esbuild binary on its first build and fails outright on one bad fetch. A throwaway build takes that fetch here, with retries.
+    # ts0's own esbuild fetch has no retry and hides the network error. curl retries and names it, and ESBUILD_BINARY_PATH stops ts0 from fetching at all.
     - name: Fetch ts0's esbuild
       shell: bash
       run: |
-        dir="$RUNNER_TEMP/ts0-prime"
-        mkdir -p "$dir/src"
-        printf 'export {};\n' > "$dir/src/index.ts"
-        printf '{"entry": "src/index.ts", "outfile": "dist/index.js", "target": "node", "format": "cjs"}\n' > "$dir/ts0.json"
-        for attempt in 1 2 3 4 5; do
-          if (cd "$dir" && ts0 build); then exit 0; fi
-          echo "ts0 could not fetch esbuild (attempt $attempt), retrying in 10s"
-          sleep 10
-        done
-        echo "::error::ts0 could not fetch its esbuild binary from dl.pazer.build after 5 attempts"
-        exit 1
+        url="$(grep -oE 'https://dl\.pazer\.build/ts0/esbuild-[0-9][0-9.]*' /usr/local/lib/ts0.cjs | sort -u)"
+        arch="$(case "$RUNNER_ARCH" in ARM64) echo arm64 ;; *) echo amd64 ;; esac)"
+        curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 --max-time 300 "$url?os=linux&arch=$arch" -o "$RUNNER_TEMP/esbuild"
+        sudo install -m 0755 "$RUNNER_TEMP/esbuild" /usr/local/bin/esbuild
+        echo "ESBUILD_BINARY_PATH=/usr/local/bin/esbuild" >> "$GITHUB_ENV"
     - name: Build
       if: inputs.action-dir != ''
       working-directory: ${{ inputs.action-dir }}
