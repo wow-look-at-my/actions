@@ -6,6 +6,6 @@ runs:
   using: composite
   steps:
     - name: Shared cache-key unit tests
-      working-directory: _shared/cache-key
-      shell: bash
-      run: ts0 test
+      uses: wow-look-at-my/ts0@master
+      with:
+        working-directory: _shared/cache-key

@@ -1,20 +1,17 @@
 name: Setup and Build
 description: >-
-  Internal CI helper for release.yml: installs the Node/pnpm/just/ts0 toolchain
-  the repo's node24 actions build with, then optionally runs `just build` in one
-  action directory. Not a released action: release.yml's detect job excludes
-  ./.github/*, so this never gets an orphan tag. Checkout is deliberately NOT
-  part of this composite -- a local `uses: ./.github/actions/...` reference
-  only resolves after the repo is on disk, so checkout must stay the first
-  step of every calling job.
+  Internal CI helper for release.yml: installs Node, pnpm and just, runs the
+  ts0 action in one action directory (test, build, and ts0 left on PATH), then
+  runs that directory's `just build`. Not a released action: release.yml's
+  detect job excludes ./.github/*, so this never gets an orphan tag. Checkout
+  is deliberately NOT part of this composite -- a local `uses:
+  ./.github/actions/...` reference only resolves after the repo is on disk,
+  so checkout must stay the first step of every calling job.
 
 inputs:
   action-dir:
-    description: >-
-      Action directory to `just build`. Leave empty to only set up the
-      toolchain (for jobs that run their own build commands, e.g. a
-      multi-directory build loop).
-    required: false
+    description: Action directory to test and build.
+    required: true
 
 runs:
   using: composite
@@ -31,25 +28,15 @@ runs:
       continue-on-error: true
     - if: steps.just.outcome == 'failure'
       uses: extractions/setup-just@v2
-    - name: Download ts0
-      id: ts0
-      uses: wow-look-at-my/buildhost/.github/actions/buildhost-download@master
-      with:
-        project: ts0
-    # ts0's own esbuild fetch has no retry. This one retries, and the ts0 launcher points ts0 at it. The version must match the esbuild that ts0 bundles.
-    - name: Download ts0's esbuild
-      id: esbuild
-      uses: wow-look-at-my/buildhost/.github/actions/buildhost-download@master
-      with:
-        project: ts0/esbuild-0.28.1
-    - name: Put ts0 on PATH
+    # ts0 type-checks against the directory's node_modules.
+    - name: Install dependencies
+      working-directory: ${{ inputs.action-dir }}
       shell: bash
-      run: |
-        sudo cp "${{ steps.ts0.outputs.path }}" /usr/local/lib/ts0.cjs
-        sudo cp "${{ steps.esbuild.outputs.path }}" /usr/local/lib/ts0-esbuild
-        sudo cp "${{ github.action_path }}/ts0" /usr/local/bin/ts0
+      run: pnpm install
+    - uses: wow-look-at-my/ts0@master
+      with:
+        working-directory: ${{ inputs.action-dir }}
     - name: Build
-      if: inputs.action-dir != ''
       working-directory: ${{ inputs.action-dir }}
       shell: bash
       run: just build
