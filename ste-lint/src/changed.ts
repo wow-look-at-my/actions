@@ -132,19 +132,6 @@ export function scopeOf(event: Event, git: Git = runGit): Scope {
 	}
 }
 
-// Keeps the findings that sit on a changed line. A finding is reported as
-// "path:line: ...", which is the line the writer must go and fix.
-export function onTouchedLines<T extends object>(findings: T, touched: Touched): T {
-	const out: Record<string, string[]> = {};
-	for (const [rule, list] of Object.entries(findings) as [string, string[]][]) {
-		out[rule] = list.filter((finding) => {
-			const m = /^(.*?):(\d+):/.exec(finding);
-			if (m === null) return true;
-			return touched.get(m[1])?.has(Number(m[2])) ?? false;
-		});
-	}
-	return out as T;
-}
 
 // Reads the event this run was started by. An unreadable payload is not an
 // error: it leaves the base unknown, which widens the scope rather than
@@ -160,11 +147,6 @@ export function currentEvent(): Event {
 	}
 }
 
-// The diff of a large change runs past Node's 1 MiB default, and execFileSync
-// answers that with ENOBUFS. The catch in scopeOf then reads it as "the base is
-// unreachable" and lints the whole tree, which turns a change that touched no
-// prose at all red on prose it did not write. A size that decides the scope is
-// a cliff, so there is no cap here: git holds the same bytes to write them.
 function runGit(args: string[]): string {
 	return git(args);
 }
