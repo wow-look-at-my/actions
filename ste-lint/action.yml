@@ -1,6 +1,6 @@
 name: ste-lint
 version: 1
-description: Run slopfix's hard-wrap and STE rules on the markdown lines a change wrote, and fail on any finding
+description: Run slopfix's hard-wrap and STE rules on the markdown lines a change wrote, fail on any error and warn on the rest
 
 inputs:
   files:

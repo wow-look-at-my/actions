@@ -2,7 +2,7 @@ import * as core from '@actions/core';
 import {globSync, readFileSync} from 'node:fs';
 import {currentEvent, scopeOf} from './changed';
 import {guard} from './guard';
-import {describe, fetchSlopfix, onTouched, report, type Finding} from './slopfix';
+import {describe, fetchSlopfix, isWarning, onTouched, report, type Finding} from './slopfix';
 import {inSubmodule, submodulePaths} from './submodules';
 import {vendoredPaths} from './vendored';
 
@@ -89,7 +89,10 @@ async function main(): Promise<void> {
 		let findings: Finding[] = report(binary, name, text);
 		const touched = scope.touched?.get(name);
 		if (touched) findings = onTouched(findings, text.split('\n'), touched);
-		failures.push(...findings.map((f) => describe(name, f)));
+		for (const f of findings) {
+			if (isWarning(f)) core.warning(describe(name, f), {file: name, startLine: f.line});
+			else failures.push(describe(name, f));
+		}
 	}
 	core.setOutput('files', names.length);
 	core.setOutput('violations', failures.length);

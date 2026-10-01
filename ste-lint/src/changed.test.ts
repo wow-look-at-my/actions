@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {baseOf, changedLines, parseHunks, scopeOf} from './changed';
-import {onTouched, parseReport} from './slopfix';
+import {describe, isWarning, onTouched, parseReport} from './slopfix';
 import {vendoredPaths} from './vendored';
 
 const ZERO = '0000000000000000000000000000000000000000';
@@ -98,6 +98,24 @@ test('a list item is its own paragraph, so a change to its sibling leaves it alo
 	const findings = [{id: 'ste/semicolon', line: 1, rule: 'STE bans the semicolon'}];
 	assert.deepEqual(onTouched(findings, lines, new Set([4])), []);
 	assert.equal(onTouched(findings, lines, new Set([2])).length, 1);
+});
+
+test('a wrap finding belongs to its own line, not to the rest of the paragraph', () => {
+	const lines = ['A paragraph', 'wrapped once', 'and twice.'];
+	const findings = [
+		{id: 'wrap/hard-wrap', line: 2, rule: 'a paragraph is one line'},
+		{id: 'wrap/hard-wrap', line: 3, rule: 'a paragraph is one line'},
+	];
+	assert.deepEqual(onTouched(findings, lines, new Set([3])).map((f) => f.line), [3]);
+	assert.deepEqual(onTouched(findings, lines, new Set([1])), []);
+});
+
+test('a warning is told apart from an error', () => {
+	const out =
+		'{"path":"a.md","findings":[{"id":"ste/passive","line":1,"rule":"STE prefers the active voice","severity":"warning"},' +
+		'{"id":"ste/semicolon","line":1,"rule":"STE bans the semicolon","severity":"error"}]}';
+	assert.deepEqual(parseReport(out).map(isWarning), [true, false]);
+	assert.match(describe('a.md', parseReport(out)[0]), /^a\.md:1: warning \[ste\/passive\]/);
 });
 
 test('the report parser reads findings, and a report with none is empty', () => {

@@ -44,7 +44,6 @@ jobs:
       - uses: ./no-all-builds-job/test
       - uses: ./submodule-gte/test
       - uses: ./no-tests-in-yaml
-      # ste-lint/fixtures/* break the rules on purpose, hence .md.fixture and this glob.
       - uses: ./ste-lint
         with:
           files: '*.md docs/*.md .github/workflows/*.md */README.md */CLAUDE.md'
