@@ -14,6 +14,7 @@ import { MAIN_FN, transformScript } from './transform';
 import { highlightSource } from './highlight';
 import { CommentBlock, findCommentBlocks } from './comments';
 import { unnamedStepMessage, unnamedSteps, WorkflowDoc } from './step-name';
+import { actionsRoot, containerPath } from './container-path';
 
 type ShellArg = string | number | boolean | null | undefined | string[];
 
@@ -248,6 +249,9 @@ function $(strings: TemplateStringsArray, ...values: ShellArg[]): ExecBuilder {
 //   dist/types/node_modules/...    (mirrored types for module resolution)
 const DIST_DIR = __dirname;
 const TYPES_DIR = path.join(DIST_DIR, 'types');
+// A host path from ${{ github.action_path }} resolves to the `_actions` tree this action runs from.
+const ACTIONS_ROOT = actionsRoot(DIST_DIR);
+const toContainer = (p: string): string => containerPath(p, ACTIONS_ROOT, fs.existsSync);
 // Virtual file for type-checking. Located under TYPES_DIR so node module
 // resolution finds dist/types/node_modules/* by walking up.
 const VIRTUAL_FILE = path.join(TYPES_DIR, '__user-script.ts');
@@ -452,13 +456,20 @@ function typeCheck(source: string): readonly ts.Diagnostic[] {
 	const originalReadFile = host.readFile.bind(host);
 	const originalFileExists = host.fileExists.bind(host);
 	const originalGetSourceFile = host.getSourceFile.bind(host);
+	const originalDirectoryExists = host.directoryExists?.bind(host);
 
-	host.readFile = (fileName) => sources.get(fileName) ?? originalReadFile(fileName);
-	host.fileExists = (fileName) => sources.has(fileName) || originalFileExists(fileName);
+	host.readFile = (fileName) => sources.get(fileName) ?? originalReadFile(toContainer(fileName));
+	host.fileExists = (fileName) => sources.has(fileName) || originalFileExists(toContainer(fileName));
+	if (originalDirectoryExists) host.directoryExists = (dir) => originalDirectoryExists(toContainer(dir));
 	host.getSourceFile = (fileName, languageVersion, onError, shouldCreate) => {
 		const synthetic = sources.get(fileName);
 		if (synthetic !== undefined) {
 			return ts.createSourceFile(fileName, synthetic, languageVersion, true);
+		}
+		const mapped = toContainer(fileName);
+		if (mapped !== fileName) {
+			const text = originalReadFile(mapped);
+			return text === undefined ? undefined : ts.createSourceFile(fileName, text, languageVersion);
 		}
 		return originalGetSourceFile(fileName, languageVersion, onError, shouldCreate);
 	};
@@ -576,6 +587,7 @@ async function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: str
 	// ordinary "Cannot find module" the caller needs to read.
 	const patched = function (this: unknown, request: string, parent: unknown, isMain: boolean, options: unknown) {
 		if (request in actionModules) return request;
+		if (path.isAbsolute(request)) request = toContainer(request);
 		try {
 			return origResolve.call(this, request, parent, isMain, options);
 		} catch (e) {
