@@ -1,0 +1,11 @@
+name: Test cache-key
+version: 1
+description: The shared cache-key unit tests (never released)
+
+runs:
+  using: composite
+  steps:
+    - name: Shared cache-key unit tests
+      uses: wow-look-at-my/ts0@master
+      with:
+        working-directory: _shared/cache-key

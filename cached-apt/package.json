@@ -1,0 +1,15 @@
+{
+  "name": "cached-apt",
+  "version": "1.0.0",
+  "description": "Install apt packages from a file-level cache",
+  "main": "index.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@actions/cache": "^5.0.3",
+    "@actions/core": "^2.0.2",
+    "@actions/exec": "^2.0.0"
+  }
+}

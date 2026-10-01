@@ -1,7 +1,7 @@
 import * as core from '@actions/core';
 import {globSync} from 'node:fs';
 import {readFileSync} from 'node:fs';
-import {currentEvent, scopeOf} from './changed';
+import {currentEvent, onTouchedLines, scopeOf} from './changed';
 import {guard} from './guard';
 import {capped, STE_MAX_WORDS} from './inputs';
 import {DEFAULTS, failureReport, hasFailures, lintFiles, type Options} from './lint';
@@ -73,13 +73,13 @@ function main(): void {
 		return;
 	}
 
-	// The scope is what this event changed. A file the push did not touch is
-	// somebody else's finding, on somebody else's commit.
+	// The scope is the line this event changed, not the file it sits in. A
+	// sentence the change did not write is somebody else's finding, on somebody
+	// else's commit.
 	const scope = scopeOf(currentEvent());
 	core.info(scope.note);
-	const touched = scope.files === null ? null : new Set(scope.files);
-	const names = touched === null ? theirs : theirs.filter((name) => touched.has(name));
-	if (touched !== null && names.length === 0) {
+	const names = scope.touched === null ? theirs : theirs.filter((name) => scope.touched?.has(name));
+	if (scope.touched !== null && names.length === 0) {
 		core.info('ste-lint: this change touched none of them, so there is nothing to check');
 		core.setOutput('files', 0);
 		core.setOutput('violations', 0);
@@ -87,10 +87,13 @@ function main(): void {
 	}
 	core.info(`ste-lint: ${names.length} file(s)`);
 
-	const findings = lintFiles(
+	const all = lintFiles(
 		names.map((name) => ({name, text: readFileSync(name, 'utf-8')})),
 		opts,
 	);
+	// A sentence is measured whole, over the lines it wraps across, so a finding
+	// names where the writer must go. That is the line the scope asks about.
+	const findings = scope.touched === null ? all : onTouchedLines(all, scope.touched);
 
 	core.setOutput('files', names.length);
 	core.setOutput(

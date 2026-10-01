@@ -3,11 +3,14 @@ import * as fsp from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {test} from 'node:test';
-import {spawn} from 'node:child_process';
+import {spawn, spawnSync} from 'node:child_process';
 import {Readable} from 'node:stream';
-import {packToFile, pipeIntoStdin, readEnvelope, unpackFromFile} from './xfer';
+import {CorruptArchiveError, packToFile, pipeIntoStdin, readEnvelope, trace, unpackFromFile} from './xfer';
+import {EnvelopeHeader, encodeEnvelope} from './lib';
 
 // Local pack/unpack round-trips (spawns real tar + zstd; no cache service).
+
+const unix = process.platform !== 'win32';
 
 async function tempDir(): Promise<string> {
 	return fsp.mkdtemp(path.join(os.tmpdir(), 'cache-xfer-test-'));
@@ -28,7 +31,10 @@ test('directory round-trip preserves tree, exec bits, symlinks, dotfiles', async
 	await fsp.writeFile(path.join(src, 'sub', 'deep', 'nested.bin'), Buffer.from([0, 1, 2, 254, 255]));
 	await fsp.writeFile(path.join(src, 'tool'), '#!/bin/sh\necho ok\n', {mode: 0o755});
 	await fsp.writeFile(path.join(src, '.hidden'), 'dotfile survives');
-	await fsp.symlink('plain.txt', path.join(src, 'link'));
+	// NT has neither an exec bit nor, for an ordinary user, a symlink.
+	if (unix) {
+		await fsp.symlink('plain.txt', path.join(src, 'link'));
+	}
 
 	const archive = path.join(work, 'archive.wxfr');
 	const packed = await packToFile(src, archive, 'tree-handoff');
@@ -45,9 +51,11 @@ test('directory round-trip preserves tree, exec bits, symlinks, dotfiles', async
 	assert.equal(await fsp.readFile(path.join(dest, 'plain.txt'), 'utf8'), 'hello handoff');
 	assert.deepEqual(await fsp.readFile(path.join(dest, 'sub', 'deep', 'nested.bin')), Buffer.from([0, 1, 2, 254, 255]));
 	assert.equal(await fsp.readFile(path.join(dest, '.hidden'), 'utf8'), 'dotfile survives');
-	const toolMode = (await fsp.stat(path.join(dest, 'tool'))).mode & 0o777;
-	assert.equal(toolMode & 0o111, 0o111, `exec bits survive (got ${toolMode.toString(8)})`);
-	assert.equal(await fsp.readlink(path.join(dest, 'link')), 'plain.txt');
+	if (unix) {
+		const toolMode = (await fsp.stat(path.join(dest, 'tool'))).mode & 0o777;
+		assert.equal(toolMode & 0o111, 0o111, `exec bits survive (got ${toolMode.toString(8)})`);
+		assert.equal(await fsp.readlink(path.join(dest, 'link')), 'plain.txt');
+	}
 });
 
 test('single-file round-trip uses raw mode and restores basename + mode', async t => {
@@ -69,13 +77,17 @@ test('single-file round-trip uses raw mode and restores basename + mode', async 
 	assert.equal(packed.mode, 'raw');
 	assert.equal(packed.name, 'toolchain');
 	assert.equal(packed.basename, 'go-toolchain');
-	assert.equal((packed.fileMode as number) & 0o111, 0o111);
+	if (unix) {
+		assert.equal((packed.fileMode as number) & 0o111, 0o111);
+	}
 
 	const unpacked = await unpackFromFile(archive, dest);
 	assert.equal(unpacked.mode, 'raw');
 	const restored = path.join(dest, 'go-toolchain');
 	assert.deepEqual(await fsp.readFile(restored), body);
-	assert.equal((await fsp.stat(restored)).mode & 0o111, 0o111);
+	if (unix) {
+		assert.equal((await fsp.stat(restored)).mode & 0o111, 0o111);
+	}
 });
 
 test('packToFile rejects a missing path', async () => {
@@ -90,6 +102,103 @@ test('unpackFromFile rejects a non-envelope file', async () => {
 	await fsp.writeFile(bogus, 'this is not an envelope at all');
 	await assert.rejects(unpackFromFile(bogus, path.join(work, 'out')), /magic/);
 	await fsp.rm(work, {recursive: true, force: true});
+});
+
+test('a packed archive records a digest of its payload', async t => {
+	const src = await tempDir();
+	const work = await tempDir();
+	t.after(async () => {
+		for (const dir of [src, work]) {
+			await fsp.rm(dir, {recursive: true, force: true});
+		}
+	});
+	await fsp.writeFile(path.join(src, 'one.txt'), 'a body worth checking');
+
+	const archive = path.join(work, 'archive.wxfr');
+	const packed = await packToFile(src, archive, 'sum-handoff');
+	assert.equal(packed.sum, 'sha256');
+
+	const {header} = await readEnvelope(archive);
+	assert.equal(header.sum, 'sha256');
+});
+
+test('a flipped payload byte is a CorruptArchiveError, not a codec error', async t => {
+	const src = await tempDir();
+	const work = await tempDir();
+	const dest = path.join(await tempDir(), 'restored');
+	t.after(async () => {
+		for (const dir of [src, work, path.dirname(dest)]) {
+			await fsp.rm(dir, {recursive: true, force: true});
+		}
+	});
+	// Enough body that a flipped byte lands inside the payload, past the
+	// envelope header and well before the trailer.
+	await fsp.writeFile(path.join(src, 'big.txt'), 'incompressible-ish '.repeat(4096));
+
+	const archive = path.join(work, 'archive.wxfr');
+	await packToFile(src, archive, 'corrupt-handoff');
+
+	const bytes = await fsp.readFile(archive);
+	const target = Math.floor(bytes.length / 2);
+	bytes[target] = bytes[target] ^ 0xff;
+	await fsp.writeFile(archive, bytes);
+
+	await assert.rejects(unpackFromFile(archive, dest), (error: unknown) => {
+		assert.ok(error instanceof CorruptArchiveError, `want CorruptArchiveError, got ${String(error)}`);
+		assert.match((error as Error).message, /does not match its recorded digest/);
+		return true;
+	});
+});
+
+test('a truncated archive is a CorruptArchiveError', async t => {
+	const src = await tempDir();
+	const work = await tempDir();
+	const dest = path.join(await tempDir(), 'restored');
+	t.after(async () => {
+		for (const dir of [src, work, path.dirname(dest)]) {
+			await fsp.rm(dir, {recursive: true, force: true});
+		}
+	});
+	await fsp.writeFile(path.join(src, 'one.txt'), 'a body worth checking '.repeat(512));
+
+	const archive = path.join(work, 'archive.wxfr');
+	await packToFile(src, archive, 'cut-handoff');
+
+	// What a cut download leaves behind: the tail, digest included, is gone.
+	const bytes = await fsp.readFile(archive);
+	await fsp.writeFile(archive, bytes.subarray(0, bytes.length - 64));
+
+	await assert.rejects(unpackFromFile(archive, dest), (error: unknown) => {
+		assert.ok(error instanceof CorruptArchiveError, `want CorruptArchiveError, got ${String(error)}`);
+		return true;
+	});
+});
+
+test('an archive carrying no digest is refused, never read unchecked', async t => {
+	const src = await tempDir();
+	const work = await tempDir();
+	const dest = path.join(await tempDir(), 'restored');
+	t.after(async () => {
+		for (const dir of [src, work, path.dirname(dest)]) {
+			await fsp.rm(dir, {recursive: true, force: true});
+		}
+	});
+	await fsp.writeFile(path.join(src, 'one.txt'), 'older producer, no trailer');
+
+	const archive = path.join(work, 'archive.wxfr');
+	await packToFile(src, archive, 'legacy-handoff');
+
+	// Rewrite it the way a producer without the field wrote it: the header
+	// loses `sum`, and the trailer goes with it. Reading one unchecked is the
+	// hole this refusal closes.
+	const bytes = await fsp.readFile(archive);
+	const {header, dataOffset} = await readEnvelope(archive);
+	const legacyHeader: Record<string, unknown> = {...header};
+	delete legacyHeader.sum;
+	const legacy = path.join(work, 'legacy.wxfr');
+	await fsp.writeFile(legacy, Buffer.concat([encodeEnvelope(legacyHeader as unknown as EnvelopeHeader), bytes.subarray(dataOffset, bytes.length - 32)]));
+
+	await assert.rejects(unpackFromFile(legacy, dest), /sum .* is missing or not supported/);
 });
 
 // A child that exits 0 having read only a prefix of what we send closes its
@@ -148,4 +257,50 @@ test('repeated directory round-trips neither fail nor lose bytes', async t => {
 		}
 		await fsp.rm(dest, {recursive: true, force: true});
 	}
+});
+
+test('a unix-origin archive restores a file NT runs by its extension', {skip: unix}, async t => {
+	const base = await tempDir();
+	t.after(() => fsp.rm(base, {recursive: true, force: true}));
+	await fsp.mkdir(path.join(base, 'out'));
+	await fsp.writeFile(path.join(base, 'out', 'hello.cmd'), '@echo restored\r\n');
+	await fsp.writeFile(path.join(base, 'out', 'note.txt'), 'plain');
+	const archive = path.join(base, 'handoff.wxfr');
+	await packToFile(path.join(base, 'out'), archive, 'ape-binary-Linux', 'linux');
+	const dest = path.join(base, 'dest');
+	trace.length = 0;
+	await unpackFromFile(archive, dest);
+	const restored = path.join(dest, 'hello.cmd');
+	assert.ok(await fsp.stat(restored).then(s => s.isFile(), () => false), `hello.cmd was not restored; dest holds ${JSON.stringify(await fsp.readdir(dest).catch(() => 'nothing'))}; stages:\n${trace.join('\\n')}`);
+	const run = spawnSync(process.env.ComSpec ?? 'cmd.exe', ['/c', `"${restored}"`], {encoding: 'utf8', windowsVerbatimArguments: true});
+	assert.equal(run.status, 0, `${run.stdout}${run.stderr}`);
+	assert.equal(run.stdout.trim(), 'restored');
+});
+
+test('a win32-origin archive restores every file executable on unix', {skip: !unix}, async t => {
+	const base = await tempDir();
+	t.after(() => fsp.rm(base, {recursive: true, force: true}));
+	await fsp.mkdir(path.join(base, 'out', 'sub'), {recursive: true});
+	await fsp.writeFile(path.join(base, 'out', 'fizzbuzz.com'), 'MZ', {mode: 0o644});
+	await fsp.writeFile(path.join(base, 'out', 'sub', 'probe.com'), 'MZ', {mode: 0o600});
+	const archive = path.join(base, 'handoff.wxfr');
+
+	const packed = await packToFile(path.join(base, 'out'), archive, 'ape-binary-Windows', 'win32');
+	assert.equal(packed.producer, 'win32');
+	const dest = path.join(base, 'dest');
+	await unpackFromFile(archive, dest);
+	assert.equal((await fsp.stat(path.join(dest, 'fizzbuzz.com'))).mode & 0o777, 0o755);
+	assert.equal((await fsp.stat(path.join(dest, 'sub', 'probe.com'))).mode & 0o777, 0o700);
+
+	const raw = path.join(base, 'raw.wxfr');
+	await packToFile(path.join(base, 'out', 'fizzbuzz.com'), raw, 'one', 'win32');
+	const rawDest = path.join(base, 'raw-dest');
+	await unpackFromFile(raw, rawDest);
+	assert.equal((await fsp.stat(path.join(rawDest, 'fizzbuzz.com'))).mode & 0o111, 0o111);
+
+	const unix = path.join(base, 'unix.wxfr');
+	await packToFile(path.join(base, 'out'), unix, 'ape-binary-Linux', 'linux');
+	const unixDest = path.join(base, 'unix-dest');
+	await unpackFromFile(unix, unixDest);
+	assert.equal((await fsp.stat(path.join(unixDest, 'fizzbuzz.com'))).mode & 0o111, 0, 'a unix producer keeps its own modes');
 });

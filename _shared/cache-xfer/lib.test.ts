@@ -9,7 +9,7 @@ import {ENVELOPE_MAGIC, EnvelopeHeader, KEY_PREFIX, LEGACY_VERSION_SEED, VERSION
 
 test('pinned wire constants', () => {
 	assert.equal(KEY_PREFIX, 'cache-xfer');
-	assert.equal(VERSION_SEED, 'wow-look-at-my/actions/cache-xfer/v2');
+	assert.equal(VERSION_SEED, 'wow-look-at-my/actions/cache-xfer/v3');
 	assert.equal(LEGACY_VERSION_SEED, 'wow-look-at-my/actions/cache-xfer/v1');
 	assert.equal(ENVELOPE_MAGIC, 'WXFR1');
 });
@@ -51,7 +51,7 @@ test('nameFromKey parses current-layout keys only', () => {
 });
 
 test('handoffVersion is sha256 of the literal seed', () => {
-	const expected = createHash('sha256').update('wow-look-at-my/actions/cache-xfer/v2').digest('hex');
+	const expected = createHash('sha256').update('wow-look-at-my/actions/cache-xfer/v3').digest('hex');
 	assert.equal(handoffVersion(), expected);
 	assert.match(handoffVersion(), /^[0-9a-f]{64}$/);
 });
@@ -70,7 +70,7 @@ test('validateName', () => {
 });
 
 test('envelope round-trip (tar mode)', () => {
-	const header: EnvelopeHeader = {mode: 'tar', codec: 'zstd', name: 'go-build'};
+	const header: EnvelopeHeader = {mode: 'tar', codec: 'zstd', sum: 'sha256', name: 'go-build'};
 	const encoded = encodeEnvelope(header);
 	const parsed = parseEnvelope(Buffer.concat([encoded, Buffer.from('payload-bytes')]));
 	assert.deepEqual(parsed.header, header);
@@ -78,33 +78,37 @@ test('envelope round-trip (tar mode)', () => {
 });
 
 test('envelope round-trip (raw mode)', () => {
-	const header: EnvelopeHeader = {mode: 'raw', codec: 'zstd', name: 'toolchain', basename: 'go-toolchain', fileMode: 0o755};
+	const header: EnvelopeHeader = {mode: 'raw', codec: 'zstd', sum: 'sha256', name: 'toolchain', basename: 'go-toolchain', fileMode: 0o755};
 	const parsed = parseEnvelope(encodeEnvelope(header));
 	assert.deepEqual(parsed.header, header);
 });
 
 test('envelope name is optional on parse (v1 archives predate it)', () => {
-	const parsed = parseEnvelope(encodeEnvelope({mode: 'tar', codec: 'zstd'}));
+	const parsed = parseEnvelope(encodeEnvelope({mode: 'tar', codec: 'zstd', sum: 'sha256'}));
 	assert.equal(parsed.header.name, undefined);
 });
 
 test('envelope magic starts the archive', () => {
-	assert.ok(encodeEnvelope({mode: 'tar', codec: 'zstd'}).subarray(0, 5).equals(Buffer.from('WXFR1')));
+	assert.ok(encodeEnvelope({mode: 'tar', codec: 'zstd', sum: 'sha256'}).subarray(0, 5).equals(Buffer.from('WXFR1')));
+});
+
+test('parseEnvelope refuses a header with no digest', () => {
+	assert.throws(() => parseEnvelope(mangleHeader({mode: 'tar', codec: 'zstd'})), /sum .* is missing/);
 });
 
 test('parseEnvelope rejects bad input', () => {
 	assert.throws(() => parseEnvelope(Buffer.from('NOTIT' + '\0\0\0\0')), /magic/);
 	assert.throws(() => parseEnvelope(Buffer.from('WX')), /truncated/);
-	const truncated = encodeEnvelope({mode: 'tar', codec: 'zstd'});
+	const truncated = encodeEnvelope({mode: 'tar', codec: 'zstd', sum: 'sha256'});
 	assert.throws(() => parseEnvelope(truncated.subarray(0, truncated.length - 2)), /truncated/);
 	assert.throws(() => parseEnvelope(mangleHeader({mode: 'zip'})), /mode 'zip'/);
 	assert.throws(() => parseEnvelope(mangleHeader({mode: 'tar', codec: 'lz4'})), /codec 'lz4'/);
 	assert.throws(() => parseEnvelope(mangleHeader({mode: 'tar', codec: 'zstd', name: ''})), /name/);
 	assert.throws(() => parseEnvelope(mangleHeader({mode: 'tar', codec: 'zstd', name: 42})), /name/);
-	assert.throws(() => parseEnvelope(mangleHeader({mode: 'raw', codec: 'zstd'})), /basename/);
-	assert.throws(() => parseEnvelope(mangleHeader({mode: 'raw', codec: 'zstd', basename: '../evil'})), /basename/);
-	assert.throws(() => parseEnvelope(mangleHeader({mode: 'raw', codec: 'zstd', basename: 'a/b'})), /basename/);
-	assert.throws(() => parseEnvelope(mangleHeader({mode: 'raw', codec: 'zstd', basename: 'ok', fileMode: -5})), /fileMode/);
+	assert.throws(() => parseEnvelope(mangleHeader({mode: 'raw', codec: 'zstd', sum: 'sha256'})), /basename/);
+	assert.throws(() => parseEnvelope(mangleHeader({mode: 'raw', codec: 'zstd', sum: 'sha256', basename: '../evil'})), /basename/);
+	assert.throws(() => parseEnvelope(mangleHeader({mode: 'raw', codec: 'zstd', sum: 'sha256', basename: 'a/b'})), /basename/);
+	assert.throws(() => parseEnvelope(mangleHeader({mode: 'raw', codec: 'zstd', sum: 'sha256', basename: 'ok', fileMode: -5})), /fileMode/);
 });
 
 /** Build an envelope around an arbitrary (possibly invalid) header object. */

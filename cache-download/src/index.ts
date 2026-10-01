@@ -61,7 +61,7 @@ import {internalCacheTwirpClient} from '@actions/cache/lib/internal/shared/cache
 import {ambiguityMessage, distinctHandoffNames} from './discovery';
 import {handoffKey, handoffRestorePrefix, handoffVersion, legacyHandoffKey, legacyHandoffRestorePrefix, legacyHandoffVersion, nameFromKey, runRestorePrefix, validateName} from '../../_shared/cache-xfer/lib';
 import {MissOutcome, missOutcome, namelessMissOutcome} from './miss';
-import {unpackFromFile} from '../../_shared/cache-xfer/xfer';
+import {CorruptArchiveError, unpackFromFile} from '../../_shared/cache-xfer/xfer';
 
 function requireEnv(name: string): string {
 	const value = process.env[name];
@@ -250,7 +250,23 @@ async function run(): Promise<void> {
 		// Explicitly upstream's own defaults, NOT the Azure SDK path — see the
 		// downloadCache note in the header comment for why.
 		await cacheHttpClient.downloadCache(resolved.lookup.signedDownloadUrl, archivePath, {useAzureSdk: false, concurrentBlobDownloads: true});
-		const header = await unpackFromFile(archivePath, destination);
+		let header;
+		try {
+			header = await unpackFromFile(archivePath, destination);
+		} catch (error) {
+			if (!(error instanceof CorruptArchiveError)) {
+				throw error;
+			}
+			// The bytes on hand are not the bytes that were uploaded. A cache
+			// holds a copy of work, so the job makes the work again rather than
+			// stopping: this reports a miss and says why.
+			core.warning(`${error.message}. Treating hand-off ${matchedKey} as a miss.`);
+			core.setOutput('cache-hit', 'false');
+			core.setOutput('cache-matched-key', '');
+			core.setOutput('download-path', '');
+			core.setOutput('name', '');
+			return;
+		}
 		// The envelope is the authority on the name (v1 archives, reachable
 		// only via the named legacy fallback, predate the field).
 		resolvedName = header.name ?? resolved.name ?? nameFromKey(matchedKey, runId) ?? '';
