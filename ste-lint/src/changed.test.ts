@@ -168,14 +168,16 @@ test('a diff past the 1 MiB default buffer is read, not reported as an unreachab
 // A job container checks out as another user. GIT_TEST_ASSUME_DIFFERENT_OWNER is git's own hook for that state.
 test('a work tree that another user owns is still scoped to the diff', () => {
 	inRepo('.gitattributes', 'README.md linguist-vendored\n', (base) => {
-		process.env.GIT_TEST_ASSUME_DIFFERENT_OWNER = '1';
+		// A runner can trust every directory in its global or system config, which hides the refusal.
+		const isolated = {GIT_TEST_ASSUME_DIFFERENT_OWNER: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1'};
+		Object.assign(process.env, isolated);
 		try {
 			assert.throws(() => execFileSync('git', ['status'], {stdio: 'pipe'}), /dubious ownership/, 'the hook must reproduce the refusal');
 			const scope = scopeOf({name: 'push', payload: {before: base}});
 			assert.deepEqual([...scope.touched?.keys() ?? []], ['.gitattributes'], scope.note);
 			assert.deepEqual(vendoredPaths(['README.md']), new Set(['README.md']));
 		} finally {
-			delete process.env.GIT_TEST_ASSUME_DIFFERENT_OWNER;
+			for (const name of Object.keys(isolated)) delete process.env[name];
 		}
 	});
 });
