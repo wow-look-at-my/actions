@@ -132,19 +132,6 @@ export function scopeOf(event: Event, git: Git = runGit): Scope {
 	}
 }
 
-// Keeps the findings that sit on a changed line. A finding is reported as
-// "path:line: ...", which is the line the writer must go and fix.
-export function onTouchedLines<T extends object>(findings: T, touched: Touched): T {
-	const out: Record<string, string[]> = {};
-	for (const [rule, list] of Object.entries(findings) as [string, string[]][]) {
-		out[rule] = list.filter((finding) => {
-			const m = /^(.*?):(\d+):/.exec(finding);
-			if (m === null) return true;
-			return touched.get(m[1])?.has(Number(m[2])) ?? false;
-		});
-	}
-	return out as T;
-}
 
 // Reads the event this run was started by. An unreadable payload is not an
 // error: it leaves the base unknown, which widens the scope rather than

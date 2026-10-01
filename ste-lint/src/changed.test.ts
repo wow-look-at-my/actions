@@ -4,7 +4,8 @@ import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
-import {baseOf, changedLines, onTouchedLines, parseHunks, scopeOf} from './changed';
+import {baseOf, changedLines, parseHunks, scopeOf} from './changed';
+import {onTouched, parseReport} from './slopfix';
 import {vendoredPaths} from './vendored';
 
 const ZERO = '0000000000000000000000000000000000000000';
@@ -80,22 +81,22 @@ test('a base commit already in the checkout is not fetched again', () => {
 	);
 });
 
-test('a finding on a changed line stays, and one on an untouched line goes', () => {
-	const touched = new Map([['CLAUDE.md', new Set([5, 6])]]);
-	const kept = onTouchedLines(
-		{
-			semicolons: ['CLAUDE.md:5: ";"', 'CLAUDE.md:400: ";"'],
-			wrappedLines: ['CLAUDE.md:6: continues line 5', 'docs/other.md:2: continues line 1'],
-		},
-		touched,
-	);
-	assert.deepEqual(kept.semicolons, ['CLAUDE.md:5: ";"']);
-	assert.deepEqual(kept.wrappedLines, ['CLAUDE.md:6: continues line 5']);
+// slopfix places a finding on the first line of its paragraph, so a change to any line of it counts.
+test('a finding stays when the change touched any line of its paragraph', () => {
+	const lines = ['# T', '', 'The first line', 'wraps here; and goes on.', '', 'Another paragraph.'];
+	const findings = [
+		{id: 'ste/semicolon', line: 3, rule: 'STE bans the semicolon'},
+		{id: 'ste/contraction', line: 6, rule: 'STE bans contractions'},
+	];
+	assert.deepEqual(onTouched(findings, lines, new Set([4])).map((f) => f.id), ['ste/semicolon']);
+	assert.deepEqual(onTouched(findings, lines, new Set([6])).map((f) => f.id), ['ste/contraction']);
+	assert.deepEqual(onTouched(findings, lines, new Set([2, 5])), []);
 });
 
-test('a finding with no line prefix is kept, because nothing places it', () => {
-	const kept = onTouchedLines({hardLong: ['a finding with no location']}, new Map());
-	assert.deepEqual(kept.hardLong, ['a finding with no location']);
+test('the report parser reads findings, and a report with none is empty', () => {
+	const out = '{"path":"a.md","findings":[{"id":"wrap/hard-wrap","line":3,"endLine":3,"rule":"a paragraph is one line"}]}';
+	assert.equal(parseReport(out)[0].id, 'wrap/hard-wrap');
+	assert.deepEqual(parseReport('{"path":"a.md","findings":null}'), []);
 });
 
 test('a branch base is fetched and read back as FETCH_HEAD', () => {
