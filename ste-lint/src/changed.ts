@@ -60,6 +60,31 @@ export function baseOf(event: Event): string | null {
 	return branch === null ? null : `refs/heads/${branch}`;
 }
 
+// Names the default branch when this push can carry a merge of it. That is a
+// push to another branch that replaced a real tip. A merge of the default branch
+// brings in lines that the default branch wrote. Those lines still match it, so
+// a diff against it leaves them out.
+export function mergedFrom(event: Event): string | null {
+	const {name, payload} = event;
+	if (name !== 'push' || real(field(payload, 'before')) === null) return null;
+	const branch = field(payload, 'repository', 'default_branch');
+	const ref = field(payload, 'ref');
+	if (branch === null || ref === null || ref === `refs/heads/${branch}`) return null;
+	return `refs/heads/${branch}`;
+}
+
+// Keeps the lines that both maps name.
+export function intersect(a: Touched, b: Touched): Touched {
+	const out: Touched = new Map();
+	for (const [file, lines] of a) {
+		const other = b.get(file);
+		if (other === undefined) continue;
+		const kept = new Set([...lines].filter((n) => other.has(n)));
+		if (kept.size > 0) out.set(file, kept);
+	}
+	return out;
+}
+
 // Lists the lines between the base and HEAD, by file.
 //
 // The unit is a line, not a file. A change that edits one sentence of a long
@@ -122,14 +147,26 @@ export function scopeOf(event: Event, git: Git = runGit): Scope {
 	if (base === null) {
 		return {touched: null, note: `ste-lint: the ${event.name} event names no base commit, so this run reads the whole tree`};
 	}
+	let touched: Touched;
 	try {
-		const touched = changedLines(base, git);
-		const lines = [...touched.values()].reduce((n, set) => n + set.size, 0);
-		return {touched, note: `ste-lint: scoped to ${lines} line(s) across ${touched.size} file(s) changed since ${base}`};
+		touched = changedLines(base, git);
 	} catch (err) {
 		const why = err instanceof Error ? err.message : String(err);
 		return {touched: null, note: `ste-lint: could not diff against ${base} (${why}), so this run reads the whole tree`};
 	}
+	let since = base;
+	const merged = mergedFrom(event);
+	if (merged !== null) {
+		try {
+			touched = intersect(touched, changedLines(merged, git));
+			since = `${base} and not on ${merged}`;
+		} catch (err) {
+			const why = err instanceof Error ? err.message : String(err);
+			since = `${base} (could not diff against ${merged}: ${why}, so lines a merge brought in stay in scope)`;
+		}
+	}
+	const lines = [...touched.values()].reduce((n, set) => n + set.size, 0);
+	return {touched, note: `ste-lint: scoped to ${lines} line(s) across ${touched.size} file(s) changed since ${since}`};
 }
 
 

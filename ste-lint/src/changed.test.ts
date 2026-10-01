@@ -4,7 +4,7 @@ import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
-import {baseOf, changedLines, parseHunks, scopeOf} from './changed';
+import {baseOf, changedLines, intersect, mergedFrom, parseHunks, scopeOf} from './changed';
 import {describe, isWarning, onTouched, parseReport} from './slopfix';
 import {vendoredPaths} from './vendored';
 
@@ -178,6 +178,67 @@ test('a diff past the 1 MiB default buffer is read, not reported as an unreachab
 		const scope = scopeOf({name: 'push', payload: {before: base}});
 		assert.equal(scope.touched?.get('big.md')?.size, 60000);
 		assert.match(scope.note, /scoped to/);
+	} finally {
+		process.chdir(cwd);
+		rmSync(dir, {recursive: true, force: true});
+	}
+});
+
+test('only a push to another branch over a real tip can carry a merge of the default branch', () => {
+	const repo = {default_branch: 'master'};
+	assert.equal(mergedFrom({name: 'push', payload: {before: 'def456', ref: 'refs/heads/topic', repository: repo}}), 'refs/heads/master');
+	assert.equal(mergedFrom({name: 'push', payload: {before: 'def456', ref: 'refs/heads/master', repository: repo}}), null);
+	assert.equal(mergedFrom({name: 'push', payload: {before: ZERO, ref: 'refs/heads/topic', repository: repo}}), null);
+	assert.equal(mergedFrom({name: 'pull_request', payload: {before: 'def456', ref: 'refs/heads/topic', repository: repo}}), null);
+});
+
+test('intersect keeps the lines both maps name and drops empty files', () => {
+	const a = new Map([['a.md', new Set([1, 2, 3])], ['b.md', new Set([4])]]);
+	const b = new Map([['a.md', new Set([2, 9])], ['b.md', new Set([5])]]);
+	assert.deepEqual([...intersect(a, b)], [['a.md', new Set([2])]]);
+});
+
+test('a default-branch diff that fails keeps the push scope and says so', () => {
+	const git = (args: string[]): string => {
+		if (args[0] === 'fetch' && args.at(-1) === 'refs/heads/master') throw new Error('no route');
+		return args[0] === 'diff' ? DIFF : '';
+	};
+	const scope = scopeOf({name: 'push', payload: {before: 'def456', ref: 'refs/heads/topic', repository: {default_branch: 'master'}}}, git);
+	assert.equal(scope.touched?.get('README.md')?.size, 3);
+	assert.match(scope.note, /could not diff against refs\/heads\/master/);
+});
+
+test('lines a merge of the default branch brought in are out of scope', () => {
+	const dir = mkdtempSync(join(tmpdir(), 'ste-lint-'));
+	const git = (args: string[]): string => execFileSync('git', ['-C', dir, ...args], {encoding: 'utf-8'});
+	git(['init', '--quiet', '--initial-branch=master']);
+	git(['config', 'user.email', 'test@example.com']);
+	git(['config', 'user.name', 'test']);
+	git(['remote', 'add', 'origin', dir]);
+	writeFileSync(join(dir, 'README.md'), 'intro\n');
+	git(['add', '-A']);
+	git(['commit', '--quiet', '-m', 'base']);
+	git(['checkout', '--quiet', '-b', 'topic']);
+	writeFileSync(join(dir, 'README.md'), 'intro\nmine\n');
+	git(['commit', '--quiet', '-am', 'topic work']);
+	const before = git(['rev-parse', 'HEAD']).trim();
+	git(['checkout', '--quiet', 'master']);
+	writeFileSync(join(dir, 'theirs.md'), 'from master\n');
+	git(['add', '-A']);
+	git(['commit', '--quiet', '-m', 'master work']);
+	git(['checkout', '--quiet', 'topic']);
+	git(['merge', '--quiet', '--no-edit', 'master']);
+	writeFileSync(join(dir, 'README.md'), 'intro\nmine\nmore\n');
+	git(['commit', '--quiet', '-am', 'after the merge']);
+
+	const cwd = process.cwd();
+	process.chdir(dir);
+	try {
+		const payload = {before, ref: 'refs/heads/topic', repository: {default_branch: 'master'}};
+		const scope = scopeOf({name: 'push', payload});
+		assert.deepEqual([...scope.touched!.keys()], ['README.md'], 'theirs.md came from master, so it is out of scope');
+		assert.deepEqual([...scope.touched!.get('README.md')!], [3]);
+		assert.match(scope.note, /not on refs\/heads\/master/);
 	} finally {
 		process.chdir(cwd);
 		rmSync(dir, {recursive: true, force: true});
