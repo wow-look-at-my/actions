@@ -5,6 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {baseOf, changedLines, onTouchedLines, parseHunks, scopeOf} from './changed';
+import {vendoredPaths} from './vendored';
 
 const ZERO = '0000000000000000000000000000000000000000';
 
@@ -128,7 +129,9 @@ test('an event with no base widens the scope too', () => {
 	assert.match(scope.note, /whole tree/);
 });
 
-test('a diff past the 1 MiB default buffer is read, not reported as an unreachable base', () => {
+// Commits README.md as the base, then name with content on top, and runs check
+// with the repository as the working directory.
+function inRepo(name: string, content: string, check: (base: string, git: (args: string[]) => string) => void): void {
 	const dir = mkdtempSync(join(tmpdir(), 'ste-lint-'));
 	const git = (args: string[]): string => execFileSync('git', ['-C', dir, ...args], {encoding: 'utf-8', maxBuffer: Infinity});
 	git(['init', '--quiet']);
@@ -138,21 +141,41 @@ test('a diff past the 1 MiB default buffer is read, not reported as an unreachab
 	git(['add', '-A']);
 	git(['commit', '--quiet', '-m', 'base']);
 	const base = git(['rev-parse', 'HEAD']).trim();
-
-	const big = Array.from({length: 60000}, (_, i) => `line ${i} of a change that runs past a megabyte`).join('\n');
-	writeFileSync(join(dir, 'big.md'), `${big}\n`);
+	writeFileSync(join(dir, name), content);
 	git(['add', '-A']);
-	git(['commit', '--quiet', '-m', 'big']);
-	assert.ok(git(['diff', '--unified=0', base, 'HEAD']).length > 1024 * 1024);
+	git(['commit', '--quiet', '-m', 'change']);
 
 	const cwd = process.cwd();
 	process.chdir(dir);
 	try {
-		const scope = scopeOf({name: 'push', payload: {before: base}});
-		assert.equal(scope.touched?.get('big.md')?.size, 60000);
-		assert.match(scope.note, /scoped to/);
+		check(base, git);
 	} finally {
 		process.chdir(cwd);
 		rmSync(dir, {recursive: true, force: true});
 	}
+}
+
+test('a diff past the 1 MiB default buffer is read, not reported as an unreachable base', () => {
+	const big = Array.from({length: 60000}, (_, i) => `line ${i} of a change that runs past a megabyte`).join('\n');
+	inRepo('big.md', `${big}\n`, (base, git) => {
+		assert.ok(git(['diff', '--unified=0', base, 'HEAD']).length > 1024 * 1024);
+		const scope = scopeOf({name: 'push', payload: {before: base}});
+		assert.equal(scope.touched?.get('big.md')?.size, 60000);
+		assert.match(scope.note, /scoped to/);
+	});
+});
+
+// A job container checks out as another user. GIT_TEST_ASSUME_DIFFERENT_OWNER is git's own hook for that state.
+test('a work tree that another user owns is still scoped to the diff', () => {
+	inRepo('.gitattributes', 'README.md linguist-vendored\n', (base) => {
+		process.env.GIT_TEST_ASSUME_DIFFERENT_OWNER = '1';
+		try {
+			assert.throws(() => execFileSync('git', ['status'], {stdio: 'pipe'}), /dubious ownership/, 'the hook must reproduce the refusal');
+			const scope = scopeOf({name: 'push', payload: {before: base}});
+			assert.deepEqual([...scope.touched?.keys() ?? []], ['.gitattributes'], scope.note);
+			assert.deepEqual(vendoredPaths(['README.md']), new Set(['README.md']));
+		} finally {
+			delete process.env.GIT_TEST_ASSUME_DIFFERENT_OWNER;
+		}
+	});
 });

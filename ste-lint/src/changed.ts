@@ -10,8 +10,8 @@
 // when it has findings, and the same file comes into scope the moment somebody
 // edits it. The rule that reaches the author is the rule the author can obey.
 
-import {execFileSync} from 'node:child_process';
 import {readFileSync} from 'node:fs';
+import {git} from './git';
 
 export type Event = {
 	name: string;
@@ -166,5 +166,5 @@ export function currentEvent(): Event {
 // prose at all red on prose it did not write. A size that decides the scope is
 // a cliff, so there is no cap here: git holds the same bytes to write them.
 function runGit(args: string[]): string {
-	return execFileSync('git', args, {encoding: 'utf-8', maxBuffer: Infinity, stdio: ['ignore', 'pipe', 'pipe']});
+	return git(args);
 }
