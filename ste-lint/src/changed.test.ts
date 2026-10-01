@@ -5,6 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
 import {baseOf, changedLines, onTouchedLines, parseHunks, scopeOf} from './changed';
+import {vendoredPaths} from './vendored';
 
 const ZERO = '0000000000000000000000000000000000000000';
 
@@ -152,6 +153,37 @@ test('a diff past the 1 MiB default buffer is read, not reported as an unreachab
 		assert.equal(scope.touched?.get('big.md')?.size, 60000);
 		assert.match(scope.note, /scoped to/);
 	} finally {
+		process.chdir(cwd);
+		rmSync(dir, {recursive: true, force: true});
+	}
+});
+
+// GIT_TEST_ASSUME_DIFFERENT_OWNER makes git refuse the checkout, as a container job does.
+test('a checkout owned by another user still scopes to the diff and reads its attributes', () => {
+	const dir = mkdtempSync(join(tmpdir(), 'ste-lint-'));
+	const git = (args: string[]): string => execFileSync('git', ['-C', dir, ...args], {encoding: 'utf-8'});
+	git(['init', '--quiet']);
+	git(['config', 'user.email', 'test@example.com']);
+	git(['config', 'user.name', 'test']);
+	writeFileSync(join(dir, 'README.md'), 'intro\n');
+	writeFileSync(join(dir, '.gitattributes'), 'vendor/** linguist-vendored\n');
+	git(['add', '-A']);
+	git(['commit', '--quiet', '-m', 'base']);
+	const base = git(['rev-parse', 'HEAD']).trim();
+	writeFileSync(join(dir, 'README.md'), 'intro\nmore\n');
+	git(['commit', '--quiet', '-am', 'edit']);
+
+	const cwd = process.cwd();
+	process.chdir(dir);
+	process.env.GIT_TEST_ASSUME_DIFFERENT_OWNER = '1';
+	try {
+		assert.throws(() => execFileSync('git', ['status'], {stdio: 'pipe'}), /dubious ownership/);
+		const scope = scopeOf({name: 'push', payload: {before: base}});
+		assert.match(scope.note, /scoped to/);
+		assert.deepEqual([...(scope.touched?.get('README.md') ?? [])], [2]);
+		assert.deepEqual([...vendoredPaths(['vendor/a.md', 'README.md'])], ['vendor/a.md']);
+	} finally {
+		delete process.env.GIT_TEST_ASSUME_DIFFERENT_OWNER;
 		process.chdir(cwd);
 		rmSync(dir, {recursive: true, force: true});
 	}

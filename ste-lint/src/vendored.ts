@@ -16,7 +16,7 @@
 //
 // A repository that writes its own prose declares nothing and loses nothing.
 
-import {execFileSync} from 'node:child_process';
+import {git} from './git';
 
 const ATTRIBUTES = ['linguist-vendored', 'linguist-generated'];
 
@@ -48,11 +48,7 @@ export function vendoredPaths(files: string[], run = gitCheckAttr): Set<string> 
 }
 
 function gitCheckAttr(attribute: string, files: string[]): string {
-	const out = execFileSync('git', ['check-attr', '--stdin', '-z', attribute], {
-		input: files.join('\0'),
-		encoding: 'utf-8',
-	});
-	return setPaths(out);
+	return setPaths(git(['check-attr', '--stdin', '-z', attribute], files.join('\0')));
 }
 
 // Turns `git check-attr -z` output into a NUL-separated list of the paths whose
