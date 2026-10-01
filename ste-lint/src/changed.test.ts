@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
+import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {test} from 'node:test';
-import {baseOf, changedFiles, scopeOf} from './changed';
+import {baseOf, changedLines, onTouchedLines, parseHunks, scopeOf} from './changed';
 
 const ZERO = '0000000000000000000000000000000000000000';
 
@@ -23,48 +27,90 @@ test('an event that names neither leaves the base unknown', () => {
 	assert.equal(baseOf({name: 'pull_request', payload: {pull_request: {}}}), null);
 });
 
-test('the diff names the files, and an absent base commit is fetched first', () => {
+const DIFF = `diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -4,0 +5,2 @@ intro
++a new line
++and another
+@@ -20 +21 @@
++a rewritten line
+diff --git a/docs/gone.md b/docs/gone.md
+--- a/docs/gone.md
++++ /dev/null
+@@ -1,3 +0,0 @@
+`;
+
+test('a hunk names the lines the file now has, and a deletion names none', () => {
+	const touched = parseHunks(DIFF);
+	assert.deepEqual([...touched.keys()], ['README.md']);
+	assert.deepEqual([...touched.get('README.md')!].sort((a, b) => a - b), [5, 6, 21]);
+});
+
+test('a hunk with no count covers exactly one line', () => {
+	const touched = parseHunks('+++ b/a.md\n@@ -9 +9 @@\n+one\n');
+	assert.deepEqual([...touched.get('a.md')!], [9]);
+});
+
+test('the diff names the lines, and an absent base commit is fetched first', () => {
 	const calls: string[][] = [];
 	const git = (args: string[]): string => {
 		calls.push(args);
 		if (args[0] === 'cat-file') throw new Error('not our ref');
-		if (args[0] === 'diff') return 'README.md\0docs/one.md\0';
-		return '';
+		return args[0] === 'diff' ? DIFF : '';
 	};
-	assert.deepEqual(changedFiles('def456', git), ['README.md', 'docs/one.md']);
+	assert.deepEqual([...changedLines('def456', git).keys()], ['README.md']);
 	assert.deepEqual(calls[0], ['cat-file', '-e', 'def456^{commit}']);
 	assert.deepEqual(calls[1], ['fetch', '--no-tags', '--depth=1', 'origin', 'def456']);
 	assert.equal(calls[2][0], 'diff');
+	assert.ok(calls[2].includes('--unified=0'), 'the diff must carry no context, or an untouched line reads as changed');
 });
 
 test('a base commit already in the checkout is not fetched again', () => {
 	const calls: string[][] = [];
 	const git = (args: string[]): string => {
 		calls.push(args);
-		return args[0] === 'diff' ? 'README.md\0' : '';
+		return args[0] === 'diff' ? DIFF : '';
 	};
-	assert.deepEqual(changedFiles('def456', git), ['README.md']);
+	changedLines('def456', git);
 	assert.deepEqual(
 		calls.map((c) => c[0]),
 		['cat-file', 'diff'],
 	);
 });
 
+test('a finding on a changed line stays, and one on an untouched line goes', () => {
+	const touched = new Map([['CLAUDE.md', new Set([5, 6])]]);
+	const kept = onTouchedLines(
+		{
+			semicolons: ['CLAUDE.md:5: ";"', 'CLAUDE.md:400: ";"'],
+			wrappedLines: ['CLAUDE.md:6: continues line 5', 'docs/other.md:2: continues line 1'],
+		},
+		touched,
+	);
+	assert.deepEqual(kept.semicolons, ['CLAUDE.md:5: ";"']);
+	assert.deepEqual(kept.wrappedLines, ['CLAUDE.md:6: continues line 5']);
+});
+
+test('a finding with no line prefix is kept, because nothing places it', () => {
+	const kept = onTouchedLines({hardLong: ['a finding with no location']}, new Map());
+	assert.deepEqual(kept.hardLong, ['a finding with no location']);
+});
+
 test('a branch base is fetched and read back as FETCH_HEAD', () => {
 	const calls: string[][] = [];
 	const git = (args: string[]): string => {
 		calls.push(args);
-		return args[0] === 'diff' ? '' : '';
+		return '';
 	};
-	changedFiles('refs/heads/master', git);
+	changedLines('refs/heads/master', git);
 	assert.deepEqual(calls[0], ['fetch', '--no-tags', '--depth=1', 'origin', 'refs/heads/master']);
 	assert.equal(calls[1].at(-2), 'FETCH_HEAD');
 });
 
 test('a push that changed nothing scopes to nothing, which is not the same as unknown', () => {
-	const git = (args: string[]): string => (args[0] === 'diff' ? '' : '');
-	const scope = scopeOf({name: 'push', payload: {before: 'def456'}}, git);
-	assert.deepEqual(scope.files, []);
+	const scope = scopeOf({name: 'push', payload: {before: 'def456'}}, () => '');
+	assert.equal(scope.touched?.size, 0);
 });
 
 test('a git failure widens the scope rather than narrowing it', () => {
@@ -72,12 +118,41 @@ test('a git failure widens the scope rather than narrowing it', () => {
 		throw new Error('fatal: bad object');
 	};
 	const scope = scopeOf({name: 'push', payload: {before: 'def456'}}, git);
-	assert.equal(scope.files, null);
+	assert.equal(scope.touched, null);
 	assert.match(scope.note, /whole tree/);
 });
 
 test('an event with no base widens the scope too', () => {
 	const scope = scopeOf({name: 'schedule', payload: {}}, () => '');
-	assert.equal(scope.files, null);
+	assert.equal(scope.touched, null);
 	assert.match(scope.note, /whole tree/);
+});
+
+test('a diff past the 1 MiB default buffer is read, not reported as an unreachable base', () => {
+	const dir = mkdtempSync(join(tmpdir(), 'ste-lint-'));
+	const git = (args: string[]): string => execFileSync('git', ['-C', dir, ...args], {encoding: 'utf-8', maxBuffer: Infinity});
+	git(['init', '--quiet']);
+	git(['config', 'user.email', 'test@example.com']);
+	git(['config', 'user.name', 'test']);
+	writeFileSync(join(dir, 'README.md'), 'intro\n');
+	git(['add', '-A']);
+	git(['commit', '--quiet', '-m', 'base']);
+	const base = git(['rev-parse', 'HEAD']).trim();
+
+	const big = Array.from({length: 60000}, (_, i) => `line ${i} of a change that runs past a megabyte`).join('\n');
+	writeFileSync(join(dir, 'big.md'), `${big}\n`);
+	git(['add', '-A']);
+	git(['commit', '--quiet', '-m', 'big']);
+	assert.ok(git(['diff', '--unified=0', base, 'HEAD']).length > 1024 * 1024);
+
+	const cwd = process.cwd();
+	process.chdir(dir);
+	try {
+		const scope = scopeOf({name: 'push', payload: {before: base}});
+		assert.equal(scope.touched?.get('big.md')?.size, 60000);
+		assert.match(scope.note, /scoped to/);
+	} finally {
+		process.chdir(cwd);
+		rmSync(dir, {recursive: true, force: true});
+	}
 });

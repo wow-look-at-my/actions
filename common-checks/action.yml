@@ -4,6 +4,9 @@ description: Run this org's GitHub Actions checks once per workflow run, over th
 runs:
   using: composite
   steps:
+    # Ahead of the claim on purpose: a scanner costs the job it runs in, so every caller needs this rather than one of them.
+    - uses: wow-look-at-my/actions@disable-windows-defender#latest
+
     # One job of the run holds the claim. see README.md
     - id: claim
       uses: wow-look-at-my/actions@run-once#latest

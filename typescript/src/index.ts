@@ -9,11 +9,12 @@ import * as child_process from 'child_process';
 import * as util from 'util';
 import { createRequire } from 'module';
 import * as ts from 'typescript';
-import { parse as parseYaml } from 'yaml';
+import * as yaml from 'yaml';
 import { MAIN_FN, transformScript } from './transform';
 import { highlightSource } from './highlight';
 import { CommentBlock, findCommentBlocks } from './comments';
 import { unnamedStepMessage, unnamedSteps, WorkflowDoc } from './step-name';
+import { actionsRoot, containerPath } from './container-path';
 
 type ShellArg = string | number | boolean | null | undefined | string[];
 
@@ -248,6 +249,9 @@ function $(strings: TemplateStringsArray, ...values: ShellArg[]): ExecBuilder {
 //   dist/types/node_modules/...    (mirrored types for module resolution)
 const DIST_DIR = __dirname;
 const TYPES_DIR = path.join(DIST_DIR, 'types');
+// A host path from ${{ github.action_path }} resolves to the `_actions` tree this action runs from.
+const ACTIONS_ROOT = actionsRoot(DIST_DIR);
+const toContainer = (p: string): string => containerPath(p, ACTIONS_ROOT, fs.existsSync);
 // Virtual file for type-checking. Located under TYPES_DIR so node module
 // resolution finds dist/types/node_modules/* by walking up.
 const VIRTUAL_FILE = path.join(TYPES_DIR, '__user-script.ts');
@@ -452,13 +456,20 @@ function typeCheck(source: string): readonly ts.Diagnostic[] {
 	const originalReadFile = host.readFile.bind(host);
 	const originalFileExists = host.fileExists.bind(host);
 	const originalGetSourceFile = host.getSourceFile.bind(host);
+	const originalDirectoryExists = host.directoryExists?.bind(host);
 
-	host.readFile = (fileName) => sources.get(fileName) ?? originalReadFile(fileName);
-	host.fileExists = (fileName) => sources.has(fileName) || originalFileExists(fileName);
+	host.readFile = (fileName) => sources.get(fileName) ?? originalReadFile(toContainer(fileName));
+	host.fileExists = (fileName) => sources.has(fileName) || originalFileExists(toContainer(fileName));
+	if (originalDirectoryExists) host.directoryExists = (dir) => originalDirectoryExists(toContainer(dir));
 	host.getSourceFile = (fileName, languageVersion, onError, shouldCreate) => {
 		const synthetic = sources.get(fileName);
 		if (synthetic !== undefined) {
 			return ts.createSourceFile(fileName, synthetic, languageVersion, true);
+		}
+		const mapped = toContainer(fileName);
+		if (mapped !== fileName) {
+			const text = originalReadFile(mapped);
+			return text === undefined ? undefined : ts.createSourceFile(fileName, text, languageVersion);
 		}
 		return originalGetSourceFile(fileName, languageVersion, onError, shouldCreate);
 	};
@@ -556,28 +567,40 @@ async function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: str
 		fs, path, os, child_process, util,
 	});
 
+	// yaml is bundled here, so a script gets it on every runner. Shelling out to
+	// yq instead fails on Windows, which has no yq on PATH.
 	const actionModules: Record<string, unknown> = {
 		'@actions/core': core,
 		'@actions/github': github,
 		'@actions/exec': exec,
 		'@actions/io': io,
+		yaml,
 	};
 
 	const NodeModule = require('module');
 	const origResolve = NodeModule._resolveFilename;
 	const workspaceDir = process.env.GITHUB_WORKSPACE;
 
-	NodeModule._resolveFilename = function (request: string, parent: unknown, isMain: boolean, options: unknown) {
+	// require.resolve() goes through this same hook, so a request nothing can
+	// resolve used to re-enter the fallback until the stack overflowed. The
+	// original resolver is restored across the call, which turns that into the
+	// ordinary "Cannot find module" the caller needs to read.
+	const patched = function (this: unknown, request: string, parent: unknown, isMain: boolean, options: unknown) {
 		if (request in actionModules) return request;
+		if (path.isAbsolute(request)) request = toContainer(request);
 		try {
 			return origResolve.call(this, request, parent, isMain, options);
 		} catch (e) {
-			if (workspaceDir) {
+			if (!workspaceDir) throw e;
+			NodeModule._resolveFilename = origResolve;
+			try {
 				return createRequire(path.join(workspaceDir, 'noop.js')).resolve(request);
+			} finally {
+				NodeModule._resolveFilename = patched;
 			}
-			throw e;
 		}
 	};
+	NodeModule._resolveFilename = patched;
 
 	for (const [name, mod] of Object.entries(actionModules)) {
 		// A cache entry the loader only ever reads `exports` off. The rest of
@@ -652,7 +675,7 @@ async function unnamedStepPositions(): Promise<{workflow: string; job: string; p
 	const file = path.join(workspace, workflow);
 	if (!workflow || !fs.existsSync(file)) return none;
 
-	const doc = parseYaml(fs.readFileSync(file, 'utf-8')) as WorkflowDoc;
+	const doc = yaml.parse(fs.readFileSync(file, 'utf-8')) as WorkflowDoc;
 	return {workflow, job, positions: unnamedSteps(doc, job)};
 }
 

@@ -1,0 +1,62 @@
+name: Test cached-apt
+version: 1
+description: Dogfood cached-apt twice in one job to exercise the apt path and then the cache path (never released)
+
+runs:
+  using: composite
+  steps:
+    - name: Install cmatrix with an empty cache
+      id: first
+      uses: ./cached-apt
+      with:
+        packages: cmatrix
+        key: cached-apt-selftest-${{ github.run_id }}-${{ github.run_attempt }}
+
+    - name: Verify the apt path installed a working binary
+      shell: bash
+      env:
+        HIT: ${{ steps.first.outputs.cache-hit }}
+        PKGS: ${{ steps.first.outputs.installed-packages }}
+      run: |
+        set -euo pipefail
+        cmatrix -V
+        echo "first call: cache-hit=$HIT packages=$PKGS"
+        if [ "$HIT" != "false" ]; then
+          echo "::error::the first call reported cache-hit=$HIT, but its key is unique to this run and must miss"
+          exit 1
+        fi
+        if [ -z "$PKGS" ]; then
+          echo "::error::the first call installed nothing, so it cached nothing; cmatrix is already on this image"
+          exit 1
+        fi
+
+    - name: Remove the installed files so only the cache can bring them back
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo dpkg --purge --force-depends cmatrix
+
+    - name: Install cmatrix again, now from the cache
+      id: second
+      uses: ./cached-apt
+      with:
+        packages: cmatrix
+        key: cached-apt-selftest-${{ github.run_id }}-${{ github.run_attempt }}
+
+    - name: Verify the cache path restored a working binary
+      shell: bash
+      env:
+        HIT: ${{ steps.second.outputs.cache-hit }}
+        PKGS: ${{ steps.second.outputs.installed-packages }}
+      run: |
+        set -euo pipefail
+        cmatrix -V
+        echo "second call: cache-hit=$HIT packages=$PKGS"
+        if [ "$HIT" != "true" ]; then
+          echo "::error::the second call reported cache-hit=$HIT; the first call's save did not come back"
+          exit 1
+        fi
+        if [ "$PKGS" != "${{ steps.first.outputs.installed-packages }}" ]; then
+          echo "::error::the cache manifest lists '$PKGS' but the install produced '${{ steps.first.outputs.installed-packages }}'"
+          exit 1
+        fi
