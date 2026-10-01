@@ -27,8 +27,6 @@ The action prints the ref it runs as, so a rolled-back `uses:` reaches the log. 
 | Input | Default | Meaning |
 | --- | --- | --- |
 | `files` | `**/*.md` | Glob patterns, separated by whitespace or commas |
-| `hard-max-words` | `25` | Kept for old callers. slopfix enforces 25, and any other value fails the run |
-| `warn-max-words` | `20` | Kept for old callers. Any value other than 20 fails the run |
 
 Matching no files fails the run. A check that reads nothing passes for the wrong reason.
 

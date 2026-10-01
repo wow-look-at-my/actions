@@ -7,14 +7,6 @@ inputs:
     description: 'Glob patterns to check, separated by whitespace or commas. The scope is then narrowed to the files this event changed. Matching nothing is a failure, never a quiet pass.'
     required: false
     default: '**/*.md'
-  hard-max-words:
-    description: 'Kept for old callers. slopfix enforces the STE cap of 25 words, and any other value fails the run.'
-    required: false
-    default: '25'
-  warn-max-words:
-    description: 'Kept for old callers. slopfix has no warning tier, and any value other than 20 fails the run.'
-    required: false
-    default: '20'
 
 outputs:
   files:

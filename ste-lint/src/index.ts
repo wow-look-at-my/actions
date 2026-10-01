@@ -23,17 +23,13 @@ function patternsOf(raw: string): string[] {
 		.filter(Boolean);
 }
 
-// slopfix owns the sentence cap. A value it cannot honor fails, rather than a run that ignores it.
-const FIXED: Record<string, string> = {'hard-max-words': '25', 'warn-max-words': '20'};
+// The cap inputs are gone. slopfix owns the cap, so an old caller's value does nothing.
+const REMOVED = ['hard-max-words', 'warn-max-words'];
 
-function checkInputs(): string | undefined {
-	for (const [name, fixed] of Object.entries(FIXED)) {
-		const raw = core.getInput(name).trim();
-		if (raw !== '' && raw !== fixed) {
-			return `${name} is ${raw}, but slopfix enforces the STE cap of 25 words and has no other setting. Remove the input.`;
-		}
+function warnRemovedInputs(): void {
+	for (const name of REMOVED) {
+		if (core.getInput(name).trim() !== '') core.warning(`${name} does nothing. slopfix enforces the STE cap of 25 words. Remove the input.`);
 	}
-	return undefined;
 }
 
 async function main(): Promise<void> {
@@ -49,11 +45,7 @@ async function main(): Promise<void> {
 		core.setFailed(gate.failure);
 		return;
 	}
-	const bad = checkInputs();
-	if (bad) {
-		core.setFailed(bad);
-		return;
-	}
+	warnRemovedInputs();
 
 	const patterns = patternsOf(core.getInput('files') || '**/*.md');
 	const matched = [...new Set(patterns.flatMap((p) => globSync(p, {exclude: (n: string) => n.includes('node_modules')})))].sort();
