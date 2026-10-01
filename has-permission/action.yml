@@ -45,7 +45,7 @@ runs:
           const file = path.join(env.GITHUB_WORKSPACE!, relative);
           if (!fs.existsSync(file)) throw new Error(`${file} does not exist. Check the repository out before this step.`);
 
-          const doc = await $`yq -o=json ${file}`.json<{jobs?: Record<string, {permissions?: unknown}>; permissions?: unknown}>();
+          const doc = require('yaml').parse(fs.readFileSync(file, 'utf8')) as {jobs?: Record<string, {permissions?: unknown}>; permissions?: unknown};
           const job = env.GITHUB_JOB!;
           if (!doc.jobs?.[job]) throw new Error(`${relative} names no job '${job}'. It has: ${Object.keys(doc.jobs ?? {}).join(', ')}`);
 
