@@ -4,7 +4,12 @@ import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {test} from 'node:test';
+<<<<<<< HEAD
 import {baseOf, changedLines, onTouchedLines, parseHunks, scopeOf} from './changed';
+=======
+import {baseOf, changedLines, parseHunks, scopeOf} from './changed';
+import {describe, isWarning, onTouched, parseReport} from './slopfix';
+>>>>>>> origin/master
 import {vendoredPaths} from './vendored';
 
 const ZERO = '0000000000000000000000000000000000000000';
@@ -80,22 +85,47 @@ test('a base commit already in the checkout is not fetched again', () => {
 	);
 });
 
-test('a finding on a changed line stays, and one on an untouched line goes', () => {
-	const touched = new Map([['CLAUDE.md', new Set([5, 6])]]);
-	const kept = onTouchedLines(
-		{
-			semicolons: ['CLAUDE.md:5: ";"', 'CLAUDE.md:400: ";"'],
-			wrappedLines: ['CLAUDE.md:6: continues line 5', 'docs/other.md:2: continues line 1'],
-		},
-		touched,
-	);
-	assert.deepEqual(kept.semicolons, ['CLAUDE.md:5: ";"']);
-	assert.deepEqual(kept.wrappedLines, ['CLAUDE.md:6: continues line 5']);
+// slopfix places a finding on the first line of its paragraph, so a change to any line of it counts.
+test('a finding stays when the change touched any line of its paragraph', () => {
+	const lines = ['# T', '', 'The first line', 'wraps here; and goes on.', '', 'Another paragraph.'];
+	const findings = [
+		{id: 'ste/semicolon', line: 3, rule: 'STE bans the semicolon'},
+		{id: 'ste/contraction', line: 6, rule: 'STE bans contractions'},
+	];
+	assert.deepEqual(onTouched(findings, lines, new Set([4])).map((f) => f.id), ['ste/semicolon']);
+	assert.deepEqual(onTouched(findings, lines, new Set([6])).map((f) => f.id), ['ste/contraction']);
+	assert.deepEqual(onTouched(findings, lines, new Set([2, 5])), []);
 });
 
-test('a finding with no line prefix is kept, because nothing places it', () => {
-	const kept = onTouchedLines({hardLong: ['a finding with no location']}, new Map());
-	assert.deepEqual(kept.hardLong, ['a finding with no location']);
+test('a list item is its own paragraph, so a change to its sibling leaves it alone', () => {
+	const lines = ['- first item', '  wraps; here', '- second item', '  changed line'];
+	const findings = [{id: 'ste/semicolon', line: 1, rule: 'STE bans the semicolon'}];
+	assert.deepEqual(onTouched(findings, lines, new Set([4])), []);
+	assert.equal(onTouched(findings, lines, new Set([2])).length, 1);
+});
+
+test('a wrap finding belongs to its own line, not to the rest of the paragraph', () => {
+	const lines = ['A paragraph', 'wrapped once', 'and twice.'];
+	const findings = [
+		{id: 'wrap/hard-wrap', line: 2, rule: 'a paragraph is one line'},
+		{id: 'wrap/hard-wrap', line: 3, rule: 'a paragraph is one line'},
+	];
+	assert.deepEqual(onTouched(findings, lines, new Set([3])).map((f) => f.line), [3]);
+	assert.deepEqual(onTouched(findings, lines, new Set([1])), []);
+});
+
+test('a warning is told apart from an error', () => {
+	const out =
+		'{"path":"a.md","findings":[{"id":"ste/passive","line":1,"rule":"STE prefers the active voice","severity":"warning"},' +
+		'{"id":"ste/semicolon","line":1,"rule":"STE bans the semicolon","severity":"error"}]}';
+	assert.deepEqual(parseReport(out).map(isWarning), [true, false]);
+	assert.match(describe('a.md', parseReport(out)[0]), /^a\.md:1: warning \[ste\/passive\]/);
+});
+
+test('the report parser reads findings, and a report with none is empty', () => {
+	const out = '{"path":"a.md","findings":[{"id":"wrap/hard-wrap","line":3,"endLine":3,"rule":"a paragraph is one line"}]}';
+	assert.equal(parseReport(out)[0].id, 'wrap/hard-wrap');
+	assert.deepEqual(parseReport('{"path":"a.md","findings":null}'), []);
 });
 
 test('a branch base is fetched and read back as FETCH_HEAD', () => {
@@ -180,4 +210,37 @@ test('a work tree that another user owns is still scoped to the diff', () => {
 			for (const name of Object.keys(isolated)) delete process.env[name];
 		}
 	});
+});
+
+// GIT_TEST_ASSUME_DIFFERENT_OWNER makes git refuse the checkout, as a container job does.
+test('a checkout owned by another user still scopes to the diff and reads its attributes', () => {
+	const dir = mkdtempSync(join(tmpdir(), 'ste-lint-'));
+	const git = (args: string[]): string => execFileSync('git', ['-C', dir, ...args], {encoding: 'utf-8'});
+	git(['init', '--quiet']);
+	git(['config', 'user.email', 'test@example.com']);
+	git(['config', 'user.name', 'test']);
+	writeFileSync(join(dir, 'README.md'), 'intro\n');
+	writeFileSync(join(dir, '.gitattributes'), 'vendor/** linguist-vendored\n');
+	git(['add', '-A']);
+	git(['commit', '--quiet', '-m', 'base']);
+	const base = git(['rev-parse', 'HEAD']).trim();
+	writeFileSync(join(dir, 'README.md'), 'intro\nmore\n');
+	git(['commit', '--quiet', '-am', 'edit']);
+
+	const cwd = process.cwd();
+	process.chdir(dir);
+	// A runner's own config can trust every directory, which would hide the refusal.
+	const isolated = {GIT_TEST_ASSUME_DIFFERENT_OWNER: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1'};
+	Object.assign(process.env, isolated);
+	try {
+		assert.throws(() => execFileSync('git', ['status'], {stdio: 'pipe'}), /dubious ownership/);
+		const scope = scopeOf({name: 'push', payload: {before: base}});
+		assert.match(scope.note, /scoped to/);
+		assert.deepEqual([...(scope.touched?.get('README.md') ?? [])], [2]);
+		assert.deepEqual([...vendoredPaths(['vendor/a.md', 'README.md'])], ['vendor/a.md']);
+	} finally {
+		for (const key of Object.keys(isolated)) delete process.env[key];
+		process.chdir(cwd);
+		rmSync(dir, {recursive: true, force: true});
+	}
 });
