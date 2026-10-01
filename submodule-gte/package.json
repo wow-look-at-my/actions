@@ -1,0 +1,11 @@
+{
+  "name": "submodule-gte",
+  "version": "1.0.0",
+  "description": "Fail CI when a branch points a submodule at a commit the base branch has already moved past",
+  "main": "dist/index.js",
+  "type": "commonjs",
+  "dependencies": {
+    "@actions/core": "^2.0.2",
+    "@actions/exec": "^2.0.0"
+  }
+}

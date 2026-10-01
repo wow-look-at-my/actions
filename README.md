@@ -2,6 +2,12 @@
 
 Reusable GitHub Actions.
 
+## Building
+
+Every node action builds with [ts0](https://github.com/wow-look-at-my/ts0), from the `ts0.json` in its directory: `cd <action> && just build`. Get ts0 with `curl -fsSL https://apt.pazer.build/ts0/install.sh | sudo sh && sudo apt-get install ts0`. CI gets it from the [ts0 action](https://github.com/wow-look-at-my/ts0#github-actions).
+
+ts0 supplies the compiler, the bundler and `@types/node`, so an action's `package.json` lists only what it imports at run time. `ts0 test` type-checks the project and runs its test files. `dist/` is not committed. CI builds it before it cuts a release tag.
+
 ## Actions
 
 ### [Action Validator](action-validator/)
@@ -18,6 +24,13 @@ Reusable GitHub Actions.
 - uses: wow-look-at-my/actions@branch-block#latest
   with:
     branch: # Branch name to block
+```
+
+### [Install bubblewrap](bubblewrap/)
+
+```yml
+# Makes bwrap available on Linux runners, skipping the apt index refresh that the runner's own index usually makes unnecessary.
+- uses: wow-look-at-my/actions@bubblewrap#latest
 ```
 
 ### [Cache Cleanup](cache-cleanup/)
@@ -60,6 +73,27 @@ Reusable GitHub Actions.
     path: # File or directory to hand off (a directory is captured as its contents)
 ```
 
+### [Cached apt](cached-apt/)
+
+```yml
+# Install apt packages on a Linux runner from a cache of the files they dropped, skipping `apt-get update` and `apt-get install` on a hit. Restored packages are plain files: dpkg does not record them as installed, maintainer scripts and update-alternatives do not run, and only `ldconfig` is re-run. Suits build and test dependencies; not packages that need a service, a user or an alternative. On a non-Linux runner it installs nothing and succeeds, so a matrix calls it without an `if:` guard; it says so, and sets `skipped` to true..
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/cached-apt/README.md
+- uses: wow-look-at-my/actions@cached-apt#latest
+  with:
+    packages: # apt packages to install, separated by whitespace, newlines or commas
+```
+
+### [Cached Run](cached-run/)
+
+```yml
+# Run a script with its output paths restored from cache first and saved after, keyed by the script text and the path list.
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/cached-run/README.md
+- uses: wow-look-at-my/actions@cached-run#latest
+  with:
+    run: # The script to run. `set -euo pipefail` is prepended and a sentinel `touch` is appended; the cache is saved only when that sentinel appears.
+    paths: # The output paths to restore before the run and save after it, one per line. Sorted and deduplicated before use, so reordering them does not change the key.
+```
+
 ### [Cloudflare Pages](cloudflare-pages/)
 
 ```yml
@@ -75,6 +109,13 @@ Reusable GitHub Actions.
 ```yml
 # Run this org's GitHub Actions checks once per workflow run, over the calling repo only.
 - uses: wow-look-at-my/actions@common-checks#latest
+```
+
+### [Disable Windows Defender](disable-windows-defender/)
+
+```yml
+# Stops Defender scanning what a build writes on a Windows runner, and fails when it will not stop.
+- uses: wow-look-at-my/actions@disable-windows-defender#latest
 ```
 
 ### [Download Executable Artifact](download-exe/)
@@ -108,7 +149,7 @@ Reusable GitHub Actions.
 ### [GHCR](ghcr/)
 
 ```yml
-# Build, push, and prune container images on GHCR..
+# Build, push, and prune container images on GHCR. Every build carries the OCI source and revision labels..
 - uses: wow-look-at-my/actions@ghcr#latest
 ```
 
@@ -192,8 +233,16 @@ Reusable GitHub Actions.
 ### [ste-lint](ste-lint/)
 
 ```yml
-# Check prose against the mechanical subset of ASD-STE100 Simplified Technical English — sentence length measured over whole sentences rather than wrapped lines, contractions, banned modal verbs, semicolons, comma splices, hard-wrapped paragraphs, and dictionary word choice.
+# Check the prose a change touches against the mechanical subset of ASD-STE100 Simplified Technical English — sentence length measured over whole sentences rather than wrapped lines, contractions, banned modal verbs, semicolons, comma splices, hard-wrapped paragraphs, and dictionary word choice.
+# Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/ste-lint/README.md
 - uses: wow-look-at-my/actions@ste-lint#latest
+```
+
+### [Submodule GTE](submodule-gte/)
+
+```yml
+# Fail CI when a branch points a submodule at a commit the base branch has already moved past.
+- uses: wow-look-at-my/actions@submodule-gte#latest
 ```
 
 ### [Tag Cleanup](tag-cleanup/)
@@ -229,64 +278,11 @@ Reusable GitHub Actions.
 ### [YAML Comment Block](yaml-comment-block/)
 
 ```yml
-# Fail CI when a GitHub Actions YAML file in the local call chain carries more than 1 comment line in a row.
+# Fail CI when a GitHub Actions YAML file carries more than 1 comment line in a row.
 - uses: wow-look-at-my/actions@yaml-comment-block#latest
 ```
 
 ## Reusable Workflows
-
-### PR Preview (buildhost)
-
-```yml
-jobs:
-  buildhost-preview:
-    uses: wow-look-at-my/actions/.github/workflows/buildhost-preview.yml@master
-```
-
-Deploys a pull-request preview to a [buildhost](https://github.com/wow-look-at-my/buildhost) static-site project. It posts a sticky PR comment with the preview URL. It authenticates to buildhost with a GitHub OIDC token, and needs no static secret. A PR deploys to a `pr-<number>` branch. A push deploys to `branch/<ref-name>`.
-
-The caller must declare the permissions this workflow needs. A reusable workflow gets no more than its caller holds:
-
-```yml
-name: PR preview
-on:
-  push:
-    branches: [master]
-  pull_request:
-    types: [opened, reopened, synchronize]
-
-permissions:
-  contents: read
-  actions: read         # only needed when using artifact-name
-  pull-requests: write  # sticky comment
-  id-token: write       # OIDC to buildhost
-
-jobs:
-  preview:
-    uses: wow-look-at-my/actions/.github/workflows/buildhost-preview.yml@master
-    with:
-      source-dir: ./site   # directory to deploy (defaults to ".")
-    secrets: inherit
-```
-
-Pass `artifact-name` to deploy an artifact the run uploaded earlier. It replaces the checkout of `source-dir`, and the two inputs are mutually exclusive:
-
-```yml
-jobs:
-  preview:
-    uses: wow-look-at-my/actions/.github/workflows/buildhost-preview.yml@master
-    with:
-      artifact-name: build
-    secrets: inherit
-```
-
-Notes:
-
-- `project` defaults to the name of the repository. buildhost lowercases that name to derive the project, and it rejects a mismatch. Pin `project:` explicitly where the repo name is not already lowercase.
-- `public: true` serves the preview to anyone, and buildhost asks for no login. That holds even where the source repo or the project is private. It is opt-in. The default `false` keeps the preview of a private repo gated.
-- The upload is buildhost's own `buildhost-publish-site` action: a tar.gz PUT to `sites.<domain>/<project>/branch/<branch>`, authenticated with the workflow's OIDC token (`id-token: write`). `pull-requests: write` is for the sticky comment.
-- `actions: read` matters only with `artifact-name`: `buildhost-publish-site` fetches the named artifact through the Actions REST API (`listWorkflowRunArtifacts` and `downloadArtifact`), and both calls require it.
-- Fork PRs are skipped (they receive no OIDC token and cannot authenticate to buildhost).
 
 ### Publish to GHCR
 

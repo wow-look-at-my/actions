@@ -119,6 +119,66 @@ test('a reservation with no upload URL runs the work and warns', async () => {
 	assert.equal(calls.upload, 0);
 });
 
+// The live service does not answer a collision with ok:false. It throws a 409,
+// which used to read as an unreachable service, so every job failed open and
+// ran the work -- the whole point of the claim, lost.
+const CONFLICT = 'Failed to CreateCacheEntry: Received non-retryable error: Failed request: (409) Conflict: cache entry with the same key, version, and scope already exists';
+
+test('a create that throws a conflict skips the work when the entry is really there', async () => {
+	const {service: s, calls} = service({
+		create: async () => {
+			throw new Error(CONFLICT);
+		},
+		exists: async () => true
+	});
+	const outcome = await claimRun(s, KEY, VERSION);
+	assert.equal(outcome.first, false);
+	assert.equal(outcome.warning, undefined);
+	assert.match(outcome.reason, /another job of this run holds the claim/);
+	assert.deepEqual(calls, {create: 1, upload: 0, finalize: 0, exists: 1});
+});
+
+// The negative control: a claim is only surrendered on a POSITIVE lookup.
+test('a create that throws a conflict still runs the work when no entry is there', async () => {
+	const {service: s} = service({
+		create: async () => {
+			throw new Error(CONFLICT);
+		},
+		exists: async () => false
+	});
+	const outcome = await claimRun(s, KEY, VERSION);
+	assert.equal(outcome.first, true);
+	assert.match(outcome.warning as string, /could not reach the cache service/);
+});
+
+test('a create that throws a conflict runs the work when the lookup itself fails', async () => {
+	const {service: s} = service({
+		create: async () => {
+			throw new Error(CONFLICT);
+		},
+		exists: async () => {
+			throw new Error('lookup exploded');
+		}
+	});
+	const outcome = await claimRun(s, KEY, VERSION);
+	assert.equal(outcome.first, true);
+	assert.match(outcome.warning as string, /could not reach the cache service/);
+});
+
+// A genuinely unreachable service must not consult the lookup at all.
+test('a create that throws something other than a conflict runs the work without a lookup', async () => {
+	const {service: s, calls} = service({
+		create: async () => {
+			throw new Error('ECONNREFUSED');
+		},
+		exists: async () => true
+	});
+	const outcome = await claimRun(s, KEY, VERSION);
+	assert.equal(outcome.first, true);
+	assert.match(outcome.warning as string, /ECONNREFUSED/);
+	assert.equal(calls.exists, 0);
+});
+
 test('an upload that throws runs the work and warns', async () => {
 	const {service: s} = service({
 		upload: async () => {
