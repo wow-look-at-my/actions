@@ -93,6 +93,13 @@ test('a finding stays when the change touched any line of its paragraph', () => 
 	assert.deepEqual(onTouched(findings, lines, new Set([2, 5])), []);
 });
 
+test('a list item is its own paragraph, so a change to its sibling leaves it alone', () => {
+	const lines = ['- first item', '  wraps; here', '- second item', '  changed line'];
+	const findings = [{id: 'ste/semicolon', line: 1, rule: 'STE bans the semicolon'}];
+	assert.deepEqual(onTouched(findings, lines, new Set([4])), []);
+	assert.equal(onTouched(findings, lines, new Set([2])).length, 1);
+});
+
 test('the report parser reads findings, and a report with none is empty', () => {
 	const out = '{"path":"a.md","findings":[{"id":"wrap/hard-wrap","line":3,"endLine":3,"rule":"a paragraph is one line"}]}';
 	assert.equal(parseReport(out)[0].id, 'wrap/hard-wrap');

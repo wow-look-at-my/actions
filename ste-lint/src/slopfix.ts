@@ -58,9 +58,12 @@ export function parseReport(out: string): Finding[] {
 // when the change touched any line of that paragraph.
 export function paragraphEnd(lines: string[], line: number): number {
 	let end = line;
-	while (end < lines.length && lines[end].trim() !== '') end++;
+	while (end < lines.length && lines[end].trim() !== '' && !BLOCK_START.test(lines[end])) end++;
 	return end;
 }
+
+// A list item, a heading and a fence each start a block of their own, as slopfix reads them.
+const BLOCK_START = /^\s*([-*+]|\d+[.)])\s|^\s*(#|```|~~~)/;
 
 export function onTouched(findings: Finding[], lines: string[], touched: Set<number>): Finding[] {
 	return findings.filter((f) => {
