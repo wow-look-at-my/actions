@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./cache-rg/test
-      # node24 actions: dist/ is not committed, so build before `uses: ./...`. The typescript action builds the rest.
+      # node24 actions: dist/ is not committed, so build before `uses: ./...`. This builds typescript; the next step runs it to build the rest.
       - uses: ./.github/actions/setup-and-build
         with:
           action-dir: typescript
