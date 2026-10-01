@@ -175,7 +175,9 @@ test('a checkout owned by another user still scopes to the diff and reads its at
 
 	const cwd = process.cwd();
 	process.chdir(dir);
-	process.env.GIT_TEST_ASSUME_DIFFERENT_OWNER = '1';
+	// A runner's own config can trust every directory, which would hide the refusal.
+	const isolated = {GIT_TEST_ASSUME_DIFFERENT_OWNER: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1'};
+	Object.assign(process.env, isolated);
 	try {
 		assert.throws(() => execFileSync('git', ['status'], {stdio: 'pipe'}), /dubious ownership/);
 		const scope = scopeOf({name: 'push', payload: {before: base}});
@@ -183,7 +185,7 @@ test('a checkout owned by another user still scopes to the diff and reads its at
 		assert.deepEqual([...(scope.touched?.get('README.md') ?? [])], [2]);
 		assert.deepEqual([...vendoredPaths(['vendor/a.md', 'README.md'])], ['vendor/a.md']);
 	} finally {
-		delete process.env.GIT_TEST_ASSUME_DIFFERENT_OWNER;
+		for (const key of Object.keys(isolated)) delete process.env[key];
 		process.chdir(cwd);
 		rmSync(dir, {recursive: true, force: true});
 	}
