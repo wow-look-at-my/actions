@@ -1,0 +1,15 @@
+name: 'No Scripts Check'
+description: 'Ensures package.json files do not contain scripts sections (use justfiles instead)'
+author: 'PazerOP'
+
+branding:
+  icon: 'alert-circle'
+  color: 'orange'
+
+runs:
+  using: composite
+  steps:
+    # A repository rule judges the tree only from the repository root, so the step takes no path.
+    - uses: wow-look-at-my/slopfix@master
+      with:
+        only: repo/package-scripts
