@@ -1,4 +1,46 @@
+import * as fsp from 'fs/promises';
 import * as path from 'path';
+
+const SKIP_DIRS = new Set(['node_modules', '.git']);
+
+// A directory with a .git entry is another repository checked out here: a submodule or a nested clone.
+async function isNestedRepository(dir: string): Promise<boolean> {
+	try {
+		await fsp.stat(path.join(dir, '.git'));
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+// walk lists every workflow file and action.yml under root as
+// workspace-relative paths. A nested repository goes to nested, not found:
+// its own CI scans its files, and a `./` inside it names its root, not this.
+export async function walk(root: string, relative: string, found: string[], nested: string[]): Promise<void> {
+	const entries = await fsp.readdir(path.join(root, relative), {withFileTypes: true});
+	for (const entry of entries) {
+		const child = relative === '' ? entry.name : `${relative}/${entry.name}`;
+		if (entry.isDirectory()) {
+			if (SKIP_DIRS.has(entry.name)) {
+				continue;
+			}
+			if (await isNestedRepository(path.join(root, child))) {
+				nested.push(child);
+				continue;
+			}
+			await walk(root, child, found, nested);
+			continue;
+		}
+		if (!entry.isFile()) {
+			continue;
+		}
+		const isWorkflow = /^\.github\/workflows\/[^/]+\.ya?ml$/.test(child);
+		const isAction = /(^|\/)action\.ya?ml$/.test(child);
+		if (isWorkflow || isAction) {
+			found.push(child);
+		}
+	}
+}
 
 // One finding: a test living inside a GitHub Actions YAML file.
 export interface Finding {

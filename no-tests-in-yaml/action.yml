@@ -6,8 +6,10 @@ inputs:
     description: >-
       Files to scan, newline or comma separated, relative to the workspace.
       Leave empty to scan every workflow file and every action.yml in the
-      workspace. Whatever the roots are, the scan follows `uses: ./...` from
-      them through the rest of the local call chain.
+      workspace, except under a nested repository (a submodule or a clone,
+      marked by its .git entry): its own CI scans those, and a `./` in them
+      names that repository's root. Whatever the roots are, the scan follows
+      `uses: ./...` from them through the rest of the local call chain.
     required: false
     default: ''
 

@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
+import * as fsp from 'node:fs/promises';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {test} from 'node:test';
-import {findFindings, findRunBlocks, formatFinding} from './scan';
+import {findFindings, findRunBlocks, formatFinding, walk} from './scan';
 
 function findingsIn(yaml: string): ReturnType<typeof findFindings> {
 	return findRunBlocks(yaml).flatMap(block => findFindings(block));
@@ -98,4 +101,26 @@ test('a finding names its file, its line, its rule and the remedy', () => {
 	assert.match(message, /^\.github\/workflows\/ci\.yml:2: /);
 	assert.match(message, /\[test-file-written\]/);
 	assert.match(message, /api_test\.go is a test file/);
+});
+
+test('a nested repository is listed apart and its files are not roots', async () => {
+	const root = await fsp.mkdtemp(path.join(os.tmpdir(), 'no-tests-in-yaml-'));
+	const write = async (file: string): Promise<void> => {
+		await fsp.mkdir(path.dirname(path.join(root, file)), {recursive: true});
+		await fsp.writeFile(path.join(root, file), '');
+	};
+	await write('.github/workflows/ci.yml');
+	await write('tool/action.yml');
+	await write('node_modules/dep/action.yml');
+	// A submodule checkout holds a .git file; a nested clone holds a .git directory.
+	await write('sub/.git');
+	await write('sub/.github/workflows/ci.yml');
+	await write('sub/.github/actions/cc/action.yml');
+	await write('clone/.git/HEAD');
+	await write('clone/action.yml');
+	const found: string[] = [];
+	const nested: string[] = [];
+	await walk(root, '', found, nested);
+	assert.deepEqual(found.sort(), ['.github/workflows/ci.yml', 'tool/action.yml']);
+	assert.deepEqual(nested.sort(), ['clone', 'sub']);
 });

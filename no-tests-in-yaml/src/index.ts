@@ -1,11 +1,9 @@
 import * as core from '@actions/core';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
-import {candidatePaths, findFindings, findRunBlocks, findUses, formatFinding, isLocalRef} from './scan';
+import {candidatePaths, findFindings, findRunBlocks, findUses, formatFinding, isLocalRef, walk} from './scan';
 
 // Tests belong in the repository's own suite, never in a workflow. see README.md
-
-const SKIP_DIRS = new Set(['node_modules', '.git']);
 
 function splitList(value: string): string[] {
 	return value
@@ -42,28 +40,6 @@ function globToRegExp(glob: string): RegExp {
 	return new RegExp(`^${pattern}$`);
 }
 
-async function walk(root: string, relative: string, found: string[]): Promise<void> {
-	const entries = await fsp.readdir(path.join(root, relative), {withFileTypes: true});
-	for (const entry of entries) {
-		const child = relative === '' ? entry.name : `${relative}/${entry.name}`;
-		if (entry.isDirectory()) {
-			if (SKIP_DIRS.has(entry.name)) {
-				continue;
-			}
-			await walk(root, child, found);
-			continue;
-		}
-		if (!entry.isFile()) {
-			continue;
-		}
-		const isWorkflow = /^\.github\/workflows\/[^/]+\.ya?ml$/.test(child);
-		const isAction = /(^|\/)action\.ya?ml$/.test(child);
-		if (isWorkflow || isAction) {
-			found.push(child);
-		}
-	}
-}
-
 async function exists(file: string): Promise<boolean> {
 	try {
 		await fsp.stat(file);
@@ -91,11 +67,16 @@ async function run(): Promise<void> {
 
 	const explicitRoots = splitList(core.getInput('paths'));
 	const roots: string[] = [];
+	const nested: string[] = [];
 	if (explicitRoots.length > 0) {
 		roots.push(...explicitRoots.map(entry => path.posix.normalize(entry.replace(/^\.\//, ''))));
 	} else {
-		await walk(workspace, '', roots);
+		await walk(workspace, '', roots, nested);
 		roots.sort();
+		nested.sort();
+	}
+	for (const dir of nested) {
+		core.info(`not scanned (another repository checked out here): ${dir}/`);
 	}
 
 	const queue = roots.filter(file => !isExcluded(file));
