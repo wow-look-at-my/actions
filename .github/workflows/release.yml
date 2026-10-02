@@ -44,6 +44,10 @@ jobs:
       - uses: ./no-all-builds-job/test
       - uses: ./submodule-gte/test
       - uses: ./no-tests-in-yaml
+      - uses: ./has-permission
+        with:
+          permission: contents
+          assert: 'true'
       - uses: ./ste-lint
         with:
           files: '*.md docs/*.md .github/workflows/*.md */README.md */CLAUDE.md'
