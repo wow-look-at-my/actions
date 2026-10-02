@@ -44,6 +44,10 @@ jobs:
       # slopfix walks the tree itself, so a fixture that breaks a rule on purpose carries a suffix the walk does not select.
       - uses: ./no-all-builds-job
       - uses: ./no-tests-in-yaml
+      - uses: ./has-permission
+        with:
+          permission: contents
+          assert: 'true'
       - uses: ./ste-lint
       - uses: ./no-scripts-action
       - uses: ./tag-cleanup
