@@ -6,16 +6,8 @@ declare const io: typeof import('@actions/io');
 
 type ShellArg = string | number | boolean | null | undefined | string[];
 
-/**
- * A captured output stream from a `$` command: a string that also carries a
- * `.json()` helper. Every ordinary string operation still works (`.trim()`,
- * `.split()`, `.includes()`, concatenation, template literals); `.json()`
- * parses the stream as JSON.
- *
- * Note: at runtime this is a boxed `String` object, so `typeof` is `'object'`
- * and a strict `===` against a string literal is `false` — use `.trim()`, loose
- * `==`, or `String(stream)` when you need the primitive for a comparison.
- */
+/** A captured output stream from a `$` command: a string that also carries a
+ * `.json()` helper. */
 // eslint-disable-next-line local/no-callable-primitive-intersection -- known: $ output is a boxed branded-primitive (the documented TS footgun); pending the primitive-string redesign
 type OutputStream = string & {
 	/** Parse this stream as JSON (throws if it is not valid JSON). */
