@@ -1,16 +1,8 @@
 name: No Tests In YAML
-description: Fail CI when a GitHub Actions YAML file carries a test instead of invoking the repository's own suite
-
-inputs:
-  paths:
-    description: 'Paths to read, space separated. A directory is walked, so the step must run after the checkout.'
-    required: false
-    default: '.'
+description: Run the full slopfix check over the checkout, which fails a GitHub Actions YAML file that carries a test instead of invoking the repository's own suite
 
 runs:
   using: composite
   steps:
+    # Kept as a name every repository already calls. The slopfix action takes no input that narrows the check.
     - uses: wow-look-at-my/slopfix@master
-      with:
-        only: yaml/test-in-workflow
-        paths: ${{ inputs.paths }}

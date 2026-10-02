@@ -3,9 +3,7 @@ import typescript from 'highlight.js/lib/languages/typescript';
 import type { Element, ElementContent, RootContent } from 'hast';
 
 // Syntax highlighting for the workflow log via raw 24-bit ANSI escapes
-// (`\x1b[38;2;R;G;Bm`), which GitHub's Actions log viewer renders. The escapes
-// are emitted unconditionally: the log is a pipe, not a TTY, so any
-// supports-color style autodetection (chalk & co.) would strip every color.
+// (`\x1b[38;2;R;G;Bm`), which GitHub's Actions log viewer renders.
 
 /** 24-bit foreground SGR sequence for a `#rrggbb` color. */
 function fg(hex: string): string {
@@ -91,12 +89,9 @@ function render(nodes: ReadonlyArray<RootContent | ElementContent>, color: strin
 		if (node.type === 'text') {
 			emitText(node.value, color, out);
 		} else if (node.type === 'element') {
-			// An unmapped scope inherits the enclosing color (a doctag inside a
-			// comment stays comment-gray); 'subst' maps to PLAIN explicitly.
+			// An unmapped scope inherits the enclosing color (a doctag inside a comment stays comment-gray).
 			render(node.children, colorFor(scopeOf(node)) ?? color, out);
 		}
-		// lowlight trees contain only text and span elements; nothing else
-		// carries source text.
 	}
 }
 

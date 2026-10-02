@@ -54,17 +54,13 @@ runs:
 
     - name: Process files
       shell: bash
-      env:
-        INPUT_FILES: ${{ inputs.files }}
-        INPUT_PATH: ${{ inputs.path }}
-        INPUT_EXECUTABLE: ${{ inputs.executable }}
       run: |
         set -euo pipefail
-        cd "$INPUT_PATH"
+        cd "${{ inputs.path }}"
 
-        if [ -z "$INPUT_FILES" ]; then
-          if [ "$INPUT_EXECUTABLE" = "true" ]; then
-            echo "Setting +x on all files in $INPUT_PATH"
+        if [ -z "${{ inputs.files }}" ]; then
+          if [ "${{ inputs.executable }}" = "true" ]; then
+            echo "Setting +x on all files in ${{ inputs.path }}"
             find . -maxdepth 1 -type f -exec chmod +x {} +
           fi
         else
@@ -76,10 +72,10 @@ runs:
               dest="${line#*:}"
               echo "Renaming: $src -> $dest"
               mv "$src" "$dest"
-              [ "$INPUT_EXECUTABLE" = "true" ] && chmod +x "$dest"
+              [ "${{ inputs.executable }}" = "true" ] && chmod +x "$dest"
             else
-              [ "$INPUT_EXECUTABLE" = "true" ] && chmod +x "$line"
+              [ "${{ inputs.executable }}" = "true" ] && chmod +x "$line"
               echo "Ready: $line"
             fi
-          done <<< "$INPUT_FILES"
+          done <<< "${{ inputs.files }}"
         fi

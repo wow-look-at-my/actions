@@ -3,9 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import {buildKey, normalizeList} from '../../_shared/cache-key/lib';
 
-// v2 stores the run's exports beside its output paths. An entry written under
-// v1 carries no record of them, so a hit on one restores paths and leaves a
-// caller that reads an exported variable without it.
+// v2 stores the run's exports beside its output paths.
 export const SCHEME = 'cached-run-v2';
 
 export interface PlanEnv {
@@ -44,9 +42,7 @@ function required(env: PlanEnv, name: 'RUNNER_OS_NAME' | 'RUNNER_ARCH_NAME'): st
 
 /** `cargoDigest` is the dependency-set digest in cargo mode. It keys the entry beside the script. */
 export function plan(env: PlanEnv, cargoDigest = ''): Plan {
-	// A composite runner does not enforce `required: true`, so an omitted input
-	// arrives as an empty string. Taking it would cache whatever happened to be
-	// at those paths under a key no script produced.
+	// A composite runner does not enforce `required: true`, so an omitted input arrives as an empty string.
 	const script = env.RUN_SCRIPT ?? '';
 	if (script.trim() === '') {
 		throw new Error('the run input is empty. Give it a script, or call actions/cache directly.');
@@ -64,8 +60,6 @@ export function plan(env: PlanEnv, cargoDigest = ''): Plan {
 		fields: cargoDigest === '' ? {run: script, paths} : {run: script, paths, cargo: cargoDigest}
 	});
 
-	// Derived from the digest, so two cached-run calls in one job never share a
-	// sentinel and read each other's completion as their own.
 	const sentinel = path.join(env.RUNNER_TEMP ?? os.tmpdir(), `cached-run-${digest}.done`);
 	// A skipped run exports nothing.
 	const slot = crypto.createHash('sha256').update(JSON.stringify({label: env.EXTRA_KEY ?? '', paths}), 'utf8').digest('hex').slice(0, 16);

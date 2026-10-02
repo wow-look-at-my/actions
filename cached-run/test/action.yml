@@ -59,48 +59,38 @@ runs:
 
     - name: The entry round-tripped, and the hit skipped the script
       shell: bash
-      env:
-        COLD_HIT: ${{ steps.cold.outputs.cache-hit }}
-        COLD_SAVED: ${{ steps.cold.outputs.cache-saved }}
-        COLD_KEY: ${{ steps.cold.outputs.cache-key }}
-        WARM_HIT: ${{ steps.warm.outputs.cache-hit }}
-        WARM_SKIPPED: ${{ steps.warm.outputs.skipped }}
-        WARM_SAVED: ${{ steps.warm.outputs.cache-saved }}
-        WARM_KEY: ${{ steps.warm.outputs.cache-key }}
-        RESTORED: ${{ steps.disk.outputs.restored }}
-        RAN: ${{ steps.disk.outputs.ran }}
       run: |
         set -euo pipefail
         fail=0
-        if [ "$COLD_HIT" != "false" ]; then
-          echo "::error::a fresh namespace reported cache-hit=${COLD_HIT}, and a miss must read false"
+        if [ "${{ steps.cold.outputs.cache-hit }}" != "false" ]; then
+          echo "::error::a fresh namespace reported cache-hit=${{ steps.cold.outputs.cache-hit }}, and a miss must read false"
           fail=1
         fi
-        if [ "$COLD_SAVED" != "true" ]; then
+        if [ "${{ steps.cold.outputs.cache-saved }}" != "true" ]; then
           echo "::error::the cold run did not save a cache entry"
           fail=1
         fi
-        if [ "$WARM_KEY" != "$COLD_KEY" ]; then
-          echo "::error::one script and one path list produced two keys: ${COLD_KEY} then ${WARM_KEY}"
+        if [ "${{ steps.warm.outputs.cache-key }}" != "${{ steps.cold.outputs.cache-key }}" ]; then
+          echo "::error::one script and one path list produced two keys: ${{ steps.cold.outputs.cache-key }} then ${{ steps.warm.outputs.cache-key }}"
           fail=1
         fi
-        if [ "$WARM_HIT" != "true" ]; then
+        if [ "${{ steps.warm.outputs.cache-hit }}" != "true" ]; then
           echo "::error::the second call missed a key the first call saved"
           fail=1
         fi
-        if [ "$WARM_SKIPPED" != "true" ]; then
+        if [ "${{ steps.warm.outputs.skipped }}" != "true" ]; then
           echo "::error::skip-on-hit was set on an exact hit and the script ran anyway"
           fail=1
         fi
-        if [ "$WARM_SAVED" = "true" ]; then
+        if [ "${{ steps.warm.outputs.cache-saved }}" = "true" ]; then
           echo "::error::the warm run re-saved a key that was already present"
           fail=1
         fi
-        if [ "$RESTORED" != "yes" ]; then
+        if [ "${{ steps.disk.outputs.restored }}" != "yes" ]; then
           echo "::error::the hit restored no files, so the cached path never came back"
           fail=1
         fi
-        if [ "$RAN" != "no" ]; then
+        if [ "${{ steps.disk.outputs.ran }}" != "no" ]; then
           echo "::error::the uncached stamp is on disk, so the skipped script ran after all"
           fail=1
         fi
@@ -122,18 +112,14 @@ runs:
 
     - name: skip-on-hit off ran the script on a hit, and saved nothing new
       shell: bash
-      env:
-        HIT: ${{ steps.noskip.outputs.cache-hit }}
-        SKIPPED: ${{ steps.noskip.outputs.skipped }}
-        SAVED: ${{ steps.noskip.outputs.cache-saved }}
       run: |
         set -euo pipefail
         fail=0
-        if [ "$HIT" != "true" ]; then
-          echo "::error::the third call reported cache-hit=${HIT} on a key already in the cache"
+        if [ "${{ steps.noskip.outputs.cache-hit }}" != "true" ]; then
+          echo "::error::the third call reported cache-hit=${{ steps.noskip.outputs.cache-hit }} on a key already in the cache"
           fail=1
         fi
-        if [ "$SKIPPED" != "false" ]; then
+        if [ "${{ steps.noskip.outputs.skipped }}" != "false" ]; then
           echo "::error::skip-on-hit was off and the run was skipped anyway"
           fail=1
         fi
@@ -141,7 +127,7 @@ runs:
           echo "::error::skip-on-hit was off and the script still did not run"
           fail=1
         fi
-        if [ "$SAVED" = "true" ]; then
+        if [ "${{ steps.noskip.outputs.cache-saved }}" = "true" ]; then
           echo "::error::a key already in the cache was saved a second time"
           fail=1
         fi
@@ -166,24 +152,19 @@ runs:
 
     - name: The fallback restored the older entry and ran the script
       shell: bash
-      env:
-        COLD_KEY: ${{ steps.cold.outputs.cache-key }}
-        KEY: ${{ steps.fallback.outputs.cache-key }}
-        HIT: ${{ steps.fallback.outputs.cache-hit }}
-        MATCHED: ${{ steps.fallback.outputs.cache-matched-key }}
       run: |
         set -euo pipefail
         fail=0
-        if [ "$KEY" = "$COLD_KEY" ]; then
-          echo "::error::a changed script kept the key ${KEY}"
+        if [ "${{ steps.fallback.outputs.cache-key }}" = "${{ steps.cold.outputs.cache-key }}" ]; then
+          echo "::error::a changed script kept the key ${{ steps.fallback.outputs.cache-key }}"
           fail=1
         fi
-        if [ "$HIT" != "false" ]; then
-          echo "::error::a fallback reported cache-hit=${HIT}, and only an exact hit reads true"
+        if [ "${{ steps.fallback.outputs.cache-hit }}" != "false" ]; then
+          echo "::error::a fallback reported cache-hit=${{ steps.fallback.outputs.cache-hit }}, and only an exact hit reads true"
           fail=1
         fi
-        if [ "$MATCHED" != "$COLD_KEY" ]; then
-          echo "::error::restore-keys matched '${MATCHED}', not the older entry ${COLD_KEY}"
+        if [ "${{ steps.fallback.outputs.cache-matched-key }}" != "${{ steps.cold.outputs.cache-key }}" ]; then
+          echo "::error::restore-keys matched '${{ steps.fallback.outputs.cache-matched-key }}', not the older entry ${{ steps.cold.outputs.cache-key }}"
           fail=1
         fi
         if [ ! -f .cached-run-test/ran ]; then
@@ -207,11 +188,9 @@ runs:
 
     - name: The early exit tripped the sentinel gate
       shell: bash
-      env:
-        SAVED: ${{ steps.early.outputs.cache-saved }}
       run: |
         set -euo pipefail
-        if [ "$SAVED" = "true" ]; then
+        if [ "${{ steps.early.outputs.cache-saved }}" = "true" ]; then
           echo "::error::a script that never reached its last line still saved a cache entry"
           exit 1
         fi
@@ -231,26 +210,22 @@ runs:
       shell: bash
       env:
         ON_DEFAULT: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
-        ALLOWED: ${{ steps.gated.outputs.save-allowed }}
-        HIT: ${{ steps.gated.outputs.cache-hit }}
-        SAVED: ${{ steps.gated.outputs.cache-saved }}
-        SKIPPED: ${{ steps.gated.outputs.skipped }}
       run: |
         set -euo pipefail
         fail=0
-        if [ "$ALLOWED" != "$ON_DEFAULT" ]; then
-          echo "::error::save-allowed reads ${ALLOWED}, and this ref being the default branch reads ${ON_DEFAULT}"
+        if [ "${{ steps.gated.outputs.save-allowed }}" != "$ON_DEFAULT" ]; then
+          echo "::error::save-allowed reads ${{ steps.gated.outputs.save-allowed }}, and this ref being the default branch reads ${ON_DEFAULT}"
           fail=1
         fi
-        if [ "$ON_DEFAULT" = "true" ] && [ "$SAVED" != "true" ]; then
-          echo "::error::the default branch may write, and the cold run reported cache-saved=${SAVED}"
+        if [ "$ON_DEFAULT" = "true" ] && [ "${{ steps.gated.outputs.cache-saved }}" != "true" ]; then
+          echo "::error::the default branch may write, and the cold run reported cache-saved=${{ steps.gated.outputs.cache-saved }}"
           fail=1
         fi
-        if [ "$HIT" != "false" ]; then
-          echo "::error::a fresh namespace reported cache-hit=${HIT}, and a miss must read false"
+        if [ "${{ steps.gated.outputs.cache-hit }}" != "false" ]; then
+          echo "::error::a fresh namespace reported cache-hit=${{ steps.gated.outputs.cache-hit }}, and a miss must read false"
           fail=1
         fi
-        if [ "$SKIPPED" != "false" ]; then
+        if [ "${{ steps.gated.outputs.skipped }}" != "false" ]; then
           echo "::error::a miss was skipped, so the gated run never produced its paths"
           fail=1
         fi
@@ -258,7 +233,7 @@ runs:
           echo "::error::the gate stopped the script as well as the save"
           fail=1
         fi
-        if [ "$ON_DEFAULT" != "true" ] && [ "$SAVED" = "true" ]; then
+        if [ "$ON_DEFAULT" != "true" ] && [ "${{ steps.gated.outputs.cache-saved }}" = "true" ]; then
           echo "::error::a ref that may not write reported cache-saved=true"
           fail=1
         fi

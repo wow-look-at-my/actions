@@ -31,10 +31,8 @@ test('runRestorePrefix covers every key of the run and no other run', () => {
 	assert.equal(runRestorePrefix('123456'), 'cache-xfer-123456-');
 	assert.ok(handoffKey('go-build', '123456', '1').startsWith(runRestorePrefix('123456')));
 	assert.ok(handoffKey('other-name', '123456', '3').startsWith(runRestorePrefix('123456')));
-	// The dash after the run id anchors it: run 123 never matches run 1234.
 	assert.ok(!handoffKey('go-build', '1234', '1').startsWith(runRestorePrefix('123')));
-	// The old (name-first) layout never matches a run-scoped prefix — that
-	// mismatch is deliberate: nameless discovery must not see v1 entries.
+	// The (name-first) layout never matches a run-scoped prefix — that mismatch is deliberate.
 	assert.ok(!legacyHandoffKey('go-build', '123456', '1').startsWith(runRestorePrefix('123456')));
 });
 

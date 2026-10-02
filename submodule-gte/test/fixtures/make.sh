@@ -1,14 +1,5 @@
 #!/bin/sh
-# Build a superproject whose submodule gitlink moves as the named scenario says,
-# and print the superproject's path. The caller runs the action there.
-#
-# The submodule's own repository carries one line of history, one -> two, and an
-# orphan commit beside it. Which commit each side of the superproject names is
-# what each scenario picks.
-#
-# The gitlink is written with update-index rather than by checking the submodule
-# out at that commit. The action reads the tree, so the index is what decides,
-# and a checkout of every scenario costs the fixture nothing it uses.
+# Build a superproject whose submodule gitlink moves as the named scenario says, and print the superproject's path.
 set -eu
 
 scenario="$1"
@@ -28,22 +19,19 @@ git -C "$sub" add f
 git -C "$sub" commit -qm two
 two="$(git -C "$sub" rev-parse HEAD)"
 
-# An orphan commit, which is what a force-push over the submodule's branch
-# leaves behind. Plumbing builds it, so the fixture never leaves master.
+# An orphan commit, which is what a force-push over the submodule's branch leaves behind.
 blob="$(printf 'other\n' | git -C "$sub" hash-object -w --stdin)"
 tree="$(printf '100644 blob %s\tf\n' "$blob" | git -C "$sub" mktree)"
 orphan="$(git -C "$sub" commit-tree "$tree" -m other)"
 git -C "$sub" update-ref refs/heads/other "$orphan"
 
-# A commit no server serves: the action cannot compare against what it cannot
-# fetch, and that case must fail rather than pass quietly.
+# A commit no server serves: the action cannot compare against what it cannot fetch.
 blob="$(printf 'unreachable\n' | git -C "$sub" hash-object -w --stdin)"
 tree="$(printf '100644 blob %s\tf\n' "$blob" | git -C "$sub" mktree)"
 missing="$(git -C "$sub" commit-tree "$tree" -m unreachable)"
 
 git clone -q --bare "$sub" "$root/sub.git"
-# The unreachable commit is written after the clone, so the origin lacks it
-# while the checkout below still resolves the gitlink.
+# The unreachable commit is written after the clone.
 git -C "$sub" update-ref refs/heads/unreachable "$missing"
 
 case "$scenario" in
@@ -74,8 +62,7 @@ if [ -z "$base" ]; then
 	git -C "$sup" submodule add -q "$root/sub.git" sub
 fi
 git -C "$sup" update-index --cacheinfo "160000,$head,sub"
-# The branch carries a change of its own, so the head commit exists even when
-# the scenario leaves the gitlink where the base put it.
+# The branch carries a change of its own.
 printf 'head\n' >> "$sup/readme"
 git -C "$sup" add readme
 git -C "$sup" commit -qm head
