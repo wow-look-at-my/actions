@@ -8,30 +8,28 @@
 		},
 		{
 			"name": "no-all-builds-job",
-			"modules": ["no-all-builds-job/src/detect.ts"]
+			"modules": [],
+			"reason": "its rule is yaml/all-builds-job in wow-look-at-my/slopfix, which owns every rule common-checks applies."
 		},
 		{
 			"name": "yaml-comment-block",
 			"modules": [],
-			"reason": "its rule lives in wow-look-at-my/slopfix, which owns every prose and YAML rule the org applies and ships the action that runs them. common-checks calls that action directly with the settings the yaml-comment-block wrapper forwards, so this repository carries nothing importable to drift from it."
+			"reason": "its rule is yaml/comment-block in wow-look-at-my/slopfix, which owns every rule common-checks applies."
 		},
 		{
 			"name": "no-tests-in-yaml",
-			"modules": ["no-tests-in-yaml/src/scan.ts"]
+			"modules": [],
+			"reason": "its rule is yaml/test-in-workflow in wow-look-at-my/slopfix, which owns every rule common-checks applies."
 		},
 		{
 			"name": "push-excludes-tags",
 			"modules": [],
-			"reason": "its rule is an inline script inside a composite action, which nothing can import. Converting it to a node action to expose one eight-line rule cost 642 lines against 34, 386 of them a lockfile, on an action every repository in the org runs."
+			"reason": "its rule is yaml/push-tags in wow-look-at-my/slopfix, which owns every rule common-checks applies."
 		},
 		{
 			"name": "ste-lint",
-			"modules": [
-				"ste-lint/src/lint.ts",
-				"ste-lint/src/blocks.ts",
-				"ste-lint/src/ste100-banned-words.ts",
-				"ste-lint/src/guard.ts"
-			]
+			"modules": [],
+			"reason": "its rules are the ste and wrap categories in wow-look-at-my/slopfix, which owns every rule common-checks applies."
 		}
 	]
 }
