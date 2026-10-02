@@ -1,16 +1,8 @@
 name: Push Excludes Tags
-description: Fail CI when a workflow's push trigger names no ref filter, so tag pushes start it again
-
-inputs:
-  paths:
-    description: 'Paths to read, space separated. A directory is walked, so the step must run after the checkout.'
-    required: false
-    default: '.'
+description: Run the full slopfix check over the checkout, which fails a workflow whose push trigger names no ref filter
 
 runs:
   using: composite
   steps:
+    # Kept as a name every repository already calls. The slopfix action takes no input that narrows the check.
     - uses: wow-look-at-my/slopfix@master
-      with:
-        only: yaml/push-tags
-        paths: ${{ inputs.paths }}

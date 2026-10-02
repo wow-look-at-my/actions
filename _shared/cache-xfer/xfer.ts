@@ -8,11 +8,8 @@ import * as crypto from 'crypto';
 import {Transform} from 'stream';
 import {EnvelopeHeader, MAX_HEADER_BYTES, SUM_BYTES, encodeEnvelope, parseEnvelope} from './lib';
 
-/**
- * Thrown when an archive's payload does not match the digest its producer
- * recorded. A caller treats this as a miss: the bytes on hand are not the
- * bytes that were uploaded, and a build is better off making them again.
- */
+/** Thrown when an archive's payload does not match the digest its producer
+ * recorded. */
 export class CorruptArchiveError extends Error {
 	constructor(message: string) {
 		super(message);
@@ -30,14 +27,7 @@ function hashTap(hash: crypto.Hash): Transform {
 	});
 }
 
-// zstd is the fastest codec preinstalled on ALL GitHub-hosted runners:
-// per the actions/runner-images software manifests (checked 2026-07-17),
-// ubuntu-24.04, macos-15 (arm64), and windows-2025 all ship zstd 1.5.7,
-// while lz4 is preinstalled only on ubuntu. Negative compression levels
-// (--fast=N) trade ratio for speed, which is the right trade for a
-// same-run hand-off that lives minutes. No --long: raising the window
-// requires matching decompressor settings (the same portability reason
-// @actions/cache uses its 'zstd-without-long' mode everywhere).
+// zstd is the fastest codec preinstalled on ALL GitHub-hosted runners.
 const ZSTD_COMPRESS_ARGS = ['-T0', '--fast=2', '-c'];
 const ZSTD_DECOMPRESS_ARGS = ['-d', '-T0', '-c'];
 
@@ -62,37 +52,10 @@ async function waitExit(proc: ChildProcess, name: string, stderr: {read: () => s
 	}
 }
 
-/**
- * Every way the runtime reports "the child's stdin went away", none of which
- * means the transfer failed:
- *
- *   ERR_STREAM_PREMATURE_CLOSE — the pipe's `close` beat the writable's
- *                                `finish`, so pipeline()'s completion check
- *                                fired first
- *   EPIPE                      — a write reached a pipe with no reader
- *   ECANCELED                  — writes were still queued when the pipe was
- *                                torn down, so the runtime cancelled them
- *   ERR_STREAM_DESTROYED       — a write was issued after the teardown
- *   EOF                        — NT's spelling of EPIPE: a write reached a
- *                                pipe the child had closed
- */
+/** Every way the runtime reports "the child's stdin went away", none of which means the transfer failed. */
 const STDIN_TEARDOWN_CODES = new Set(['ERR_STREAM_PREMATURE_CLOSE', 'EPIPE', 'ECANCELED', 'ERR_STREAM_DESTROYED', 'EOF']);
 
-/**
- * Feed `source` into a child's stdin.
- *
- * The child's exit status is the authority on whether the transfer worked --
- * NOT the pipeline's teardown. When a child exits, the runtime closes its
- * stdin pipe, and any code above can surface even though every byte was
- * delivered and the child exited 0. Which event wins is scheduling luck, so
- * awaiting the pipeline verbatim fails a successful hand-off at random --
- * measured at ~2.5% of unpacks of a 16 MB payload, which is what a downstream
- * publish job hit on an otherwise green build.
- *
- * Swallowing them hides nothing: a child that really failed exits non-zero and
- * waitExit() reports it, with its stderr attached. Failures on the SOURCE side
- * (a truncated archive, a read error) carry other codes and still propagate.
- */
+/** Feed `source` into a child's stdin. */
 export async function pipeIntoStdin(source: NodeJS.ReadableStream, stdin: NodeJS.WritableStream): Promise<void> {
 	let bytes = 0;
 	source.on('data', (chunk: Buffer) => (bytes += chunk.length));
@@ -180,9 +143,7 @@ export async function packToFile(sourcePath: string, archivePath: string, name: 
 		throw new Error(`path '${sourcePath}' is neither a regular file nor a directory`);
 	}
 
-	// Resolved before anything is spawned: every pipe below is wired in one
-	// tick. An await between a child and its consumer lets the child finish
-	// first, and on NT node drops what an exited child left unread in a pipe.
+	// Resolved before anything is spawned: every pipe below is wired in one tick.
 	const tarSpec = header.mode === 'tar' ? await tarInvocation() : undefined;
 
 	const out = fs.createWriteStream(archivePath);
@@ -190,8 +151,7 @@ export async function packToFile(sourcePath: string, archivePath: string, name: 
 
 	const zstd = spawn('zstd', ZSTD_COMPRESS_ARGS, {stdio: ['pipe', 'pipe', 'pipe']});
 	const zstdErr = collectStderr(zstd);
-	// The digest covers the compressed payload, so a reader checks it before
-	// it spends anything on decompression.
+	// The digest covers the compressed payload, so a reader checks it before it spends anything on decompression.
 	const hash = crypto.createHash('sha256');
 	const stages: Array<Promise<void>> = [pipeline(zstd.stdout, hashTap(hash), out), waitExit(zstd, 'zstd', zstdErr)];
 
@@ -206,8 +166,7 @@ export async function packToFile(sourcePath: string, archivePath: string, name: 
 	}
 
 	await awaitStages(stages);
-	// The trailer goes on last, so its presence also states the archive was
-	// written through to the end.
+	// The trailer goes on last, so its presence also states the archive was written through to the end.
 	await fsp.appendFile(archivePath, hash.digest());
 	return header;
 }

@@ -23,11 +23,7 @@ interface RunResult {
 	exitCode: number;
 }
 
-// The action opens the "Compiling script" group by echoing the (highlighted)
-// script source. Strip just that echo from `stdout` so assertions about what
-// actually executed aren't satisfied by the mere echo of the script text;
-// `rawStdout` keeps it. The rest of the group (the type-check/transpile lines
-// and any ::error:: diagnostics) stays -- tests assert on those.
+// The action opens the "Compiling script" group by echoing the (highlighted) script source.
 const SOURCE_ECHO = /^::group::Compiling script\n[\s\S]*?(?=^Type-check passed\.$|^::error::)/m;
 
 async function runAction(script: string, env: Record<string, string> = {}): Promise<RunResult> {
@@ -38,8 +34,7 @@ async function runAction(script: string, env: Record<string, string> = {}): Prom
 		});
 		return { stdout: stdout.replace(SOURCE_ECHO, ''), rawStdout: stdout, stderr, exitCode: 0 };
 	} catch (err: unknown) {
-		// execFile rejects with an Error carrying the captured streams and the
-		// exit code, which no Node type declares.
+		// execFile rejects with an Error carrying the captured streams and the exit code, which no Node type declares.
 		const failure = err as { stdout?: string; stderr?: string; code?: number };
 		const stdout: string = failure.stdout ?? '';
 		return { stdout: stdout.replace(SOURCE_ECHO, ''), rawStdout: stdout, stderr: failure.stderr ?? '', exitCode: failure.code ?? 1 };
@@ -160,8 +155,6 @@ describe('typescript action', () => {
 	it('runs top-level await interleaved with statements (no IIFE wrapper needed)', async () => {
 		// The action's promise: write `await` at the top level alongside ordinary
 		// statements and control flow — no `(async () => { ... })()` ceremony.
-		// As a plain CommonJS module this would need an IIFE to await; here the
-		// script is the body of the action's async function, so it just runs.
 		const { stdout, exitCode } = await runAction(`
 			core.info("start");
 			const first = await Promise.resolve(10);
@@ -178,9 +171,7 @@ describe('typescript action', () => {
 
 	it('supports a bare top-level return (TS1108 regression)', async () => {
 		// A top-level `return` must type-check and run — it is legal inside the
-		// async-function body the script is wrapped in. Before the fix this
-		// failed type-check with "TS1108: A 'return' statement can only be used
-		// within a function body."
+		// async-function body the script is wrapped in.
 		const { stdout, exitCode } = await runAction(`
 			const skip = false;
 			if (skip) return;
@@ -281,9 +272,8 @@ describe('typescript action', () => {
 	});
 
 	it('accepts a comparison against an interpolated input, which reaches tsc as a literal (TS2367)', async () => {
-		// What the action receives once GitHub has evaluated `'${{ inputs.assert }}'`
-		// in a caller's script. The comparison is meaningful across runs; tsc sees
-		// only this run's value and would call it always-false.
+		// What the action receives once GitHub has evaluated `'${{ inputs.assert
+		// }}'` in a caller's script.
 		const { stdout, exitCode } = await runAction(
 			"const assert = 'false';\nif (assert === 'true') core.info('asserted');\ncore.info('ran');"
 		);
@@ -300,9 +290,6 @@ describe('typescript action', () => {
 		assert.notEqual(exitCode, 0);
 		assert.ok(stdout.includes('script:2:1:'), `expected the block reported at line 2, got:\n${stdout}`);
 		assert.ok(stdout.includes('consecutive `//` comment lines (2-3)'), stdout);
-		// The count alone reads as a threshold: a two-line block reported as "2
-		// consecutive" invites shortening rather than collapsing, so the message
-		// must also state the real limit.
 		assert.ok(
 			stdout.includes('The limit is ONE'),
 			`the message must name the limit, not just the count:\n${stdout}`
@@ -310,7 +297,7 @@ describe('typescript action', () => {
 		assert.ok(stdout.includes('Type-check passed.'), `type-check must still run:\n${stdout}`);
 		assert.ok(stdout.includes('ran'), `script must still execute:\n${stdout}`);
 		assert.ok(stdout.includes('Comment check failed'), stdout);
-		// the deferred failure message comes after the step actually ran
+		// the deferred failure message comes after the step ran
 		assert.ok(stdout.indexOf('ran') < stdout.indexOf('Comment check failed'), stdout);
 	});
 
@@ -347,8 +334,8 @@ describe('typescript action', () => {
 	});
 
 	it('maps type-error line numbers back to the user script', async () => {
-		// The wrapper adds lines before the user code; diagnostics must still
-		// point at the original `script:` line. The error is on line 2 here.
+		// The wrapper adds lines before the user code; diagnostics must still point
+		// at the `script:` line.
 		const { stdout, exitCode } = await runAction(
 			'core.info("line one");\nconst x: number = "nope";'
 		);
@@ -357,9 +344,8 @@ describe('typescript action', () => {
 	});
 
 	it('supports top-level ESM import of @actions modules (same instance as the global)', async () => {
-		// Top-level `import` used to be rejected (TS1232) when the whole script
-		// was an async-function body. Imports are now hoisted to module scope —
-		// and `@actions/*` imports resolve to the action's own instances.
+		// Top-level `import` used to be rejected (TS1232) when the whole script was
+		// an async-function body. Imports.
 		const { stdout, exitCode } = await runAction(
 			'import * as c from "@actions/core";\nc.info("esm:" + (c.info === core.info));'
 		);
@@ -374,8 +360,7 @@ describe('typescript action', () => {
 	});
 
 	it('combines a top-level import with a top-level return into the result output', async () => {
-		// A real ES module cannot contain a top-level `return`; an async function
-		// body cannot contain a top-level `import`. Both must work at once.
+		// A real ES module cannot contain a top-level `return`; an async function body cannot contain a top-level `import`.
 		const expected = JSON.parse(fs.readFileSync('package.json', 'utf-8')).version;
 		const { outputs, exitCode } = await runActionWithOutputs(`
 			import { readFile } from "node:fs/promises";
@@ -468,9 +453,9 @@ describe('typescript action', () => {
 	});
 
 	it('supports top-level ESM import of @actions/github (context + getOctokit)', async () => {
-		// The bundled stub must expose the module's real surface, not just the
-		// Context class — `getOctokit` and `context` have to type-check AND
-		// resolve to the action's own module instance at runtime.
+		// The bundled stub must expose the module's real surface, not the Context
+		// class — `getOctokit` and `context` have to type-check AND resolve to
+		// the action's own module instance at runtime.
 		const { stdout, exitCode } = await runAction(
 			[
 				'import { getOctokit } from "@actions/github";',
@@ -539,12 +524,7 @@ describe('typescript action', () => {
 
 	it('authenticates the injected octokit from the github-token input, not process.env.GITHUB_TOKEN (regression)', async () => {
 		// Regression for "Error: Parameter token or opts.auth is required": the
-		// runner does NOT expose GITHUB_TOKEN to the action process, so the
-		// pre-authenticated octokit must take its token from the `github-token`
-		// input (which defaults to ${{ github.token }}), never from process.env.
-		// Here the token arrives ONLY via the input while GITHUB_TOKEN is empty in
-		// the env; accessing octokit.rest must still succeed. Before the fix the
-		// proxy read process.env.GITHUB_TOKEN and getOctokit('') threw on first use.
+		// runner does NOT expose GITHUB_TOKEN to the action process.
 		const { stdout, exitCode } = await runAction(
 			'core.info("octokit-rest:" + typeof octokit.rest)',
 			{ 'INPUT_GITHUB-TOKEN': 'fake-token-from-input', GITHUB_TOKEN: '' }
@@ -837,7 +817,6 @@ describe('$ command runner', () => {
 			core.info("argv=" + r.stdout);
 		`);
 		assert.equal(exitCode, 0);
-		// 2 == [node, "a b c"]; a shell-split would yield 4 ([node, a, b, c]).
 		assert.ok(stdout.includes('argv=2|a b c'), stdout);
 	});
 
@@ -895,8 +874,7 @@ describe('$ command runner', () => {
 		`);
 		assert.equal(exitCode, 0);
 		assert.ok(stdout.includes('silent-captured=shh'), stdout);
-		// Silent suppresses both the "[command]" echo and the streamed stdout, so
-		// "shh" appears exactly once — from the core.info line above.
+		// Silent suppresses both the "[command]" echo and the streamed stdout.
 		assert.equal(stdout.split('shh').length - 1, 1, `expected 'shh' exactly once, got:\n${stdout}`);
 	});
 

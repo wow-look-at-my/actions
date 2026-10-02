@@ -1,5 +1,5 @@
 name: 'No Scripts Check'
-description: 'Ensures package.json files do not contain scripts sections (use justfiles instead)'
+description: 'Run the full slopfix check over the checkout, which fails a package.json with a scripts section (use justfiles instead)'
 author: 'PazerOP'
 
 branding:
@@ -9,7 +9,5 @@ branding:
 runs:
   using: composite
   steps:
-    # A repository rule judges the tree only from the repository root, so the step takes no path.
+    # Kept as a name every repository already calls. The slopfix action takes no input that narrows the check.
     - uses: wow-look-at-my/slopfix@master
-      with:
-        only: repo/package-scripts

@@ -2,59 +2,7 @@ import * as core from '@actions/core';
 import * as fsp from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
-// Internal modules of the pinned @actions/cache (exact version in
-// package.json; bundled into dist/ at release). These internals — not the
-// public restoreCache() — are what let us send our own (key, version) pair:
-// the twirp v2 cache service takes both as plain request parameters, and
-// the path-derived version hash is purely client-side convention. Driving
-// these endpoints directly with the job's ACTIONS_RUNTIME_TOKEN is
-// established practice (docker buildx `--cache-from type=gha` and sccache's
-// GHA backend speak to the same service).
-//
-// Known risk, deliberately accepted rather than mitigated: this protocol is
-// undocumented and GitHub has changed it before — the legacy REST flavor
-// was shut off in 2025 in favor of this twirp service. A bundled pin cannot
-// protect against a server-side shutdown; when the protocol moves again,
-// this action breaks LOUDLY (RPC errors → failed jobs, never silent
-// corruption) until @actions/cache is bumped here and the action
-// republished. The actual containment is the release model, not the pin:
-// every consumer rides the moving `<name>#latest` tags, so the fix lands
-// org-wide from this one repo without touching consumer workflows — unlike
-// 2025, where every action pinning an old @actions/cache had to update
-// independently. The pin/bundle itself just keeps releases hermetic and
-// reviewable.
-//
-// Verified against @actions/cache 5.2.0 sources:
-//   - internalCacheTwirpClient (lib/internal/shared/cacheTwirpClient.js:171,
-//     auth via getRuntimeToken() = ACTIONS_RUNTIME_TOKEN at :34, base URL via
-//     config.getCacheServiceURL() = ACTIONS_RESULTS_URL at :35) — both env
-//     vars are injected by the runner into every job step; no workflow
-//     `permissions:` needed (the cache does not use GITHUB_TOKEN).
-//   - GetCacheEntryDownloadURL({key, restoreKeys, version}) ->
-//     {ok, signedDownloadUrl, matchedKey}
-//     (lib/generated/results/api/v1/cache.d.ts). !ok is a miss; the service
-//     resolves the exact key first, then the restore keys by prefix — the
-//     flow mirrors restoreCacheV2 in lib/cache.js.
-//   - cacheHttpClient.downloadCache(signedDownloadUrl, archivePath,
-//     {useAzureSdk: false, concurrentBlobDownloads: true}) routes Azure blob
-//     URLs to downloadUtils.downloadCacheHttpClientConcurrent
-//     (lib/internal/cacheHttpClient.js, downloadCache). These are upstream's
-//     own defaults (lib/options.js), and the dispatcher comment there says
-//     the concurrent HttpClient path exists "to work around blob SDK issue".
-//     We pass them EXPLICITLY (not by omitting the argument) to document
-//     that the Azure SDK path (downloadCacheStorageSDK) is deliberately
-//     avoided: its response-stream teardown can reject with Node's
-//     ERR_STREAM_PREMATURE_CLOSE after every byte has already arrived
-//     ("Received ... (100.0%)" then "Premature close"), and nothing retries
-//     it — downloadCache is called once, so the blip fails the whole job
-//     (seen in prod 2026-07-19: github-state-mirror run 29669934747; the
-//     rerun restored the same entry fine). The concurrent path downloads
-//     4 MiB ranged segments each wrapped in downloadSegmentRetry (5 retries
-//     + a 30s per-attempt timeout), which absorbs exactly this class of
-//     transient stream failure.
-//   - config.getCacheServiceVersion() (lib/internal/config.js:18-24) gates
-//     v2 on the runner-set ACTIONS_CACHE_SERVICE_V2 flag and always reports
-//     v1 on GHES; this action supports only the v2 service (github.com).
+// Internal modules of the pinned @actions/cache (exact version in package.json; bundled into dist/ at release).
 import * as cacheHttpClient from '@actions/cache/lib/internal/cacheHttpClient';
 import {getCacheServiceVersion} from '@actions/cache/lib/internal/config';
 import {internalCacheTwirpClient} from '@actions/cache/lib/internal/shared/cacheTwirpClient';
@@ -139,10 +87,9 @@ async function resolveNamed(twirpClient: TwirpClient, name: string, runId: strin
 	let lookup = await twirpClient.GetCacheEntryDownloadURL({key, restoreKeys: [restorePrefix], version: handoffVersion()});
 	let legacy = false;
 	if (!lookup.ok) {
-		// TRANSITION fallback (remove after the v2 rollout): a producer still
-		// on the pre-v2 cache-upload saved under the name-first layout and the
-		// v1 version. #latest tags move on merge, so a new consumer can race
-		// an old producer mid-rollout; this keeps that window unbroken.
+		// TRANSITION fallback (remove after the v2 rollout): a producer still on
+		// the pre-v2 cache-upload saved under the name-first layout and the v1
+		// version. #latest tags move on merge.
 		lookup = await twirpClient.GetCacheEntryDownloadURL({
 			key: legacyHandoffKey(name, runId, runAttempt),
 			restoreKeys: [legacyHandoffRestorePrefix(name, runId)],
@@ -156,16 +103,11 @@ async function resolveNamed(twirpClient: TwirpClient, name: string, runId: strin
 	return {lookup, name, legacy, miss: missOutcome(name, key, restorePrefix, failIfMissing)};
 }
 
-/**
- * Nameless mode: discover this run's single hand-off by the run-scoped
- * prefix. The REST listing (best-effort — it needs a github-token with
- * `actions: read`, which the twirp runtime token is not) is the ambiguity
- * guard: two or more distinct names in this run is a HARD error naming the
- * candidates, never a silent pick. When listing is unavailable the newest
- * run-scoped entry is restored and a warning says the check was skipped.
- * There is deliberately NO legacy-layout fallback here: a nameless
- * old-layout prefix search is exactly the cross-run bug v2 fixed.
- */
+/** Nameless mode: discover this run's single hand-off by the run-scoped
+ * prefix. When listing is unavailable the newest run-scoped entry is
+ * restored and a warning says the check was skipped. There is deliberately
+ * NO legacy-layout fallback here: a nameless old-layout prefix search is
+ * exactly the cross-run bug v2 fixed. */
 async function resolveNameless(twirpClient: TwirpClient, runId: string, runAttempt: string, failIfMissing: boolean): Promise<Resolution | 'ambiguous'> {
 	const runPrefix = runRestorePrefix(runId);
 	let discovered: string | undefined;
@@ -208,9 +150,7 @@ async function run(): Promise<void> {
 		validateName(nameInput);
 	}
 
-	// Artifact parity: the destination is a real directory of the consumer's
-	// choosing, defaulting to the workspace. Nothing about it needs to match
-	// what the producer passed to cache-upload.
+	// Artifact parity: the destination is a real directory of the consumer's choosing, defaulting to the workspace.
 	const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
 	const destination = path.resolve(workspace, expandTilde(pathInput || '.'));
 
@@ -247,8 +187,7 @@ async function run(): Promise<void> {
 	const archivePath = path.join(tempDir, 'handoff.wxfr');
 	let resolvedName: string;
 	try {
-		// Explicitly upstream's own defaults, NOT the Azure SDK path — see the
-		// downloadCache note in the header comment for why.
+		// Explicitly upstream's own defaults, NOT the Azure SDK path — see the downloadCache note in the header comment for why.
 		await cacheHttpClient.downloadCache(resolved.lookup.signedDownloadUrl, archivePath, {useAzureSdk: false, concurrentBlobDownloads: true});
 		let header;
 		try {
@@ -257,9 +196,7 @@ async function run(): Promise<void> {
 			if (!(error instanceof CorruptArchiveError)) {
 				throw error;
 			}
-			// The bytes on hand are not the bytes that were uploaded. A cache
-			// holds a copy of work, so the job makes the work again rather than
-			// stopping: this reports a miss and says why.
+			// The bytes on hand are not the bytes that were uploaded.
 			core.warning(`${error.message}. Treating hand-off ${matchedKey} as a miss.`);
 			core.setOutput('cache-hit', 'false');
 			core.setOutput('cache-matched-key', '');
@@ -267,8 +204,7 @@ async function run(): Promise<void> {
 			core.setOutput('name', '');
 			return;
 		}
-		// The envelope is the authority on the name (v1 archives, reachable
-		// only via the named legacy fallback, predate the field).
+		// The envelope is the authority on the name.
 		resolvedName = header.name ?? resolved.name ?? nameFromKey(matchedKey, runId) ?? '';
 		core.info(`Restored hand-off '${resolvedName}' (${header.mode}) into ${destination}`);
 	} finally {
@@ -279,8 +215,7 @@ async function run(): Promise<void> {
 		core.notice(`cache-download picked hand-off '${resolvedName}' for this run (key ${matchedKey})`);
 	}
 
-	// Exact hit = this attempt's own key (either layout during the
-	// TRANSITION); a prefix match means an earlier attempt's entry.
+	// Exact hit = this attempt's own key (either layout during the TRANSITION); a prefix match means an earlier attempt's entry.
 	const exactHit = resolvedName !== '' && (matchedKey === handoffKey(resolvedName, runId, runAttempt) || matchedKey === legacyHandoffKey(resolvedName, runId, runAttempt));
 	if (!exactHit) {
 		core.info('Matched an earlier attempt of this run');

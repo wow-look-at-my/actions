@@ -1,16 +1,8 @@
 name: ste-lint
-description: Run slopfix's hard-wrap and STE rules on the repository's markdown, and fail on any finding
-
-inputs:
-  paths:
-    description: 'Paths to read, space separated. A directory is walked, so the step must run after the checkout.'
-    required: false
-    default: '.'
+description: Run the full slopfix check over the checkout, which includes the hard-wrap and STE rules on the repository's markdown
 
 runs:
   using: composite
   steps:
+    # Kept as a name every repository already calls. The slopfix action takes no input that narrows the check.
     - uses: wow-look-at-my/slopfix@master
-      with:
-        only: ste,wrap
-        paths: ${{ inputs.paths }}

@@ -1,57 +1,4 @@
-/**
- * ESLint rule: no-callable-primitive-intersection
- * --------------------------------------------------------------------------
- * Flags a TypeScript *type definition* that intersects a primitive
- * (`string` / `number` / `boolean` / `bigint`, or a string/number/boolean
- * literal type) with an inline object type that contains a CALLABLE member
- * (a method, call/construct signature, or a function-typed property).
- *
- *   type OutputStream = string & { json<T>(): T };   // <-- flagged
- *
- * WHY THIS IS A BUG MAGNET
- * ------------------------
- * A callable member (`json<T>(): T`) cannot exist on a primitive value -- a raw
- * `string` has no own callable properties. To satisfy the type at runtime, the
- * value MUST be a boxed wrapper object (`Object.assign(new String(value), {...})`).
- * That boxed object lies about being a primitive:
- *
- *   - `typeof boxed === 'object'`, not `'string'`        (breaks strict typeof APIs)
- *   - `boxed === "x"` is ALWAYS `false`                  (reference vs. primitive)
- *   - `fs.writeFileSync(path, boxed)` and other native   (they expect a real string
- *     APIs misbehave or throw                              or Buffer, not a String obj)
- *
- * This is the exact root cause of the `out.stdout === "x"` / `fs.writeFileSync`
- * class of bugs.
- *
- * WHY *CALLABLE-ONLY* BY DEFAULT (avoiding false positives)
- * ---------------------------------------------------------
- * The classic SAFE "phantom brand" / nominal-typing pattern --
- *
- *   type UserId = string & { readonly __brand: unique symbol };
- *
- * -- keeps the runtime value a genuine primitive. The brand member is purely a
- * compile-time fiction; it is never materialized, so a `UserId` really is a
- * `string` at runtime and all primitive semantics hold. Intersection-with-object
- * is therefore NOT inherently dangerous -- only the presence of a member that
- * *must exist at runtime as a callable* is. So the default keys on a callable
- * member, not on intersection-with-object in general, and the safe brand stays
- * clean.
- *
- * The `requireCallable: false` ("blunt") option broadens to flag a primitive
- * intersected with ANY non-empty inline object members. That WILL flag
- * legitimate phantom brands (a false positive), which is exactly why it is
- * opt-in and the default is callable-only.
- *
- * AST-ONLY -- no type information required
- * ---------------------------------------
- * This rule uses only AST selectors (no `parserServices` / type-checker), so it
- * needs no `tsconfig` and no `parserOptions.project`. Consequence: it can only
- * inspect INLINE object literal parts (`string & { ... }`). A primitive
- * intersected with a NAMED interface reference (`string & SomeInterface`) cannot
- * be resolved without type info and is NOT flagged -- see the caveats in the
- * README. (The companion type-aware comparison rule and the `no-new-wrappers`
- * boxing guard cover the runtime/usage side regardless.)
- */
+/** ESLint rule. */
 
 'use strict';
 
@@ -63,20 +10,13 @@ const PRIMITIVE_KEYWORDS = new Set([
   'TSBigIntKeyword',
 ]);
 
-/**
- * Is this intersection member a "primitive" for our purposes?
- *  - one of the keyword primitives above, OR
- *  - a TSLiteralType whose literal value is a string / number / boolean
- *    (e.g. `"x"`, `3`, `true`). A `null`/`undefined`/regex/bigint literal is
- *    intentionally NOT treated as a primitive here (the spec lists only the four
- *    keywords plus string/number/boolean literals).
- */
+/** Is this intersection member a "primitive" for our purposes? */
 function isPrimitiveMember(node) {
   if (PRIMITIVE_KEYWORDS.has(node.type)) return true;
   if (node.type === 'TSLiteralType') {
     const lit = node.literal;
-    // String / numeric / boolean literal => `lit.value` is a JS string/number/boolean.
-    // (A bigint literal yields `typeof value === 'bigint'`; a regex/null does not match.)
+    // String / numeric / boolean literal => `lit.value` is a JS
+    // string/number/boolean.
     if (lit && lit.type === 'Literal') {
       const t = typeof lit.value;
       return t === 'string' || t === 'number' || t === 'boolean';
@@ -85,14 +25,11 @@ function isPrimitiveMember(node) {
   return false;
 }
 
-/**
- * Does a single object *member* node constitute a CALLABLE member?
- *   - TSMethodSignature              ->  `foo(): T`
- *   - TSCallSignatureDeclaration     ->  `(): T`
- *   - TSConstructSignatureDeclaration->  `new (): T`
- *   - TSPropertySignature whose value annotation is a
- *       TSFunctionType / TSConstructorType  ->  `run: () => void` / `make: new () => T`
- */
+/** Does a single object *member* node constitute a CALLABLE member? - TSMethodSignature
+ * -> `foo(): T` - TSCallSignatureDeclaration -> `(): T` -
+ * TSConstructSignatureDeclaration-> `new (): T` - TSPropertySignature whose value
+ * annotation is a TSFunctionType / TSConstructorType -> `run: () => void` / `make: new
+ * () => T` */
 function isCallableMember(member) {
   switch (member.type) {
     case 'TSMethodSignature':
@@ -100,8 +37,7 @@ function isCallableMember(member) {
     case 'TSConstructSignatureDeclaration':
       return true;
     case 'TSPropertySignature': {
-      // `prop: <type>` parses as a TSPropertySignature whose `.typeAnnotation`
-      // is a TSTypeAnnotation wrapper; the real type is one level deeper.
+      // `prop: <type>` parses as a TSPropertySignature whose `.typeAnnotation` is a TSTypeAnnotation wrapper.
       const inner = member.typeAnnotation && member.typeAnnotation.typeAnnotation;
       return !!inner && (inner.type === 'TSFunctionType' || inner.type === 'TSConstructorType');
     }
@@ -110,22 +46,11 @@ function isCallableMember(member) {
   }
 }
 
-/**
- * Given an object-ish intersection member, decide whether it is "object members
- * worth flagging" under the current options.
- *
- * Returns one of:
- *   'callable'  -> contains at least one callable member
- *   'nonempty'  -> has >=1 member but none callable (only matters in blunt mode)
- *   null        -> not an object member type, or an empty `{}`
- *
- * Handles:
- *   - TSTypeLiteral : an inline `{ ... }` with a `members` array.
- *   - TSMappedType  : `{ [K in U]: V }`. A mapped type has a single value type
- *                     annotation (`.typeAnnotation`); if that value is a
- *                     function/constructor type, the mapped type produces
- *                     callable members.
- */
+/** Given an object-ish intersection member, decide whether it is "object members
+ * worth" under the current options. Returns one of: 'callable' -> contains at
+ * least one callable member 'nonempty' -> has >=1 member but none callable (only
+ * matters in blunt mode) null -> not an object member type, or an empty `{}`
+ * Handles: - TSTypeLiteral : an inline `{ ... }` with a `members` array. */
 function classifyObjectMember(node) {
   if (node.type === 'TSTypeLiteral') {
     if (!node.members || node.members.length === 0) return null; // empty `{}`
