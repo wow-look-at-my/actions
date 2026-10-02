@@ -34,7 +34,7 @@ runs:
       with:
         project: slopfix
 
-    # slopfix check --permission owns the whole check. This step runs it and reports the answer.
+    # slopfix check workflow-permission owns the whole check. This step runs it and reports the answer.
     - id: resolve
       name: Resolve the permission from the job and workflow blocks
       uses: wow-look-at-my/actions@typescript#latest
@@ -46,7 +46,7 @@ runs:
             fs.copyFileSync(binary, binary + '.exe');
             binary += '.exe';
           }
-          const args = ['check', '--json', '--permission', ${{ toJSON(inputs.permission) }}, '--level', ${{ toJSON(inputs.level) }}];
+          const args = ['check', 'workflow-permission', '--json', '--permission', ${{ toJSON(inputs.permission) }}, '--level', ${{ toJSON(inputs.level) }}];
           const [command, argv] = process.platform === 'win32' ? [binary, args] : ['sh', [binary, ...args]];
           const answer = JSON.parse(child_process.execFileSync(command, argv, {encoding: 'utf8'})) as {
             granted: boolean;
