@@ -14,7 +14,11 @@
 		{
 			"name": "yaml-comment-block",
 			"modules": [],
+<<<<<<< HEAD
 			"reason": "its rule is yaml/comment-block in wow-look-at-my/slopfix, which owns every rule common-checks applies."
+=======
+			"reason": "its rule lives in wow-look-at-my/slopfix, which owns every prose and YAML rule the org applies and ships the action that runs them. common-checks calls that action directly with the settings the yaml-comment-block wrapper forwards, so this repository carries nothing importable to drift from it."
+>>>>>>> origin/master
 		},
 		{
 			"name": "no-tests-in-yaml",
