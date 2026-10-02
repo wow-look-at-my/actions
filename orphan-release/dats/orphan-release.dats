@@ -1,6 +1,6 @@
-# orphan-release.sh publishes two tags: a numbered one that is immutable and
-# unique to the run, and #latest, a pointer every concurrent release moves.
-# GitHub applies one push in one ref transaction, so while both refs travelled
+# orphan-release.sh publishes tags: a numbered one that is immutable and unique
+# to the run, and #latest, a pointer every concurrent release moves. GitHub
+# applies one push in one ref transaction, so while both refs travelled
 # together, a run that lost the race for #latest had its whole push rejected --
 # taking down the numbered tag, which was never contested. The release then had
 # no tag at all, and callers papered over it by repeating the step.
@@ -8,7 +8,7 @@
 # A real race is not reproducible on demand. The remote refuses the pointer
 # instead: a pre-receive hook that rejects #latest stands in for losing the
 # race, and the question is only what happens to the OTHER ref in the same
-# push. Run this suite against the one-push version and the two
+# push. Run this suite against the one-push version and both
 # NUMBERED_TAG_PUBLISHED cases fail.
 #
 # Every push goes to a local bare repository, so this needs no token and no

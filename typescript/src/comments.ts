@@ -6,7 +6,7 @@ export interface CommentBlock {
 	endLine: number;
 }
 
-/** Start offset of every line in `text` (index 0 = line 1). */
+/* */
 function lineStarts(text: string): number[] {
 	const starts = [0];
 	for (let i = 0; i < text.length; i++) {
@@ -45,10 +45,7 @@ function commentOnlyLines(script: string): number[] {
 	return lines;
 }
 
-/**
- * Runs of two or more consecutive `//`-only lines — the shape a paragraph of
- * prose takes once it is pasted into a script.
- */
+/* */
 export function findCommentBlocks(script: string): CommentBlock[] {
 	const lines = commentOnlyLines(script);
 	const blocks: CommentBlock[] = [];

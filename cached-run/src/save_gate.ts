@@ -1,11 +1,4 @@
-// Which refs may WRITE a cache entry. Reading is untouched: GitHub already
-// lets any branch restore the default branch's entries, so a feature branch
-// keeps every hit it had.
-//
-// A branch that writes gets its own scope, which only that branch can read.
-// The entry costs the repository's shared cache budget and serves one ref. A
-// multi-gigabyte dependency tree saved by every feature branch evicts the
-// default branch's copy, which is the one every branch reads.
+// Which refs may WRITE a cache entry.
 
 /** Which refs the caller allows to write an entry. */
 export type SaveOn = 'default-branch' | 'any';
@@ -37,8 +30,7 @@ export function parseSaveOn(raw: string | undefined): SaveOn {
 	if ((SAVE_ON_VALUES as string[]).includes(value)) {
 		return value as SaveOn;
 	}
-	// A typo must not quietly pick a policy. Which refs may write is the whole
-	// point of the input, and both answers look like success from the outside.
+	// A typo must not quietly pick a policy.
 	throw new Error(
 		`save-on is '${value}', which is not one of ${SAVE_ON_VALUES.join(', ')}`
 	);
@@ -53,9 +45,7 @@ export function saveGate(env: SaveGateEnv): SaveGate {
 	const defaultBranch = (env.DEFAULT_BRANCH ?? '').trim();
 	if (defaultBranch === '') {
 		// The event payload carries no repository, so which branch is the default
-		// one cannot be read. Refusing the write is the safe side: the cost is a
-		// recompile, and allowing it spends the budget this input exists to
-		// protect. Saying so is what keeps that from being a silent stand-down.
+		// one cannot be read.
 		return {
 			allowed: false,
 			reason:

@@ -46,9 +46,7 @@ export async function run(options: RunOptions): Promise<void> {
 	);
 	core.info(`Default branch: ${defaultBranch}`);
 
-	// Judge existence by the default branch, never by the checkout. A feature
-	// branch that deletes an action must not delete that action's tags on its
-	// own CI run, and only the default branch decides what still exists.
+	// Judge existence by the default branch, never by the checkout.
 	await git(
 		[
 			'fetch',
@@ -112,9 +110,8 @@ export async function run(options: RunOptions): Promise<void> {
 			continue;
 		}
 		core.info(`Deleting stale tag: ${tag} (${why})`);
-		// Only the ref-update race is tolerated. Two cleanup runs can target the
-		// same tag, and the loser's push must not fail the job. Every other
-		// push failure surfaces as a warning, never as silent success.
+		// Only the ref-update race is tolerated. Cleanup runs can target the
+		// same tag, and the loser's push must not fail the job.
 		const code = await exec('git', ['push', 'origin', '--delete', `refs/tags/${tag}`], {
 			cwd,
 			ignoreReturnCode: true,
