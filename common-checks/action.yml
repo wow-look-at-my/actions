@@ -31,8 +31,12 @@ runs:
     - if: steps.claim.outputs.first == 'true'
       uses: wow-look-at-my/actions@no-all-builds-job#latest
 
+    # The rule yaml-comment-block forwards to, called here directly with that action's settings.
     - if: steps.claim.outputs.first == 'true'
-      uses: wow-look-at-my/actions@yaml-comment-block#latest
+      uses: wow-look-at-my/slopfix@master
+      with:
+        only: yaml/comment-block
+        paths: '.'
 
     - if: steps.claim.outputs.first == 'true'
       uses: wow-look-at-my/actions@no-tests-in-yaml#latest
