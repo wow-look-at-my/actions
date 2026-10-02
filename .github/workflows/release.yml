@@ -26,8 +26,7 @@ jobs:
         uses: ./typescript
         with:
           script: |
-            const dirs = ['no-tests-in-yaml', 'no-scripts-action', 'tag-cleanup', 'no-all-builds-job',
-              'ste-lint', 'cache-upload', 'cache-download', 'cache-cleanup', 'run-once',
+            const dirs = ['tag-cleanup', 'cache-upload', 'cache-download', 'cache-cleanup', 'run-once',
               'orphan-release', 'submodule-gte', 'cached-apt', 'cached-run'];
             await Promise.all(dirs.map(dir => $`just build`.cwd(dir)));
       # This job runs every common-check below from THIS checkout, so it claims the once-per-run slot: otherwise a downstream action pulls in the PUBLISHED copy and the repo cannot publish a fix for its own check.
@@ -41,21 +40,18 @@ jobs:
             orphan-release/dats/
             secret-server/dats/
       # An action with tests of its own keeps them in its test composite; a guard is dogfooded by running it.
-      - uses: ./no-all-builds-job/test
       - uses: ./submodule-gte/test
+      # slopfix walks the tree itself, so a fixture that breaks a rule on purpose carries a suffix the walk does not select.
+      - uses: ./no-all-builds-job
       - uses: ./no-tests-in-yaml
       - uses: ./has-permission
         with:
           permission: contents
           assert: 'true'
       - uses: ./ste-lint
-        with:
-          files: '*.md docs/*.md .github/workflows/*.md */README.md */CLAUDE.md'
       - uses: ./no-scripts-action
       - uses: ./tag-cleanup
-      # slopfix walks the tree itself, so a fixture that breaks a rule on purpose carries a suffix the walk does not select.
       - uses: ./yaml-comment-block
-      # Dogfooded so its inline script is COMPILED here. An inline script is checked where it runs, so without this the only place it fails is a consumer's build.
       - uses: ./push-excludes-tags
       - uses: ./typescript/test
       - uses: ./_shared/cache-xfer/test
