@@ -278,7 +278,7 @@ ts0 supplies the compiler, the bundler and `@types/node`, so an action's `packag
 ### [YAML Comment Block](yaml-comment-block/)
 
 ```yml
-# Fail CI when a GitHub Actions YAML file carries more than 1 comment line in a row.
+# Run the full slopfix check over the checkout, which includes the YAML comment-block rule.
 - uses: wow-look-at-my/actions@yaml-comment-block#latest
 ```
 
