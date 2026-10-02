@@ -1,0 +1,8 @@
+name: YAML Comment Block
+description: Run the full slopfix check over the checkout, which includes the YAML comment-block rule
+
+runs:
+  using: composite
+  steps:
+    # Kept as a name every repository already calls. The slopfix action takes no input that narrows the check.
+    - uses: wow-look-at-my/slopfix@master
