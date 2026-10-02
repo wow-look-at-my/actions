@@ -1,0 +1,13 @@
+name: 'No Scripts Check'
+description: 'Run the full slopfix check over the checkout, which fails a package.json with a scripts section (use justfiles instead)'
+author: 'PazerOP'
+
+branding:
+  icon: 'alert-circle'
+  color: 'orange'
+
+runs:
+  using: composite
+  steps:
+    # Kept as a name every repository already calls. The slopfix action takes no input that narrows the check.
+    - uses: wow-look-at-my/slopfix@master
