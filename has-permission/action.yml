@@ -28,27 +28,19 @@ outputs:
 runs:
   using: composite
   steps:
-    - id: download
-      name: Download slopfix
-      uses: wow-look-at-my/buildhost/.github/actions/buildhost-download@master
-      with:
-        project: slopfix
-
-    # slopfix check workflow-permission owns the whole check. This step runs it and reports the answer.
-    - id: resolve
+    # slopfix check workflow-permission owns the whole check. The slopfix action downloads and runs it.
+    - id: check
       name: Resolve the permission from the job and workflow blocks
+      uses: wow-look-at-my/slopfix@master
+      with:
+        args: check workflow-permission --json --permission ${{ inputs.permission }} --level ${{ inputs.level }}
+
+    - id: resolve
+      name: Report the answer
       uses: wow-look-at-my/actions@typescript#latest
       with:
         script: |
-          let binary: string = ${{ toJSON(steps.download.outputs.path) }};
-          // Windows runs an APE only under an .exe name. Every other OS runs it through sh.
-          if (process.platform === 'win32') {
-            fs.copyFileSync(binary, binary + '.exe');
-            binary += '.exe';
-          }
-          const args = ['check', 'workflow-permission', '--json', '--permission', ${{ toJSON(inputs.permission) }}, '--level', ${{ toJSON(inputs.level) }}];
-          const [command, argv] = process.platform === 'win32' ? [binary, args] : ['sh', [binary, ...args]];
-          const answer = JSON.parse(child_process.execFileSync(command, argv, {encoding: 'utf8'})) as {
+          const answer = JSON.parse(${{ toJSON(steps.check.outputs.stdout) }}) as {
             granted: boolean;
             level: string;
             source: string;
