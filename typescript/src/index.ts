@@ -19,7 +19,7 @@ import { actionsRoot, containerPath } from './container-path';
 type ShellArg = string | number | boolean | null | undefined | string[];
 
 /** A captured output stream: a `String` object that also carries a `.json()` helper. */
-// eslint-disable-next-line local/no-callable-primitive-intersection -- known: $ output is a boxed branded-primitive (the documented TS footgun); pending the primitive-string redesign
+// eslint-disable-next-line local/no-callable-primitive-intersection
 type OutputStream = string & { json<T = unknown>(): T };
 
 // eslint-disable-next-line @typescript-eslint/no-wrapper-object-types --
