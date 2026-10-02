@@ -118,12 +118,9 @@ function findGoobjOffset(fd: number, fileSize: number): number {
 	return -1;
 }
 
-// Extract source file paths and package paths from a Go build cache data file
-// by parsing the goobj binary format.
+// Extract source file paths and package paths from a Go build cache data file by parsing the goobj binary format.
 //
-// Go build cache -d files are Go archives containing:
-//. __.PKGDEF (export data)
-//. Go object entries with goobj binary format (magic "\x00go120ld")
+// Go build cache -d files are Go archives containing:. __.PKGDEF (export data). Go object entries with goobj binary format (magic "\x00go120ld")
 //
 // The goobj format (cmd/internal/goobj/objfile.go) has:
 //   Header: Magic() + Fingerprint() + Flags() + Offsets(NBlk*)
