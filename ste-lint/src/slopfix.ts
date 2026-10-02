@@ -53,11 +53,11 @@ export async function fetchSlopfix(url = process.env.SLOPFIX_URL || SLOPFIX_URL)
 	return path;
 }
 
-// Runs `slopfix report` on one document and answers its findings.
+// Runs `slopfix check --json` on one document and answers its findings.
 export function report(binary: string, name: string, text: string): Finding[] {
 	const [command, args] = process.platform === 'win32' ? [binary, [] as string[]] : ['sh', [binary]];
 	// The filter runs here rather than as --only, which rejects a rule ID an older slopfix lacks.
-	const out = execFileSync(command, [...args, 'report', '--path', name], {
+	const out = execFileSync(command, [...args, 'check', '--json', '--path', name], {
 		encoding: 'utf-8',
 		input: text,
 		maxBuffer: Infinity,
