@@ -1,4 +1,3 @@
-version: 1
 name: 'No Scripts Check'
 description: 'Ensures package.json files do not contain scripts sections (use justfiles instead)'
 author: 'PazerOP'
@@ -7,34 +6,10 @@ branding:
   icon: 'alert-circle'
   color: 'orange'
 
-inputs:
-  path:
-    description: 'Directory to check (defaults to repository root)'
-    required: false
-    default: '.'
-
-  exclude:
-    description: 'Glob patterns for directories to exclude (newline or comma separated)'
-    required: false
-    default: |
-      **/node_modules/**
-      **/.git/**
-
-  fail-on-violation:
-    description: 'Fail the action if violations are found'
-    required: false
-    default: 'true'
-
-outputs:
-  files-checked:
-    description: 'Number of package.json files checked'
-
-  files-with-scripts:
-    description: 'Number of package.json files with scripts sections'
-
-  violation-list:
-    description: 'JSON array of files with scripts sections'
-
 runs:
-  using: 'node24'
-  main: 'dist/index.js'
+  using: composite
+  steps:
+    # A repository rule judges the tree only from the repository root, so the step takes no path.
+    - uses: wow-look-at-my/slopfix@master
+      with:
+        only: repo/package-scripts
