@@ -22,8 +22,7 @@ type ShellArg = string | number | boolean | null | undefined | string[];
 // eslint-disable-next-line local/no-callable-primitive-intersection
 type OutputStream = string & { json<T = unknown>(): T };
 
-// eslint-disable-next-line @typescript-eslint/no-wrapper-object-types --
-// known: $ output is a boxed branded-primitive.
+// eslint-disable-next-line @typescript-eslint/no-wrapper-object-types
 function streamJson<T = unknown>(this: String): T {
 	return JSON.parse(this.toString()) as T;
 }
