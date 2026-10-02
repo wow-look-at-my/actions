@@ -1,15 +1,4 @@
-# !/usr/bin/env bash Prints the OIDC token GitHub issues for $AUDIENCE, read
-# from the runner's token endpoint.
-#
-# The endpoint does not always answer with JSON. It rate-limits a run whose
-# jobs all start together, and it serves an error page of its own during an
-# incident. A pipe straight into jq turns either answer into "jq: parse error"
-# and exit 5, which names neither the status nor the body. So read the status
-# first, and print what arrived when the status is not 2xx.
-#
-# A non-2xx status is also worth another request: the endpoint is reachable
-# and answering, and the next answer is usually the token. Retry on a fixed
-# interval, and let the step's own timeout bound the wait.
+# !/usr/bin/env bash Prints the OIDC token GitHub issues for $AUDIENCE, read from the runner's token endpoint.
 set -uo pipefail
 
 readonly RETRY_DELAY_SECONDS=5
@@ -35,8 +24,7 @@ while true; do
 			printf '%s\n' "${token}"
 			exit 0
 		fi
-		# A 200 carrying no token is the endpoint answering with something
-		# this script does not understand. Say what it was.
+		# Say what it was.
 		echo "::warning::attempt ${attempt}: the OIDC endpoint returned 200 with no .value: ${body}" >&2
 	else
 		echo "::warning::attempt ${attempt}: the OIDC endpoint returned HTTP ${status}: ${body}" >&2

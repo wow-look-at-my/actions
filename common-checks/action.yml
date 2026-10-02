@@ -16,5 +16,3 @@ runs:
     # The slopfix walk skips each submodule, because its prose and workflows belong to another repository.
     - if: steps.claim.outputs.first == 'true'
       uses: wow-look-at-my/slopfix@master
-      with:
-        only: yaml/all-builds-job,yaml/comment-block,yaml/test-in-workflow,yaml/push-tags,ste,wrap

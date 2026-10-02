@@ -172,21 +172,21 @@ ts0 supplies the compiler, the bundler and `@types/node`, so an action's `packag
 ### [no-all-builds-job](no-all-builds-job/)
 
 ```yml
-# Fail CI when any job is named all-builds — a known trick that shadows the org's required all-builds gate (required-builds-manager) in the GitHub UI.
+# Run the full slopfix check over the checkout, which fails a job named all-builds that shadows the org's required gate.
 - uses: wow-look-at-my/actions@no-all-builds-job#latest
 ```
 
 ### [No Scripts Check](no-scripts-action/)
 
 ```yml
-# Ensures package.json files do not contain scripts sections (use justfiles instead).
+# Run the full slopfix check over the checkout, which fails a package.json with a scripts section (use justfiles instead).
 - uses: wow-look-at-my/actions@no-scripts-action#latest
 ```
 
 ### [No Tests In YAML](no-tests-in-yaml/)
 
 ```yml
-# Fail CI when a GitHub Actions YAML file in the local call chain carries a test instead of invoking the repository's own suite.
+# Run the full slopfix check over the checkout, which fails a GitHub Actions YAML file that carries a test instead of invoking the repository's own suite.
 - uses: wow-look-at-my/actions@no-tests-in-yaml#latest
 ```
 
@@ -200,7 +200,7 @@ ts0 supplies the compiler, the bundler and `@types/node`, so an action's `packag
 ### [Push Excludes Tags](push-excludes-tags/)
 
 ```yml
-# Fail CI when a workflow's push trigger names no ref filter, so tag pushes start it again.
+# Run the full slopfix check over the checkout, which fails a workflow whose push trigger names no ref filter.
 - uses: wow-look-at-my/actions@push-excludes-tags#latest
 ```
 
@@ -233,7 +233,7 @@ ts0 supplies the compiler, the bundler and `@types/node`, so an action's `packag
 ### [ste-lint](ste-lint/)
 
 ```yml
-# Check the prose a change touches against the mechanical subset of ASD-STE100 Simplified Technical English — sentence length measured over whole sentences rather than wrapped lines, contractions, banned modal verbs, semicolons, comma splices, hard-wrapped paragraphs, and dictionary word choice.
+# Run the full slopfix check over the checkout, which includes the hard-wrap and STE rules on the repository's markdown.
 # Docs: https://raw.githubusercontent.com/wow-look-at-my/actions/refs/heads/master/ste-lint/README.md
 - uses: wow-look-at-my/actions@ste-lint#latest
 ```
@@ -278,7 +278,7 @@ ts0 supplies the compiler, the bundler and `@types/node`, so an action's `packag
 ### [YAML Comment Block](yaml-comment-block/)
 
 ```yml
-# Fail CI when a GitHub Actions YAML file carries more than 1 comment line in a row.
+# Run the full slopfix check over the checkout, which includes the YAML comment-block rule.
 - uses: wow-look-at-my/actions@yaml-comment-block#latest
 ```
 

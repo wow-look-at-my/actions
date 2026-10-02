@@ -131,8 +131,7 @@ test('a flipped payload byte is a CorruptArchiveError, not a codec error', async
 			await fsp.rm(dir, {recursive: true, force: true});
 		}
 	});
-	// Enough body that a flipped byte lands inside the payload, past the
-	// envelope header and well before the trailer.
+	// Enough body that a flipped byte lands inside the payload, past the envelope header and well before the trailer.
 	await fsp.writeFile(path.join(src, 'big.txt'), 'incompressible-ish '.repeat(4096));
 
 	const archive = path.join(work, 'archive.wxfr');
@@ -188,9 +187,7 @@ test('an archive carrying no digest is refused, never read unchecked', async t =
 	const archive = path.join(work, 'archive.wxfr');
 	await packToFile(src, archive, 'legacy-handoff');
 
-	// Rewrite it the way a producer without the field wrote it: the header
-	// loses `sum`, and the trailer goes with it. Reading one unchecked is the
-	// hole this refusal closes.
+	// Rewrite it the way a producer without the field wrote it: the header loses `sum`, and the trailer goes with it.
 	const bytes = await fsp.readFile(archive);
 	const {header, dataOffset} = await readEnvelope(archive);
 	const legacyHeader: Record<string, unknown> = {...header};
@@ -203,9 +200,7 @@ test('an archive carrying no digest is refused, never read unchecked', async t =
 
 // A child that exits 0 having read only a prefix of what we send closes its
 // stdin under the writer: EPIPE mid-write, or ERR_STREAM_PREMATURE_CLOSE when
-// the pipe's `close` beats the writable's `finish`. Both mean the child is
-// done, not that the transfer failed -- awaiting the raw pipeline here is what
-// failed ~2.5% of real 16 MB unpacks, with every byte extracted correctly.
+// the pipe's `close` beats the writable's `finish`.
 test('pipeIntoStdin resolves when the child exits 0 before draining its stdin', async () => {
 	for (let attempt = 0; attempt < 20; attempt++) {
 		const child = spawn('sh', ['-c', 'head -c 16 >/dev/null'], {stdio: ['pipe', 'ignore', 'ignore']});
@@ -227,7 +222,7 @@ test('pipeIntoStdin rethrows failures that are not a child closing its stdin', a
 
 // The race is scheduling-dependent, so one round-trip proves nothing; a batch
 // makes a reintroduced bare pipeline overwhelmingly likely to show up, and
-// every restore is checked byte-for-byte rather than just for absence of throw.
+// every restore is checked byte-for-byte rather than for absence of throw.
 test('repeated directory round-trips neither fail nor lose bytes', async t => {
 	const src = await tempDir();
 	const work = await tempDir();
@@ -237,8 +232,7 @@ test('repeated directory round-trips neither fail nor lose bytes', async t => {
 		}
 	});
 
-	// Big enough that tar/zstd stay busy across several pipe buffers; that is
-	// what opens the window between the child's exit and the writable's finish.
+	// Big enough that tar/zstd stay busy across several pipe buffers.
 	const bodies = new Map<string, Buffer>();
 	for (let i = 0; i < 4; i++) {
 		const body = Buffer.alloc(1024 * 1024, i + 1);

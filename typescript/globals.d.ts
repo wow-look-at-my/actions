@@ -6,32 +6,14 @@ declare const io: typeof import('@actions/io');
 
 type ShellArg = string | number | boolean | null | undefined | string[];
 
-/**
- * A captured output stream from a `$` command: a string that also carries a
- * `.json()` helper. Every ordinary string operation still works (`.trim()`,
- * `.split()`, `.includes()`, concatenation, template literals); `.json()`
- * parses the stream as JSON.
- *
- * Note: at runtime this is a boxed `String` object, so `typeof` is `'object'`
- * and a strict `===` against a string literal is `false` — use `.trim()`, loose
- * `==`, or `String(stream)` when you need the primitive for a comparison.
- */
-// eslint-disable-next-line local/no-callable-primitive-intersection -- known: $ output is a boxed branded-primitive (the documented TS footgun); pending the primitive-string redesign
+/** A captured output stream from a `$` command: a string that also carries a `.json()` helper. */
+// eslint-disable-next-line local/no-callable-primitive-intersection
 type OutputStream = string & {
-	/**
-	 * Parse this stream as JSON (throws if it is not valid JSON). Name the
-	 * shape you expect -- `json<{ tag: string }>()` -- or narrow the `unknown`
-	 * the parse returns.
-	 */
+	/** Parse this stream as JSON (throws if it is not valid JSON). */
 	json<T = unknown>(): T;
 };
 
-/**
- * Resolved result of awaiting a `$` command (zx-style). `toString()` returns
- * stdout with a single trailing newline trimmed, so the output can be
- * string-coerced inline (e.g. in a template literal); the `stdout` property is
- * the raw, untrimmed output.
- */
+/** Resolved result of awaiting a `$` command (zx-style). */
 interface ProcessOutput {
 	/** The command's full stdout (untrimmed), with a `.json()` helper. */
 	stdout: OutputStream;
@@ -43,14 +25,8 @@ interface ProcessOutput {
 	toString(): string;
 }
 
-/**
- * Lazy accessor for one stream of a not-yet-run `$` command — the value of the
- * builder's `.stdout` / `.stderr`. Awaiting it runs the command and resolves to
- * that stream (an {@link OutputStream}); `.json()` / `.text()` are paren-free
- * terminals. This is what lets `await $`cmd`.stdout.json()` work directly,
- * without the `(await ...)` wrapper that `await`'s loose precedence otherwise
- * forces.
- */
+/** Lazy accessor for one stream of a not-yet-run `$` command — the value of
+ * the builder's `.stdout` / `.stderr`. */
 interface StreamPromise extends PromiseLike<OutputStream> {
 	/** Run the command and resolve to this stream parsed as JSON. */
 	json<T = unknown>(): Promise<T>;
@@ -74,10 +50,7 @@ interface ExecBuilder extends PromiseLike<ProcessOutput> {
 	env(vars: Record<string, string>): ExecBuilder;
 	/** Resolve even on a non-zero exit; read `exitCode` instead of catching. */
 	nothrow(): ExecBuilder;
-	/**
-	 * Lazy stdout accessor: awaitable on its own (`await $`cmd`.stdout`) and the
-	 * reason `await $`cmd`.stdout.json()` works without the `(await ...)` wrapper.
-	 */
+	/** Lazy stdout accessor: awaitable on its own (`await $`cmd`.stdout`). */
 	readonly stdout: StreamPromise;
 	/** Lazy stderr accessor — `await $`cmd`.stderr` / `.stderr.json()`. */
 	readonly stderr: StreamPromise;
@@ -87,19 +60,7 @@ interface ExecBuilder extends PromiseLike<ProcessOutput> {
 	text(): Promise<string>;
 }
 
-/**
- * Execute a command via tagged template. Static parts are split by whitespace;
- * interpolated values are passed as individual arguments (never shell-split).
- *
- * - string/number -> single argument
- * - string[] -> expanded as multiple arguments
- * - falsy (false, null, undefined, '') -> skipped
- *
- * Awaiting resolves to a {@link ProcessOutput} (`stdout`, `stderr`, `exitCode`).
- * Throws on a non-zero exit by default (the thrown error carries the captured
- * `stdout`/`stderr`/`exitCode`); chain `.nothrow()` to read `exitCode` instead.
- * Chain .input()/.cwd()/.silent()/.env()/.nothrow() before awaiting.
- */
+/** Execute a command via tagged template. */
 declare function $(strings: TemplateStringsArray, ...values: ShellArg[]): ExecBuilder;
 declare const fs: typeof import('fs');
 declare const path: typeof import('path');
@@ -109,12 +70,7 @@ declare const util: typeof import('util');
 
 declare const context: import('@actions/github/lib/context').Context;
 
-/**
- * The client `@actions/github` hands back, typed as that package types it. So
- * `octokit.rest.issues.createComment` takes the arguments that endpoint takes
- * and nothing else, and a call to an endpoint GitHub does not have is a
- * compile error rather than a 404 at run time.
- */
+/** The client `@actions/github` hands back, typed as that package types it. */
 type OctokitInstance = ReturnType<typeof import('@actions/github').getOctokit>;
 type OctokitOptions = Parameters<typeof import('@actions/github').getOctokit>[1];
 
@@ -209,11 +165,7 @@ interface GitHubContext {
 	action_repository: string;
 	action_status: string;
 	secret_source: string;
-	/**
-	 * The runner keeps GITHUB_TOKEN out of the action process, so this is
-	 * normally undefined. The pre-authenticated `octokit` is the way to reach
-	 * the API; pass `${{ github.token }}` in explicitly if a raw token is needed.
-	 */
+	/** The runner keeps GITHUB_TOKEN out of the action process, so this is normally undefined. */
 	token: string | undefined;
 	path: string;
 	env: string;
@@ -230,16 +182,10 @@ declare const steps: Record<string, StepResult>;
 declare const needs: Record<string, NeedsResult>;
 declare const vars: Record<string, string>;
 declare const secrets: Record<string, string>;
-/**
- * A value that arrived as JSON, so its shape is whatever the workflow put
- * there. Narrow it before use -- `String(matrix.os)`, or a typeof check.
- */
+/** A value that arrived as JSON, so its shape is whatever the workflow put there. */
 type ContextValue = string | number | boolean | null | ContextValue[] | { [key: string]: ContextValue };
 
-/**
- * A reusable workflow declares an input's type, so a value here is a string, a
- * number or a boolean. A composite action's inputs are always strings.
- */
+/** A reusable workflow declares an input's type, so a value here is a string, a number or a boolean. */
 declare const inputs: Record<string, string | number | boolean>;
 declare const strategy: StrategyContext;
 declare const matrix: Record<string, ContextValue>;

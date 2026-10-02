@@ -110,8 +110,7 @@ async function main(): Promise<void> {
 	await exec.exec('sudo', ['apt-get', 'install', '-y', '--no-install-recommends', ...packages], {
 		env: {...process.env, DEBIAN_FRONTEND: 'noninteractive'}
 	});
-	// Every line past here runs only because apt exited 0. Nothing saves a cache
-	// from a catch block or a post step, so a failed install leaves no entry.
+	// Every line past here runs only because apt exited 0.
 	const after = await installedSet();
 	const newlyInstalled = diffInstalled(before, after);
 	core.setOutput('installed-packages', newlyInstalled.join(' '));
@@ -150,8 +149,7 @@ async function main(): Promise<void> {
 		await cache.saveCache(cachePaths, key);
 		core.info(`Saved ${selection.members.length} files under ${key}`);
 	} catch (error) {
-		// The packages are installed either way, so a lost save costs speed and
-		// not correctness. It still gets reported.
+		// The packages are installed either way, so a lost save costs speed and not correctness. It still gets reported.
 		const message = error instanceof Error ? error.message : String(error);
 		core.warning(`cached-apt installed the packages but could not save the cache: ${message}`);
 	}

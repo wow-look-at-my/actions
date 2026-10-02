@@ -1,16 +1,8 @@
 name: no-all-builds-job
-description: Fail CI when any job is named all-builds — a known trick that shadows the org's required all-builds gate (required-builds-manager) in the GitHub UI
-
-inputs:
-  paths:
-    description: 'Paths to read, space separated. A directory is walked, so the step must run after the checkout.'
-    required: false
-    default: '.'
+description: Run the full slopfix check over the checkout, which fails a job named all-builds that shadows the org's required gate
 
 runs:
   using: composite
   steps:
+    # Kept as a name every repository already calls. The slopfix action takes no input that narrows the check.
     - uses: wow-look-at-my/slopfix@master
-      with:
-        only: yaml/all-builds-job
-        paths: ${{ inputs.paths }}

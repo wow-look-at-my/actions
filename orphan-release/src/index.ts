@@ -17,24 +17,15 @@ function gitQuiet(args: string[], cwd?: string): string {
 	}
 }
 
-/**
- * Whether this run is the one that publishes #latest.
- *
- * #latest belongs to the default branch, and to nothing else. Whoever installs
- * "latest" gets what master released. A side branch that moves it serves its
- * own tree under that name, and two branches releasing at once race for the
- * lock, so the loser's release fails on "cannot lock ref" over content nothing
- * was wrong with.
- *
- * On the default branch the same rule applies over time. Two pushes land close
- * together and the older run can finish last, walking the pointer backwards
- * onto a tree the branch has already left behind. So a run also checks that
- * the commit it was triggered for is still the tip.
- *
- * A remote that cannot be read leaves the tip unknown. The move goes ahead and
- * says so: a release that silently stops publishing #latest is worse than one
- * that occasionally re-runs a race.
- */
+/** Whether this run is the one that publishes #latest. #latest belongs to the
+ *default branch, and to nothing else. Whoever installs "latest" gets what
+ *master released. A side branch that moves it serves its own tree under that
+ *name, and branches releasing at once race for the lock, so the loser's
+ *release fails on "cannot lock ref" over content nothing was wrong with. On
+ *the default branch the same rule applies over time. Pushes land close
+ *together and the older run can finish last, walking the pointer backwards
+ *onto a tree the branch has already left behind. So a run also checks that the
+ *commit it was triggered for is still the tip. */
 function publishesLatest(branch: string, staging: string): boolean {
 	if (!isDefaultBranch(branch)) {
 		core.info(`[${branch}] #latest belongs to the default branch; leaving it alone`);
@@ -60,8 +51,7 @@ function main(): void {
 	const branch = process.env.GITHUB_REF_NAME || git(["rev-parse", "--abbrev-ref", "HEAD"]);
 	const prefix = options.name;
 
-	// An explicit --version re-pins an existing number. Without one the number
-	// is derived from what is already published.
+	// An explicit --version re-pins an existing number. Without one the number is derived from what is already published.
 	const autoVersion = options.version === "";
 	let version = options.version;
 	let latestTree = "";
@@ -108,9 +98,7 @@ function main(): void {
 		const token = process.env.GITHUB_TOKEN ?? "";
 		git(["remote", "add", "origin", `https://x-access-token:${token}@github.com/${repository}`], staging);
 	}
-	// The numbered tag belongs to this run and always lands. The pointer is
-	// master's, so a side branch never even mints it: a "Created tag" line for
-	// a tag nothing pushes reads as a release that shipped.
+	// The numbered tag belongs to this run and always lands.
 	const publishLatest = publishesLatest(branch, staging);
 	for (const tag of publishLatest ? [numbered, latest] : [numbered]) {
 		git(["tag", tag], staging);
@@ -118,14 +106,9 @@ function main(): void {
 	}
 
 	// GitHub applies one push in one ref transaction, and #latest is a pointer
-	// every concurrent release moves. Pushed together, a run that lost that race
-	// by milliseconds had its whole transaction rejected -- taking down the
-	// numbered tag, which was unique to it and never contended. Split, the number
-	// lands on its own; whichever run moves #latest last wins, which is what
-	// "latest" means.
+	// every concurrent release moves.
 	if (autoVersion) {
-		// A number is immutable: no force, so a stale tag listing fails loudly
-		// rather than rewriting history.
+		// A number is immutable: no force, so a stale tag listing fails loudly rather than rewriting history.
 		git(["push", "origin", `refs/tags/${numbered}`], staging);
 	} else {
 		git(["push", "--force", "origin", `refs/tags/${numbered}`], staging);

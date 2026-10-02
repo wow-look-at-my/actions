@@ -1,6 +1,6 @@
 # cached-run
 
-Run a script with its output paths restored from cache first and saved after. The cache key is a hash of the script text and the path list. An edit to either one gets you a fresh cache in place of a stale one.
+Run a script with its output paths restored from cache first and saved after. The cache key is a hash of the script text and the path list. An edit to either gets you a fresh cache in place of a stale one.
 
 ```yaml
 - uses: wow-look-at-my/actions@cached-run#latest

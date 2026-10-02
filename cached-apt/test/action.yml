@@ -14,18 +14,15 @@ runs:
 
     - name: Verify the apt path installed a working binary
       shell: bash
-      env:
-        HIT: ${{ steps.first.outputs.cache-hit }}
-        PKGS: ${{ steps.first.outputs.installed-packages }}
       run: |
         set -euo pipefail
         cmatrix -V
-        echo "first call: cache-hit=$HIT packages=$PKGS"
-        if [ "$HIT" != "false" ]; then
-          echo "::error::the first call reported cache-hit=$HIT, but its key is unique to this run and must miss"
+        echo "first call: cache-hit=${{ steps.first.outputs.cache-hit }} packages=${{ steps.first.outputs.installed-packages }}"
+        if [ "${{ steps.first.outputs.cache-hit }}" != "false" ]; then
+          echo "::error::the first call reported cache-hit=${{ steps.first.outputs.cache-hit }}, but its key is unique to this run and must miss"
           exit 1
         fi
-        if [ -z "$PKGS" ]; then
+        if [ -z "${{ steps.first.outputs.installed-packages }}" ]; then
           echo "::error::the first call installed nothing, so it cached nothing; cmatrix is already on this image"
           exit 1
         fi
