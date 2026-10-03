@@ -32,6 +32,10 @@ describe('highlightSource', () => {
 	});
 
 	it('keeps every line of a multi-line token self-contained', () => {
+<<<<<<< HEAD
+=======
+		// The block comment spans a couple of lines: the color must close before the newline and re-open after it.
+>>>>>>> origin/master
 		const out = highlightSource('/* one\ntwo */');
 		assert.equal(out, `${COMMENT}/* one${RESET}\n${COMMENT}two */${RESET}`);
 	});

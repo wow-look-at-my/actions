@@ -14,7 +14,11 @@ export const LEGACY_VERSION_SEED = 'wow-look-at-my/actions/cache-xfer/v1';
 /** Magic bytes opening every hand-off archive. */
 export const ENVELOPE_MAGIC = 'WXFR1';
 
+<<<<<<< HEAD
 /* */
+=======
+/** The cache service rejects keys longer than many characters. */
+>>>>>>> origin/master
 const MAX_KEY_LENGTH = 512;
 
 /** Sanity bound for the envelope's JSON header. */

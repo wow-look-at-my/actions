@@ -19,7 +19,12 @@ export function short(sha: string): string {
 	return sha.slice(0, 12);
 }
 
+<<<<<<< HEAD
 // Every other mode is a file of this.
+=======
+// A gitlink line of `git ls-tree -r <rev>`: mode multiple names a commit
+// of another repository. Every other mode is a file of this.
+>>>>>>> origin/master
 export function gitlinks(lsTree: string): Map<string, string> {
 	const found = new Map<string, string>();
 	for (const line of lsTree.split('\n')) {

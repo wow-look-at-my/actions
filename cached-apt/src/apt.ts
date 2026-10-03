@@ -58,7 +58,11 @@ export function computeCacheKey(parts: KeyParts): string {
 }
 
 // Only `ii` means the files are on disk: a removed package stays listed at
+<<<<<<< HEAD
 // `rc`.
+=======
+// `rc`. The status field is padded to a few columns, so it needs a trim.
+>>>>>>> origin/master
 export function parseInstalledSet(stdout: string): Set<string> {
 	const installed = new Set<string>();
 	for (const line of stdout.split('\n')) {

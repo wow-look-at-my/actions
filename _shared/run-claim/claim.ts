@@ -9,7 +9,11 @@ export const VERSION_SEED = 'wow-look-at-my/actions/run-once/v1';
 /** Body of a claim entry. The bytes carry no meaning; the key existing does. */
 export const CLAIM_PAYLOAD = 'wow-look-at-my/actions run-once claim\n';
 
+<<<<<<< HEAD
 /* */
+=======
+/** The cache service rejects keys longer than many characters. */
+>>>>>>> origin/master
 const MAX_KEY_LENGTH = 512;
 
 export function validateName(name: string): void {
