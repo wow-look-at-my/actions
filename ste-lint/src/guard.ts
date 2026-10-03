@@ -29,10 +29,7 @@ export function workflowPath(ref: string): string | undefined {
 // blocks that carry continue-on-error. A YAML parser is not available here:
 // the runtime is the standard library plus @actions/core, so this reads the
 // step's own indentation instead.
-// common-checks calls this action, so the caller's own step names the wrapper
-// and not ste-lint. A continue-on-error on that step switches this gate off
-// too, so both names count as this step.
-export const MARKERS = ['ste-lint', 'common-checks'];
+export const MARKERS = ['ste-lint'];
 
 export function neuteredSteps(workflow: string, markers: string[] = MARKERS): string[] {
 	const lines = workflow.split('\n');
