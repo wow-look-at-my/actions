@@ -1,6 +1,6 @@
-# The guard has three layers, and each one has to be driven separately: the
-# file scan, the API layers, and the run-once sentinel that skips all of them.
-# release.yml used to spell these out as six bash steps.
+# The guard has layers, and each one has to be driven separately: the file
+# scan, the API layers, and the run-once sentinel that skips all of them.
+# release.yml used to spell these out as bash steps.
 #
 # The shadowed fixture is stored flat, outside any .github/workflows path. A
 # workflow file in the tree is walked by the org's own YAML rules, and the

@@ -68,9 +68,7 @@ async function main(): Promise<void> {
 		return;
 	}
 
-	// The scope is the line this event changed, not the file it sits in. A
-	// sentence the change did not write is somebody else's finding, on somebody
-	// else's commit.
+	// The scope is the line this event changed, not the file it sits in.
 	const scope = scopeOf(currentEvent());
 	core.info(scope.note);
 	const names = scope.touched === null ? theirs : theirs.filter((name) => scope.touched?.has(name));

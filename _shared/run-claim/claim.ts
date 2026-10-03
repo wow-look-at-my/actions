@@ -9,7 +9,7 @@ export const VERSION_SEED = 'wow-look-at-my/actions/run-once/v1';
 /** Body of a claim entry. The bytes carry no meaning; the key existing does. */
 export const CLAIM_PAYLOAD = 'wow-look-at-my/actions run-once claim\n';
 
-/** The cache service rejects keys longer than 512 characters. */
+/* */
 const MAX_KEY_LENGTH = 512;
 
 export function validateName(name: string): void {
@@ -50,7 +50,7 @@ export interface FinalizeResult {
 	message?: string;
 }
 
-/** The four cache-service calls a claim needs, injected so the logic is testable. */
+/** Those cache-service calls a claim needs, injected so the logic is testable. */
 export interface ClaimService {
 	create(key: string, version: string): Promise<CreateResult>;
 	upload(signedUploadUrl: string): Promise<number>;
@@ -68,15 +68,7 @@ function messageOf(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
-/**
- * Whether a create failure says the entry is already there.
- *
- * The live service does not answer a collision with ok:false -- it THROWS, with
- * "Failed request: (409) Conflict: cache entry with the same key, version, and
- * scope already exists". That is the claim being HELD, which is the one signal
- * this action exists to read, and reading it as an unreachable service made
- * every job fail open and run the work.
- */
+/** Whether a create failure says the entry is already there. */
 function looksLikeCollision(message: string): boolean {
 	return /already exists/i.test(message) || /\bconflict\b/i.test(message) || /\b409\b/.test(message);
 }

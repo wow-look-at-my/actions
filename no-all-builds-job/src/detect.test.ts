@@ -162,6 +162,6 @@ test('formatViolation carries the operator-mandated wording', () => {
 	assert.ok(message.includes('Rename'));
 	assert.ok(message.includes('do not try to work around this check'));
 	assert.ok(message.endsWith(' https://example.test/job'));
-	// Without a URL the message just ends with the wording.
+	// Without a URL the message ends with the wording.
 	assert.ok(formatViolation('Job key "all-builds" in workflow file "ci.yml"').endsWith('do not try to work around this check.'));
 });

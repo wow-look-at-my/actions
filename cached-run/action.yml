@@ -82,18 +82,15 @@ runs:
     - name: Decide whether the run is still needed
       id: decide
       shell: bash
-      env:
-        CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
-        SKIP_ON_HIT: ${{ inputs.skip-on-hit }}
       run: |
         set -euo pipefail
         # actions/cache reports a miss as an empty string, so normalize it before a caller compares it.
-        if [ "$CACHE_HIT" = "true" ]; then
+        if [ "${{ steps.restore.outputs.cache-hit }}" = "true" ]; then
           echo "hit=true" >> "$GITHUB_OUTPUT"
         else
           echo "hit=false" >> "$GITHUB_OUTPUT"
         fi
-        if [ "$CACHE_HIT" = "true" ] && [ "$SKIP_ON_HIT" = "true" ]; then
+        if [ "${{ steps.restore.outputs.cache-hit }}" = "true" ] && [ "${{ inputs.skip-on-hit }}" = "true" ]; then
           echo "skip=true" >> "$GITHUB_OUTPUT"
           echo 'Exact cache hit and skip-on-hit is set, so the script does not run.'
         else
@@ -104,16 +101,14 @@ runs:
     - name: Replay what the cached run exported
       if: steps.decide.outputs.skip == 'true'
       shell: bash
-      env:
-        ENV_DIR: ${{ steps.plan.outputs.envdir }}
       run: |
         set -euo pipefail
-        if [ ! -d "$ENV_DIR" ]; then
+        if [ ! -d "${{ steps.plan.outputs.envdir }}" ]; then
           echo "::error::cached-run: this entry carries no record of what the run exported. Every entry of this key scheme stores one, so the entry is damaged. A caller that reads an exported variable would see it missing instead."
           exit 1
         fi
-        cat "$ENV_DIR/env" >> "$GITHUB_ENV"
-        cat "$ENV_DIR/path" >> "$GITHUB_PATH"
+        cat "${{ steps.plan.outputs.envdir }}/env" >> "$GITHUB_ENV"
+        cat "${{ steps.plan.outputs.envdir }}/path" >> "$GITHUB_PATH"
 
     - name: Run the script
       id: run
@@ -160,22 +155,18 @@ runs:
       id: verify
       if: steps.decide.outputs.skip != 'true'
       shell: bash
-      env:
-        SENTINEL: ${{ steps.plan.outputs.sentinel }}
-        CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
-        SAVE_ALLOWED: ${{ steps.plan.outputs.save-allowed }}
       run: |
         set -euo pipefail
-        if [ ! -f "$SENTINEL" ]; then
+        if [ ! -f "${{ steps.plan.outputs.sentinel }}" ]; then
           echo '::warning::cached-run: the script exited 0 without reaching its last line, so nothing is cached. An early exit 0 or an exec does this.'
           echo "save=false" >> "$GITHUB_OUTPUT"
           exit 0
         fi
-        rm -f "$SENTINEL"
-        if [ "$CACHE_HIT" = "true" ]; then
+        rm -f "${{ steps.plan.outputs.sentinel }}"
+        if [ "${{ steps.restore.outputs.cache-hit }}" = "true" ]; then
           echo "save=false" >> "$GITHUB_OUTPUT"
           echo 'The primary key is already in the cache, so there is nothing new to save.'
-        elif [ "$SAVE_ALLOWED" != "true" ]; then
+        elif [ "${{ steps.plan.outputs.save-allowed }}" != "true" ]; then
           echo "save=false" >> "$GITHUB_OUTPUT"
           echo 'This ref does not write cache entries, so the run produced its paths and saved nothing. The plan step said which policy decided that.'
         else

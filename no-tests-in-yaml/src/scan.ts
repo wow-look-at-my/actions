@@ -26,8 +26,7 @@ export function findRunBlocks(content: string): RunBlock[] {
 		if (!match) {
 			continue;
 		}
-		// A sequence item carries its key past the dash, so the block ends at
-		// anything indented no further than the KEY -- `env:` under `- run:`.
+		// A sequence item carries its key past the dash.
 		const indent = match[1].length + (match[2] ? match[2].length : 0);
 		const rest = match[3].trim();
 		if (!/^[|>][+-]?\d*$/.test(rest)) {
@@ -81,11 +80,7 @@ function namesATestFile(target: string): boolean {
 	return TEST_FILE_PATTERNS.some(pattern => pattern.test(base));
 }
 
-// A comparison paired with a nonzero exit, on one line. The pairing is the
-// whole test: a step that merely runs a command fails on its own exit code and
-// matches nothing here.
-// A bracket takes no word boundary after it, so it is spelled apart from the
-// words: `[ "$x" = y ]` matched nothing while every word form matched.
+// A comparison paired with a nonzero exit, on one line.
 const COMPARISON = String.raw`(?:(?:grep|egrep|fgrep|diff|cmp|test|jq\s+-e)\b|\[\[?)`;
 const ASSERT_LINE_PATTERNS: {rule: string; pattern: RegExp}[] = [
 	{
@@ -100,13 +95,11 @@ const ASSERT_LINE_PATTERNS: {rule: string; pattern: RegExp}[] = [
 		rule: 'assertion',
 		pattern: new RegExp(String.raw`${COMPARISON}[^;&|]*&&\s*\{?\s*(?:echo|printf)[^;]*::error`)
 	},
-	// One line that both annotates an error and ends the step. A `case` arm
-	// spells its assertion this way, with no comparison word anywhere on it.
+	// One line that both annotates an error and ends the step.
 	{rule: 'assertion', pattern: /::error.*\bexit\s+[1-9]/}
 ];
 
-// A shell function whose name says it asserts. A workflow that grows its own
-// assertion vocabulary is a test framework with no test runner.
+// A shell function whose name says it asserts.
 const ASSERT_HELPER = /^\s*(?:function\s+)?(assert|expect|require|must|fail_if|check_that)[A-Za-z0-9_]*\s*\(\)/;
 
 // A redirect or a heredoc naming the file it writes.

@@ -1,11 +1,4 @@
-// A rule is only as strong as the step that runs it. Two ways a red run turns
-// green without a word of prose changing: put `continue-on-error: true` on the
-// step, or move the `uses:` ref back to a tag that passed. Neither is visible
-// in the check's own output, which is what makes them worth reaching for.
-//
-// So the step reports the ref it runs as, and it FAILS when it finds itself
-// wrapped in `continue-on-error`. A step allowed to fail is not a gate, and a
-// gate that says nothing about being switched off is decoration.
+// A rule is only as strong as the step that runs it.
 
 import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
@@ -25,10 +18,7 @@ export function workflowPath(ref: string): string | undefined {
 	return parts.slice(2).join('/');
 }
 
-// Finds the step block each `uses:` of this action opens, and reports the
-// blocks that carry continue-on-error. A YAML parser is not available here:
-// the runtime is the standard library plus @actions/core, so this reads the
-// step's own indentation instead.
+// Finds the step block each `uses:` of this action opens, and reports the blocks that carry continue-on-error.
 export const MARKERS = ['ste-lint'];
 
 export function neuteredSteps(workflow: string, markers: string[] = MARKERS): string[] {

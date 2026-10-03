@@ -30,13 +30,11 @@ runs:
 
     - name: Assert the top-level return reached the result output
       shell: bash
-      env:
-        RESULT: ${{ steps.repro2.outputs.result }}
       run: |
         set -euo pipefail
-        echo "repro2 result output: ${RESULT}"
-        if [ "${RESULT}" != '"9.9.9-test"' ]; then
-          echo "::error::expected result '\"9.9.9-test\"' (the returned pkg.version), got '${RESULT}'"
+        echo "repro2 result output: ${{ steps.repro2.outputs.result }}"
+        if [ "${{ steps.repro2.outputs.result }}" != '"9.9.9-test"' ]; then
+          echo "::error::expected result '\"9.9.9-test\"' (the returned pkg.version), got '${{ steps.repro2.outputs.result }}'"
           exit 1
         fi
         echo "repro2 OK: top-level return value reached the result output"

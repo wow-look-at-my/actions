@@ -1,14 +1,4 @@
 // This action lints what a push changed, not what the repository contains.
-//
-// A whole-tree lint asks a repository to answer for prose it did not write in
-// this change, and for prose it may not have written at all. A fork carries its
-// upstream's documentation. An imported tree carries somebody else's. Neither
-// belongs to the person whose commit turned the check red, and a check that
-// nobody can turn green is a check people route around.
-//
-// So the scope is the diff. A file this push did not touch is out of scope even
-// when it has findings, and the same file comes into scope the moment somebody
-// edits it. The rule that reaches the author is the rule the author can obey.
 
 import {readFileSync} from 'node:fs';
 import {git} from './git';
@@ -39,8 +29,8 @@ function field(value: unknown, ...path: string[]): string | null {
 	return typeof node === 'string' && node !== '' ? node : null;
 }
 
-// A commit of all zeros is git's way of saying "there was nothing here before":
-// the first push of a branch, or a branch that was just created.
+// A commit of all zeros is git's way of saying "there was nothing here
+// before": the first push of a branch, or a branch that was created.
 function real(sha: string | null): string | null {
 	return sha !== null && !/^0+$/.test(sha) ? sha : null;
 }
@@ -65,11 +55,6 @@ export function baseOf(event: Event): string | null {
 // The unit is a line, not a file. A change that edits one sentence of a long
 // document answers for that sentence. It does not inherit every finding the
 // document already carried, which is what turns a check into a wall.
-//
-// `git diff` compares two trees and never needs a common ancestor, so a
-// depth-1 checkout works once the base commit itself is present. That is what
-// the fetch is for: actions/checkout takes one commit by default, and the base
-// is not it.
 export function changedLines(base: string, git: Git = runGit): Touched {
 	let rev = base;
 	if (base.startsWith('refs/')) {

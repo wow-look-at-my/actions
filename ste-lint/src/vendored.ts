@@ -1,20 +1,4 @@
-// Prose from another repository is that repository's to lint. submodules.ts
-// already acts on that for a submodule, which is the case where git holds the
-// other repository by reference. This file covers the case where git holds a
-// copy: vendored code, and the imported tree of a fork.
-//
-// The source is `git check-attr`, so the declaration is `.gitattributes`:
-//
-//     src/vendor/**   linguist-vendored
-//
-// That is not an ignore list. `linguist-vendored` and `linguist-generated` are
-// git attributes a repository sets to state where its code comes from, GitHub
-// reads them for the language bar and the diff view, and they carry the same
-// meaning with this action absent. A caller cannot answer a finding by adding a
-// line here: marking a file vendored is a claim about who wrote it, and it
-// changes what the repository reports about itself everywhere else too.
-//
-// A repository that writes its own prose declares nothing and loses nothing.
+// Prose from another repository is that repository's to lint.
 
 import {git} from './git';
 
@@ -38,7 +22,6 @@ export function vendoredPaths(files: string[], run = gitCheckAttr): Set<string> 
 		}
 		for (const line of out.split('\0')) {
 			// `git check-attr -z` writes NUL-separated triples: path, attribute, value.
-			// Splitting on NUL alone gives a flat list, so read it three at a time.
 			const parts = line;
 			if (parts === '') continue;
 			vendored.add(parts);

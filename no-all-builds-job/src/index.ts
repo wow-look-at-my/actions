@@ -5,36 +5,15 @@ import * as path from 'path';
 import {ALREADY_RAN_ENV, GUARDED_NAME, findCheckRunViolations, findJobViolations, formatViolation, layerFailureRemedy, scanWorkflowYaml, shouldSkip} from './detect';
 
 // The org's required merge check `all-builds` is a commit STATUS posted by
-// the required-builds-manager app — not a workflow job. Naming a workflow job
-// all-builds is a recurring deception attempt in this org: it cannot cheat
-// the gate (the required check is pinned to the app), but its check run
-// shadows the app's status in the GitHub UI. Operator ruling: no job may ever
-// be named all-builds; CI must fail if one is. Zero-config, and deliberately
-// NO opt-out input — do not add one.
-//
-// Three independent detection layers:
-//   1. This run's jobs (Actions API; needs `actions: read`).
-//   2. Check runs on the head SHA (Checks API; needs `checks: read`) —
-//      catches all-builds jobs in OTHER workflows on the same commit.
-//   3. Workflow files under $GITHUB_WORKSPACE/.github/workflows — ALWAYS
-//      runs, needs no token — the only layer that runs when the token input
-//      is explicitly emptied.
-// An API layer that cannot run (e.g. the token lacks the permission) is a
-// HARD FAILURE: the guard fails closed rather than degrading to a warning.
-// Both API layers are still attempted first, so a run missing both
-// permissions reports both errors — each naming what would fix it, which is a
-// grant only when the API actually answered 401 or 403 — before it fails. Findings are NOT deduplicated across layers — a
-// job caught twice is reported twice, which is fine.
+// the required-builds-manager app — not a workflow job.
 
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
 async function run(): Promise<void> {
-	// Same-job run-once: a clean pass earlier in this job exported the
-	// sentinel (see below), so a second embed of this guard in the same job
-	// (e.g. the go-toolchain composite followed by buildhost-publish) is a
-	// near-zero-cost skip. Checked before any API client construction.
+	// Same-job run-once: a clean pass earlier in this job exported the sentinel
+	// (.g. the go-toolchain composite followed by buildhost-publish).
 	if (shouldSkip(process.env[ALREADY_RAN_ENV])) {
 		core.info('no-all-builds-job: guard already ran earlier in this job — skipping duplicate check');
 		return;
@@ -48,13 +27,9 @@ async function run(): Promise<void> {
 
 	const messages: string[] = [];
 
-	// Layers that cannot run are hard failures. Each catch below emits its
-	// error immediately and bumps this count; the action fails only after ALL
-	// layers have been attempted, so a run missing both permissions reports
-	// both errors instead of dying on the first.
+	// Layers that cannot run are hard failures.
 	let layerErrorCount = 0;
 
-	// Layer 1: the current run's jobs.
 	let headSha = '';
 	let runJobCount: number | undefined;
 	if (octokit) {
@@ -76,8 +51,6 @@ async function run(): Promise<void> {
 		}
 	}
 
-	// Layer 2: check runs on the head SHA. The app-id exclusion keeps
-	// required-builds-manager itself exempt if it ever posts check runs.
 	let checkRunCount: number | undefined;
 	if (octokit) {
 		try {
@@ -98,8 +71,7 @@ async function run(): Promise<void> {
 		}
 	}
 
-	// Layer 3: workflow files in the checked-out workspace. Always runs;
-	// needs no token, only a checkout.
+	// Always runs; needs no token, only a checkout.
 	let workflowFileCount: number | undefined;
 	const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
 	const workflowsDir = path.join(workspace, '.github', 'workflows');
@@ -131,9 +103,6 @@ async function run(): Promise<void> {
 		];
 		core.info(`OK — nothing named ${GUARDED_NAME} (${scanned.join(', ')})`);
 		// Clean pass ONLY: mark the job so a later embed of this guard skips.
-		// Never exported on the violation path below — a failure suppressed
-		// with continue-on-error must not make a later invocation skip past
-		// the swallowed violation.
 		core.exportVariable(ALREADY_RAN_ENV, '1');
 		return;
 	}

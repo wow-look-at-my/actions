@@ -1,29 +1,16 @@
 import * as YAML from 'yaml';
 
-// The one name no workflow job may ever carry. The org's required merge check
-// `all-builds` is a commit STATUS posted by the required-builds-manager app;
-// a workflow job wearing the same name cannot satisfy that gate — it only
-// shadows the app's status in the GitHub UI.
+// The name no workflow job may ever carry.
 export const GUARDED_NAME = 'all-builds';
 
-// GitHub App id of required-builds-manager — the only thing allowed to carry
-// the all-builds name on a commit. Check runs posted by this app are exempt;
-// everything else wearing the name is a violation.
+// GitHub App id of required-builds-manager — the only thing allowed to carry the all-builds name on a commit.
 export const REQUIRED_BUILDS_MANAGER_APP_ID = 3007670;
 
-// Same-job run-once sentinel. After a CLEAN pass the action exports this env
-// var (via core.exportVariable → $GITHUB_ENV) so a second embed of the guard
-// later in the same job (e.g. the go-toolchain composite followed by
-// buildhost-publish) skips the duplicate check. Deliberately NOT exported when
-// violations were found: if the caller suppressed the failure with
-// continue-on-error, a later invocation must re-detect, not skip past a
-// swallowed violation. Cross-job dedupe is out of scope on purpose.
+// Same-job run-once sentinel.
 export const ALREADY_RAN_ENV = 'NO_ALL_BUILDS_JOB_ALREADY_RAN';
 
-// True when the sentinel says the guard already completed a clean pass earlier
-// in this job. An empty string counts as absent — a shell-level
-// `NO_ALL_BUILDS_JOB_ALREADY_RAN=` assignment is an explicit reset (the
-// dogfood harness in release.yml relies on this).
+// True when the sentinel says the guard already completed a clean pass
+// earlier in this job.
 export function shouldSkip(value: string | undefined): boolean {
 	return value !== undefined && value !== '';
 }
@@ -60,11 +47,7 @@ export interface WorkflowFileViolation {
 }
 
 // True when a rendered job/check-run name is (or contains as a path segment)
-// exactly the guarded name. Handles the two decorations GitHub applies:
-//   - a trailing matrix suffix:      `all-builds (ubuntu-latest)`
-//   - reusable-workflow path parts:  `ci / all-builds`, `all-builds / deploy`
-// Deliberately case-sensitive and exact per segment: `All-Builds` and
-// `all-builds2` are different names and cannot shadow the gate's UI entry.
+// exactly the guarded name.
 export function isShadowJobName(name: string): boolean {
 	let candidate = name.trim();
 	if (candidate.endsWith(')')) {
@@ -92,9 +75,7 @@ export function findCheckRunViolations(checkRuns: CheckRunLike[]): CheckRunViola
 		if (!isShadowJobName(checkRun.name)) {
 			continue;
 		}
-		// Only required-builds-manager itself is exempt. A missing/null app is
-		// NOT excluded — an unattributed check run wearing the name is exactly
-		// the kind of thing this guard exists to flag.
+		// Only required-builds-manager itself is exempt.
 		if (checkRun.app?.id === REQUIRED_BUILDS_MANAGER_APP_ID) {
 			continue;
 		}
@@ -103,10 +84,10 @@ export function findCheckRunViolations(checkRuns: CheckRunLike[]): CheckRunViola
 	return violations;
 }
 
-// Scans one workflow file's YAML for jobs named all-builds — by job KEY, or by
-// a plain-string `name:` (an expression name like `${{ matrix.x }}` cannot be
-// judged statically and is left to the API layers). Never throws: malformed or
-// foreign YAML simply contributes no findings.
+// Scans one workflow file's YAML for jobs named all-builds — by job KEY, or
+// by a plain-string `name:` (an expression name like `${{ matrix.x }}` cannot
+// be judged statically and is left to the API layers). Never throws:
+// malformed or foreign YAML contributes no findings.
 export function scanWorkflowYaml(file: string, content: string): WorkflowFileViolation[] {
 	let parsed: unknown;
 	try {
@@ -138,9 +119,7 @@ export function scanWorkflowYaml(file: string, content: string): WorkflowFileVio
 	return violations;
 }
 
-// What to tell the reader when a scanning layer could not run. Only a 401 or a
-// 403 is fixed by widening the token, so naming a grant for any other status
-// sends the reader to a permissions block that is already correct.
+// What to tell the reader when a scanning layer could not run.
 export function layerFailureRemedy(error: unknown, grant: string, subject: string): string {
 	const status = typeof error === 'object' && error !== null ? (error as {status?: unknown}).status : undefined;
 	if (status === 401 || status === 403) {

@@ -6,7 +6,7 @@ export const MAIN_FN = '__main';
 export interface TransformedScript {
 	/** Module source handed to type-checking and transpilation. */
 	text: string;
-	/** Emitted 0-based line -> original 0-based line; -1 for synthetic wrapper lines. */
+	/* */
 	lineMap: number[];
 }
 
@@ -56,20 +56,13 @@ export function transformScript(script: string): TransformedScript {
 	if (script.charCodeAt(0) === 0xfeff) {
 		script = script.slice(1);
 	}
-	// Neutralize a shebang (a `file:` input may be an executable script): valid
-	// only at byte 0, so it cannot be re-emitted below the hoisted statements.
-	// Replacing `#!` with `//` preserves every source position.
 	if (ts.getShebang(script) !== undefined) {
 		script = '//' + script.slice(2);
 	}
 
 	const sf = ts.createSourceFile('user-script.ts', script, ts.ScriptTarget.ES2022, true, ts.ScriptKind.TS);
 
-	// Tile the source into contiguous runs of same-destination statements. A
-	// run covers [previous statement's end, this statement's end), so leading
-	// trivia (comments, `// @ts-ignore`) travels with the statement it precedes
-	// and no text is duplicated or lost — except trivia after the last
-	// statement, which is only comments/whitespace and is dropped.
+	// Tile the source into contiguous runs of same-destination statements.
 	interface Run {
 		hoisted: boolean;
 		start: number;
