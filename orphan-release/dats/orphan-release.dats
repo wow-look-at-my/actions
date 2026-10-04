@@ -1,6 +1,6 @@
-# orphan-release.sh publishes two tags: a numbered one that is immutable and
-# unique to the run, and #latest, a pointer every concurrent release moves.
-# GitHub applies one push in one ref transaction, so while both refs travelled
+# orphan-release.sh publishes tags: a numbered one that is immutable and unique
+# to the run, and #latest, a pointer every concurrent release moves. GitHub
+# applies one push in one ref transaction, so while both refs travelled
 # together, a run that lost the race for #latest had its whole push rejected --
 # taking down the numbered tag, which was never contested. The release then had
 # no tag at all, and callers papered over it by repeating the step.
@@ -8,7 +8,7 @@
 # A real race is not reproducible on demand. The remote refuses the pointer
 # instead: a pre-receive hook that rejects #latest stands in for losing the
 # race, and the question is only what happens to the OTHER ref in the same
-# push. Run this suite against the one-push version and the two
+# push. Run this suite against the one-push version and both
 # NUMBERED_TAG_PUBLISHED cases fail.
 #
 # Every push goes to a local bare repository, so this needs no token and no
@@ -49,8 +49,7 @@ shared:
 			  fi
 			}
 
-			# Gives the bare repo a branch at a known commit, so ls-remote has a
-			# tip for the run to compare its own GITHUB_SHA against.
+			# Gives the bare repo a master that moved past the run's GITHUB_SHA.
 			set_branch_tip() {
 			  local origin="$1" branch="$2" work
 			  work="$(mktemp -d)"
@@ -85,7 +84,7 @@ shared:
 			  [ -n "${INCLUDE_BRANCH:-}" ] && args+=(--include-branch)
 
 			  # BRANCH and SHA let a case stand somewhere other than the tip of
-			  # master, which is what decides whether the run publishes #latest.
+			  # master.
 			  (
 			    cd "$repo"
 			    export GITHUB_REF_NAME="${BRANCH:-master}" GITHUB_REPOSITORY=owner/repo GITHUB_TOKEN=
@@ -231,10 +230,9 @@ tests:
 			- "NAMED_THE_FLAG"
 			- "MISSING widget/side#14"
 
-	# The same rule applied to one branch over time. Two pushes to master land
-	# close together and the older run can finish last; moving the pointer then
-	# walks it backwards onto a tree master has already left behind.
-	- desc: "a superseded master run publishes its number and never moves #latest"
+	# Two releases land close together and the older run can finish last. Moving
+	# the pointer then walks it backwards onto a release already replaced.
+	- desc: "an older number finishing last leaves #latest on the newer one"
 	  exit: 0
 	  inputs:
 		files:
@@ -242,22 +240,23 @@ tests:
 				. {shared.lib.sh}
 				work="$(mktemp -d)"
 				make_origin "$work/origin.git"
-				set_branch_tip "$work/origin.git" master > /dev/null
-				SHA=0000000000000000000000000000000000000000 \
-				  release "$SCRIPT" "$work/origin.git" "$work/repo" 12 > "$work/log" 2>&1
+				release "$SCRIPT" "$work/origin.git" "$work/repo13" 13 > "$work/log13" 2>&1
+				release "$SCRIPT" "$work/origin.git" "$work/repo12" 12 > "$work/log12" 2>&1
 				echo "RELEASE_EXIT=$?"
 				has_ref "$work/origin.git" 'widget#12'
-				has_ref "$work/origin.git" 'widget#latest'
+				echo "LATEST_STAYS_ON_13=$([ "$(sha_of "$work/origin.git" 'widget#latest')" = "$(sha_of "$work/origin.git" 'widget#13')" ] && echo yes || echo no)"
 	  cmd: env SCRIPT="$PWD/orphan-release/dist/index.js" bash {inputs.run.sh}
 	  outputs:
 		stdout:
 			- "RELEASE_EXIT=0"
 			- "HAS widget#12"
-			- "MISSING widget#latest"
+			- "LATEST_STAYS_ON_13=yes"
 
-	# The control: the run that IS the tip of master still moves the pointer,
-	# so the gate did not simply switch #latest off.
-	- desc: "the tip of master still moves #latest"
+	# A later commit on master can publish nothing for this plugin, because it
+	# took the plugin from a cache. The run it superseded is then the newest
+	# release, and #latest must follow it. A gate on the tip of the branch left
+	# #latest behind for good.
+	- desc: "a superseded master run with the newest number moves #latest"
 	  exit: 0
 	  inputs:
 		files:
@@ -265,17 +264,17 @@ tests:
 				. {shared.lib.sh}
 				work="$(mktemp -d)"
 				make_origin "$work/origin.git"
-				tip="$(set_branch_tip "$work/origin.git" master)"
-				SHA="$tip" release "$SCRIPT" "$work/origin.git" "$work/repo" 13 > "$work/log" 2>&1
+				release "$SCRIPT" "$work/origin.git" "$work/repo11" 11 > "$work/log11" 2>&1
+				set_branch_tip "$work/origin.git" master > /dev/null
+				SHA=0000000000000000000000000000000000000000 \
+				  release "$SCRIPT" "$work/origin.git" "$work/repo12" 12 > "$work/log12" 2>&1
 				echo "RELEASE_EXIT=$?"
-				has_ref "$work/origin.git" 'widget#13'
-				has_ref "$work/origin.git" 'widget#latest'
+				echo "LATEST_FOLLOWS_12=$([ "$(sha_of "$work/origin.git" 'widget#latest')" = "$(sha_of "$work/origin.git" 'widget#12')" ] && echo yes || echo no)"
 	  cmd: env SCRIPT="$PWD/orphan-release/dist/index.js" bash {inputs.run.sh}
 	  outputs:
 		stdout:
 			- "RELEASE_EXIT=0"
-			- "HAS widget#13"
-			- "HAS widget#latest"
+			- "LATEST_FOLLOWS_12=yes"
 
 	# #latest is a pointer and moves; a numbered tag is immutable and does not.
 	- desc: "a re-release moves #latest and leaves the older number alone"

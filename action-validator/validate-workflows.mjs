@@ -1,15 +1,4 @@
 // Validate workflow YAML against the LIVE GitHub workflow schema.
-//
-// Why not action-validator for this: its schema is vendored into a wasm blob
-// (@action-validator/core, pinned at 0.6.0 with no newer release) and has
-// fallen behind GitHub. It rejects permission scopes that are generally
-// available -- `artifact-metadata` among them -- so a correct workflow fails
-// validation with "Additional property 'artifact-metadata' is not allowed".
-// Fetching schemastore's github-workflow.json at run time keeps the check
-// current instead of pinning it to whenever the wasm was last rebuilt.
-//
-// Usage: node validate-workflows.mjs <schema.json> <workflow.yml>...
-// Exits non-zero, listing every violation, if any file fails.
 
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
@@ -22,8 +11,7 @@ if (!schemaPath || files.length === 0) {
   process.exit(2);
 }
 
-// strict:false because schemastore uses keywords ajv does not police (and a
-// warning storm about the schema itself would bury real workflow errors).
+// strict:false because schemastore uses keywords ajv does not police.
 const ajv = new Ajv({ strict: false, allErrors: true });
 addFormats(ajv);
 

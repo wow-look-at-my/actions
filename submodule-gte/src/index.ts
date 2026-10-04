@@ -4,8 +4,7 @@ import * as fsp from 'fs/promises';
 import * as path from 'path';
 import {Ancestry, Entry, ancestryOf, gitlinks, judge, paths, short} from './compare';
 
-// A submodule gitlink may move forward, and a build moves it there on its own.
-// It may not move back. see README.md
+// A submodule gitlink may move forward, and a build moves it there on its own. It may not move back. see README.md
 
 type Run = {code: number; stdout: string; stderr: string};
 

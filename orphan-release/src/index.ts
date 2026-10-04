@@ -17,41 +17,49 @@ function gitQuiet(args: string[], cwd?: string): string {
 	}
 }
 
-/**
- * Whether this run is the one that publishes #latest.
+function served(prefix: string, staging: string): { sha: string; number: number } {
+	const lines = git(["ls-remote", "origin", `refs/tags/${prefix}#*`], staging).split("\n");
+	const refs = lines.filter((l) => l !== "").map((l) => l.split("\t") as [string, string]);
+	const sha = refs.find(([, ref]) => ref === `refs/tags/${prefix}#latest`)?.[0] ?? "";
+	if (sha === "") return { sha, number: -1 };
+	const tags = refs.filter(([s]) => s === sha).map(([, ref]) => ref.replace(/^refs\/tags\//, ""));
+	const highest = nextVersion(tags, prefix) - 1;
+	return { sha, number: highest > 0 ? highest : -1 };
+}
+
+/** Moves #latest to this run's release when no higher number holds it.
  *
- * #latest belongs to the default branch, and to nothing else. Whoever installs
- * "latest" gets what master released. A side branch that moves it serves its
- * own tree under that name, and two branches releasing at once race for the
- * lock, so the loser's release fails on "cannot lock ref" over content nothing
- * was wrong with.
- *
- * On the default branch the same rule applies over time. Two pushes land close
- * together and the older run can finish last, walking the pointer backwards
- * onto a tree the branch has already left behind. So a run also checks that
- * the commit it was triggered for is still the tip.
- *
- * A remote that cannot be read leaves the tip unknown. The move goes ahead and
- * says so: a release that silently stops publishing #latest is worse than one
- * that occasionally re-runs a race.
- */
-function publishesLatest(branch: string, staging: string): boolean {
+ *#latest belongs to the default branch. A side branch that moves it serves its
+ *own tree under that name. On the default branch the order is the release
+ *number, not the tip of the branch: a run that a later commit superseded is
+ *still the newest release of a plugin that the later run took from a cache and
+ *never published. The push is a compare-and-swap on the commit #latest named
+ *when it was read. An older run that finishes last therefore cannot walk the
+ *pointer backwards. */
+function moveLatest(branch: string, prefix: string, version: number, staging: string): void {
+	const latest = `${prefix}#latest`;
 	if (!isDefaultBranch(branch)) {
 		core.info(`[${branch}] #latest belongs to the default branch; leaving it alone`);
-		return false;
+		return;
 	}
-	const sha = process.env.GITHUB_SHA ?? "";
-	if (sha === "") return true;
-	const tip = gitQuiet(["ls-remote", "origin", `refs/heads/${branch}`], staging).split(/\s+/)[0] ?? "";
-	if (tip === "") {
-		core.warning(`Could not read the tip of ${branch}; moving #latest without that check`);
-		return true;
+	for (;;) {
+		const now = served(prefix, staging);
+		if (now.number > version) {
+			core.info(`[${prefix}] ${latest} serves #${now.number}, newer than #${version}; leaving it`);
+			return;
+		}
+		if (now.sha !== "" && now.number < 0) {
+			core.warning(`[${prefix}] no numbered tag names the commit ${latest} serves; moving it to #${version}`);
+		}
+		try {
+			git(["push", `--force-with-lease=refs/tags/${latest}:${now.sha}`, "origin", `refs/tags/${latest}`], staging);
+			return;
+		} catch (error) {
+			// A lost lease moves the pointer under us. Anything else leaves it where it was, and is a real failure.
+			if (served(prefix, staging).sha === now.sha) throw error;
+			core.info(`[${prefix}] ${latest} moved while this run pushed; reading it again`);
+		}
 	}
-	if (tip !== sha) {
-		core.info(`[${branch}] ${tip.slice(0, 7)} superseded this run's ${sha.slice(0, 7)}; leaving #latest to it`);
-		return false;
-	}
-	return true;
 }
 
 function main(): void {
@@ -60,8 +68,7 @@ function main(): void {
 	const branch = process.env.GITHUB_REF_NAME || git(["rev-parse", "--abbrev-ref", "HEAD"]);
 	const prefix = options.name;
 
-	// An explicit --version re-pins an existing number. Without one the number
-	// is derived from what is already published.
+	// An explicit --version re-pins an existing number. Without one the number is derived from what is already published.
 	const autoVersion = options.version === "";
 	let version = options.version;
 	let latestTree = "";
@@ -108,31 +115,21 @@ function main(): void {
 		const token = process.env.GITHUB_TOKEN ?? "";
 		git(["remote", "add", "origin", `https://x-access-token:${token}@github.com/${repository}`], staging);
 	}
-	// The numbered tag belongs to this run and always lands. The pointer is
-	// master's, so a side branch never even mints it: a "Created tag" line for
-	// a tag nothing pushes reads as a release that shipped.
-	const publishLatest = publishesLatest(branch, staging);
-	for (const tag of publishLatest ? [numbered, latest] : [numbered]) {
+	// The numbered tag belongs to this run and always lands.
+	for (const tag of [numbered, latest]) {
 		git(["tag", tag], staging);
 		core.info(`Created tag: ${tag}`);
 	}
 
 	// GitHub applies one push in one ref transaction, and #latest is a pointer
-	// every concurrent release moves. Pushed together, a run that lost that race
-	// by milliseconds had its whole transaction rejected -- taking down the
-	// numbered tag, which was unique to it and never contended. Split, the number
-	// lands on its own; whichever run moves #latest last wins, which is what
-	// "latest" means.
+	// every concurrent release moves.
 	if (autoVersion) {
-		// A number is immutable: no force, so a stale tag listing fails loudly
-		// rather than rewriting history.
+		// A number is immutable: no force, so a stale tag listing fails loudly rather than rewriting history.
 		git(["push", "origin", `refs/tags/${numbered}`], staging);
 	} else {
 		git(["push", "--force", "origin", `refs/tags/${numbered}`], staging);
 	}
-	if (publishLatest) {
-		git(["push", "--force", "origin", `refs/tags/${latest}`], staging);
-	}
+	moveLatest(branch, prefix, Number(version), staging);
 	core.endGroup();
 }
 

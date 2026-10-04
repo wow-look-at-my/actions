@@ -1,21 +1,15 @@
 import * as crypto from 'crypto';
 
 // One cache key, shared by every action in this repo that derives a key from
-// its own inputs. A key has two halves that do different jobs: `scheme` and
-// `platform` and `label` are readable text, so a human reading the cache list
-// can tell entries apart. The digest is what actually distinguishes them.
+// its own inputs.
 export interface CacheKeySpec {
-	// Namespace and format version, e.g. `cached-run-v1`. Bump it to orphan
-	// every existing entry when the meaning of a key changes.
+	// Namespace and format version, e.g. `cached-run-v1`.
 	scheme: string;
 	// Label segments that name the machine, e.g. `[runner.os, runner.arch]`.
-	// An entry restored onto the wrong platform is garbage, so these are in the
-	// digest too.
 	platform: string[];
 	// The caller's own discriminator. Readable in the key, and in the digest.
 	label: string;
-	// Everything else that changes what a hit MEANS. A field whose value the
-	// action would act on differently belongs here.
+	// Everything else that changes what a hit MEANS. A field whose value the action would act on differently belongs here.
 	fields: Record<string, string | string[]>;
 }
 
@@ -30,8 +24,8 @@ export function sanitizeLabel(label: string): string {
 }
 
 // Splits on whitespace and commas, so a caller can write one entry per line, a
-// single line, or a comma list. Sorted and deduplicated, so two orderings of
-// one set share one entry.
+// single line, or a comma list. Sorted and deduplicated, so orderings of one
+// set share one entry.
 export function normalizeList(input: string): string[] {
 	const entries = input
 		.split(/[\s,]+/)

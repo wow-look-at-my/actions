@@ -67,8 +67,7 @@ test('a label drops the characters a cache key rejects', () => {
 
 test('a label is bounded, and never ends on a separator', () => {
 	assert.strictEqual(sanitizeLabel('b'.repeat(60)).length, 48);
-	// The cut lands on the separator here, and stripping it is what keeps the
-	// key from ending on a dash.
+	// The cut lands on the separator here, and stripping it is what keeps the key from ending on a dash.
 	const cutOnSeparator = sanitizeLabel(`${'a'.repeat(47)}, trailing`);
 	assert.strictEqual(cutOnSeparator, 'a'.repeat(47));
 });

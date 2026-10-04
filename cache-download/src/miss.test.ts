@@ -30,8 +30,7 @@ test('a nameless miss names the run prefix and hard-fails by default', () => {
 	const outcome = namelessMissOutcome('cache-xfer-123-', true);
 	assert.equal(outcome.fail, true);
 	assert.ok(outcome.message.includes('cache-xfer-123-'), outcome.message);
-	// Pre-v2 producers are invisible to nameless discovery on purpose; the
-	// message must say so instead of leaving the miss mysterious.
+	// Pre-v2 producers are invisible to nameless discovery on purpose.
 	assert.match(outcome.message, /pre-v2 cache-upload/);
 	assert.match(outcome.message, /explicit name/);
 });

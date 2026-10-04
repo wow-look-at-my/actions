@@ -47,8 +47,7 @@ function planStep(): void {
 	const gate = saveGate(process.env);
 	core.setOutput('save-allowed', String(gate.allowed));
 	if (gate.reason !== '') {
-		// A ref that is simply not the default one is the policy working rather
-		// than a fault, so it is reported and not warned about.
+		// A ref that is not the default one is the policy working rather than a fault.
 		const report = gate.isWarning ? core.warning : core.info;
 		report(`cached-run: ${gate.reason}`);
 	}
