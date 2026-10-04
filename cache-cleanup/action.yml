@@ -1,0 +1,25 @@
+name: Cache Cleanup
+version: 1
+description: Delete this run's cache hand-offs and sweep aged ones left by crashed runs (housekeeping for cache-upload/cache-download)
+
+inputs:
+  name:
+    description: 'Only clean entries of this hand-off name (default: every hand-off)'
+    required: false
+    default: ''
+  max-age:
+    description: 'Also delete any hand-off entry last accessed longer ago than this, e.g. 12h, 90m, 2d (0 disables the sweep)'
+    required: false
+    default: '12h'
+  github-token:
+    description: 'Token with actions: write on the repository'
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  deleted-count:
+    description: 'Number of cache entries deleted'
+
+runs:
+  using: node24
+  main: dist/index.js

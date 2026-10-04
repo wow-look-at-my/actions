@@ -1,0 +1,8 @@
+name: No Tests In YAML
+description: Run the full slopfix check over the checkout, which fails a GitHub Actions YAML file that carries a test instead of invoking the repository's own suite
+
+runs:
+  using: composite
+  steps:
+    # Kept as a name every repository already calls. The slopfix action takes no input that narrows the check.
+    - uses: wow-look-at-my/slopfix@master

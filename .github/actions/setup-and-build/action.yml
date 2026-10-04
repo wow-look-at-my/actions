@@ -1,0 +1,38 @@
+name: Setup and Build
+description: >-
+  Internal CI helper for release.yml: installs Node, pnpm and just, then runs
+  the ts0 action in one action directory, which tests and builds it and leaves
+  ts0 on PATH. Not a released action: release.yml's detect job excludes
+  ./.github/*, so this never gets an orphan tag. Checkout is deliberately NOT
+  part of this composite -- a local `uses: ./.github/actions/...` reference
+  only resolves after the repo is on disk, so checkout must stay the first
+  step of every calling job.
+
+inputs:
+  action-dir:
+    description: Action directory to test and build.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+    - uses: pnpm/action-setup@v4
+      with:
+        version: latest
+    # setup-just looks the release up through the GitHub API, which sometimes answers "Server Error". The second step fails the job if the retry fails too.
+    - id: just
+      uses: extractions/setup-just@v2
+      continue-on-error: true
+    - if: steps.just.outcome == 'failure'
+      uses: extractions/setup-just@v2
+    # ts0 type-checks against the directory's node_modules.
+    - name: Install dependencies
+      working-directory: ${{ inputs.action-dir }}
+      shell: bash
+      run: pnpm install
+    - uses: wow-look-at-my/ts0@master
+      with:
+        working-directory: ${{ inputs.action-dir }}

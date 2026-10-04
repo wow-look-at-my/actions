@@ -2,75 +2,80 @@ name: Release Actions
 
 on:
   push:
+    branches:
+      - '**'
   workflow_dispatch:
 
+concurrency:
+  group: gha_${{ github.repository }}_${{ github.workflow }}_${{ github.ref != 'refs/heads/master' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
 jobs:
-  cleanup:
+  # Every suite, guard and dogfood run this repo does.
+  checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - name: Cleanup orphaned branch tags
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: ./orphan-release/orphan-cleanup.sh
-
-  check-readme:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check README is up-to-date
-        run: |
-          ./generate-readme.sh > README.md.tmp
-          if ! diff -q README.md README.md.tmp > /dev/null 2>&1; then
-            echo "::error::README.md is out of date. Run ./generate-readme.sh > README.md and commit the result."
-            diff README.md README.md.tmp || true
-            exit 1
-          fi
-          rm README.md.tmp
-
-  no-scripts:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
-      - uses: extractions/setup-just@v2
-      - name: Build no-scripts-action
-        working-directory: no-scripts-action
-        run: just build
-      - uses: ./no-scripts-action
-
-  test-cache-rg:
-    runs-on: ubuntu-latest
+      contents: write # tag-cleanup deletes orphaned release tags
+      actions: write # cache-cleanup deletes entries; the all-builds guard lists jobs
+      checks: read # the guard's check-runs layer must be able to run
     steps:
       - uses: actions/checkout@v4
       - uses: ./cache-rg/test
+      # node24 actions: dist/ is not committed, so build before `uses: ./...`. This builds typescript; the next step runs it to build the rest.
+      - uses: ./.github/actions/setup-and-build
+        with:
+          action-dir: typescript
+      - name: Build the actions this job runs
+        uses: ./typescript
+        with:
+          script: |
+            const dirs = ['tag-cleanup', 'cache-upload', 'cache-download', 'cache-cleanup', 'run-once',
+              'orphan-release', 'submodule-gte', 'cached-apt', 'cached-run'];
+            await Promise.all(dirs.map(dir => $`just build`.cwd(dir)));
+      # This job runs every common-check below from THIS checkout, so it claims the once-per-run slot: otherwise a downstream action pulls in the PUBLISHED copy and the repo cannot publish a fix for its own check.
+      - uses: ./run-once
+        with:
+          name: common-checks
+      # The guard suites drive dist/, so they run after the build above.
+      - uses: wow-look-at-my/dats@master
+        with:
+          tests: |
+            orphan-release/dats/
+            secret-server/dats/
+      # An action with tests of its own keeps them in its test composite; a guard is dogfooded by running it.
+      - uses: ./submodule-gte/test
+      # slopfix walks the tree itself, so a fixture that breaks a rule on purpose carries a suffix the walk does not select.
+      - uses: ./no-all-builds-job
+      - uses: ./no-tests-in-yaml
+      - uses: ./has-permission
+        with:
+          permission: contents
+          assert: 'true'
+      - uses: ./ste-lint
+      - uses: ./no-scripts-action
+      - uses: ./tag-cleanup
+      - uses: ./yaml-comment-block
+      - uses: ./push-excludes-tags
+      - uses: ./typescript/test
+      - uses: ./_shared/cache-xfer/test
+      - uses: ./_shared/cache-key/test
+      - uses: ./cached-run/test
+      - uses: ./cached-apt/test
+      - if: failure()
+        uses: ./fail-fast
 
-  test-typescript:
-    runs-on: ubuntu-latest
+  # The shared cache-xfer tests on NT: its tar and path handling, and that a unix-origin hand-off runs there.
+  cache-xfer-windows:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
-      - uses: extractions/setup-just@v2
-      # typescript is a node24 action: its dist/ is not committed, so build it
-      # before the dogfood harness invokes it via `uses: ./typescript`.
-      - name: Build typescript action
-        working-directory: typescript
-        run: just build
-      - uses: ./typescript/test
+      - uses: ./_shared/cache-xfer/test
 
-  validate-slugs:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -79,8 +84,7 @@ jobs:
           repo="${{ github.repository }}"
           errors=0
 
-          # Correct format:   repo@action-name#ref
-          # Wrong format:     repo/action-name@ref
+          # Correct: repo@action-name#ref. Wrong: repo/action-name@ref.
           while IFS= read -r line; do
             file=$(echo "$line" | cut -d: -f1)
             num=$(echo "$line" | cut -d: -f2)
@@ -94,8 +98,16 @@ jobs:
             exit 1
           fi
 
+      - name: Validate workflow YAML with action-validator
+        uses: ./action-validator
+        with:
+          # A required input this step has no use for: release-node checks each action.yml.
+          actions: 'no-such-dir/*/action.yml'
+          workflows: '.github/workflows/*.yml'
+
   detect:
-    if: github.event_name == 'push'
+    # It enumerates every action rather than diffing, so a dispatch republishes the lot, which is what a recovery run wants.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
       node: ${{ steps.find.outputs.node }}
@@ -119,8 +131,9 @@ jobs:
           echo "composite=$(composite | jq -R | jq -sc)" >> $GITHUB_OUTPUT
 
   release-node:
-    needs: [cleanup, detect]
-    if: needs.detect.outputs.node != '[]'
+    needs: [checks, detect]
+    # A push publishes only behind green checks. A manual dispatch publishes regardless, which is the operator escape hatch for a broken published action that gates its own replacement.
+    if: always() && needs.detect.result == 'success' && needs.detect.outputs.node != '[]' && (github.event_name == 'workflow_dispatch' || needs.checks.result == 'success')
     strategy:
       fail-fast: false
       matrix:
@@ -131,37 +144,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - uses: ./.github/actions/setup-and-build
         with:
-          node-version: "22"
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
-
-      - uses: extractions/setup-just@v2
-
-      - name: Build
-        working-directory: ${{ matrix.action }}
-        run: just build
-
-      - name: Test
-        working-directory: ${{ matrix.action }}
-        run: |
-          if compgen -G "src/*.test.ts" > /dev/null; then
-            pnpm tsx --test src/*.test.ts
-          fi
+          action-dir: ${{ matrix.action }}
 
       - name: Validate action.yml
         run: |
           action="${{ matrix.action }}"
-          version=$(yq '.version' "$action/action.yml")
-          if [ "$version" = "null" ] || [ -z "$version" ]; then
-            echo "::error::$action/action.yml is missing required 'version' field"
-            exit 1
-          fi
-          echo "version=$version" >> $GITHUB_OUTPUT
-
           main=$(yq '.runs.main' "$action/action.yml")
           if [ "$main" != "null" ] && [ -n "$main" ]; then
             if [ ! -f "$action/$main" ]; then
@@ -179,7 +168,6 @@ jobs:
               fi
             fi
           done
-        id: version
 
       - name: Validate JS files are parseable
         working-directory: ${{ matrix.action }}
@@ -192,35 +180,43 @@ jobs:
             fi
           done
 
+      # dist/ is not committed, and the matrix build above built the action under release, not this one.
+      - name: Build the release tool
+        if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
+        working-directory: orphan-release
+        run: just build
+
+      # The default branch, or a dispatch the operator started by hand. This is the only gate on publishing: the release tool publishes whatever it is asked to. Versions auto-increment and unchanged actions are skipped.
       - name: Create orphan tag
+        if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: >
-          ./orphan-release/orphan-release.sh
+          node ./orphan-release/dist/index.js
           --source "${{ matrix.action }}"
-          --version "${{ steps.version.outputs.version }}"
-          --exclude "src node_modules tsconfig.json justfile package.json pnpm-lock.yaml pnpm-workspace.yaml"
-          --include-branch
+          --exclude "src node_modules tsconfig.json ts0.json justfile package.json pnpm-lock.yaml pnpm-workspace.yaml"
 
   release-composite:
-    needs: [cleanup, detect]
-    if: needs.detect.outputs.composite != '[]'
+    needs: [checks, detect]
+    # Same gate as release-node: green checks on a push, operator's word on a dispatch.
+    if: always() && needs.detect.result == 'success' && needs.detect.outputs.composite != '[]' && (github.event_name == 'workflow_dispatch' || needs.checks.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
 
+      - uses: ./.github/actions/setup-and-build
+        with:
+          action-dir: orphan-release
+
+      # Same gate as release-node: the default branch, or a hand-started dispatch.
       - name: Create orphan tags
+        if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           for action in $(echo '${{ needs.detect.outputs.composite }}' | jq -r '.[]'); do
-            version=$(yq '.version' "$action/action.yml")
-            if [ "$version" = "null" ] || [ -z "$version" ]; then
-              echo "::error::$action/action.yml is missing required 'version' field"
-              exit 1
-            fi
-            ./orphan-release/orphan-release.sh --source "$action" --version "$version" --include-branch
+            node ./orphan-release/dist/index.js --source "$action"
           done
 

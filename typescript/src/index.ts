@@ -9,41 +9,194 @@ import * as child_process from 'child_process';
 import * as util from 'util';
 import { createRequire } from 'module';
 import * as ts from 'typescript';
+import * as yaml from 'yaml';
 import { MAIN_FN, transformScript } from './transform';
+import { highlightSource } from './highlight';
+import { CommentBlock, findCommentBlocks } from './comments';
+import { unnamedStepMessage, unnamedSteps, WorkflowDoc } from './step-name';
+import { actionsRoot, containerPath } from './container-path';
 
 type ShellArg = string | number | boolean | null | undefined | string[];
 
-class ExecBuilder implements PromiseLike<number> {
+/** A captured output stream: a `String` object that also carries a `.json()` helper. */
+// eslint-disable-next-line local/no-callable-primitive-intersection
+type OutputStream = string & { json<T = unknown>(): T };
+
+// eslint-disable-next-line @typescript-eslint/no-wrapper-object-types
+function streamJson<T = unknown>(this: String): T {
+	return JSON.parse(this.toString()) as T;
+}
+
+/** Box a captured stream string and attach the `.json()` helper. */
+function makeStream(value: string): OutputStream {
+	// eslint-disable-next-line no-new-wrappers -- known: $ output is a boxed branded-primitive (the documented TS footgun).
+	return Object.assign(new String(value), { json: streamJson }) as unknown as OutputStream;
+}
+
+/** Remove a single trailing newline (`\n` or `\r\n`) — shell `$(...)`-style. */
+function trimTrailingNewline(s: string): string {
+	return s.replace(/\r?\n$/, '');
+}
+
+/**
+ * Result of awaiting a `$` command: the captured streams plus the exit code.
+ * `toString()` returns stdout (trailing newline trimmed) so a command's output
+ * can be string-coerced inline, while `stdout`/`stderr` are the raw streams,
+ * each carrying a `.json()` helper.
+ */
+class ProcessOutput {
+	readonly stdout: OutputStream;
+	readonly stderr: OutputStream;
+	readonly exitCode: number;
+
+	constructor(out: exec.ExecOutput) {
+		this.stdout = makeStream(out.stdout);
+		this.stderr = makeStream(out.stderr);
+		this.exitCode = out.exitCode;
+	}
+
+	/** stdout with a single trailing newline (`\n` or `\r\n`) removed. */
+	toString(): string {
+		return trimTrailingNewline(this.stdout);
+	}
+}
+
+/**
+ * Thrown when a `$` command exits non-zero (unless `.nothrow()` was chained).
+ * Carries the captured `stdout`/`stderr`/`exitCode` so a `catch` can inspect
+ * the failure without re-running the command.
+ */
+class ProcessError extends Error {
+	readonly stdout: OutputStream;
+	readonly stderr: OutputStream;
+	readonly exitCode: number;
+
+	constructor(command: string, output: ProcessOutput) {
+		const detail = output.stderr.trim();
+		super(`\`$\` command failed with exit code ${output.exitCode}: ${command}${detail ? `\n${detail}` : ''}`);
+		this.name = 'ProcessError';
+		this.stdout = output.stdout;
+		this.stderr = output.stderr;
+		this.exitCode = output.exitCode;
+	}
+}
+
+/**
+ * Lazy accessor for one stream of a `$` command that has not run yet — the
+ * value of the builder's `.stdout` / `.stderr` getters. Awaiting it runs the
+ * command and resolves to that stream (an `OutputStream`); `.json()` / `.text()`
+ * are paren-free terminals. This is what makes `await $`cmd`.stdout.json()` work
+ * without the `(await ...)` wrapper (`await` binds looser than `.`).
+ */
+class StreamPromise implements PromiseLike<OutputStream> {
+	constructor(
+		private readonly run: () => Promise<ProcessOutput>,
+		private readonly pick: (o: ProcessOutput) => OutputStream,
+	) {}
+
+	private resolve(): Promise<OutputStream> {
+		return this.run().then(this.pick);
+	}
+
+	then<T = OutputStream, R = never>(
+		onfulfilled?: ((v: OutputStream) => T | PromiseLike<T>) | null,
+		onrejected?: ((e: unknown) => R | PromiseLike<R>) | null,
+	): Promise<T | R> {
+		return this.resolve().then(onfulfilled, onrejected);
+	}
+
+	/** Run the command and resolve to this stream parsed as JSON. */
+	json<T = unknown>(): Promise<T> {
+		return this.resolve().then((s) => s.json<T>());
+	}
+
+	/** Run the command and resolve to this stream with a trailing newline trimmed. */
+	text(): Promise<string> {
+		return this.resolve().then(trimTrailingNewline);
+	}
+}
+
+class ExecBuilder implements PromiseLike<ProcessOutput> {
 	private cmd: string;
 	private args: string[];
 	private opts: exec.ExecOptions;
+	private throwOnNonZero: boolean;
 
-	constructor(cmd: string, args: string[], opts: exec.ExecOptions = {}) {
+	constructor(cmd: string, args: string[], opts: exec.ExecOptions = {}, throwOnNonZero = true) {
 		this.cmd = cmd;
 		this.args = args;
 		this.opts = opts;
+		this.throwOnNonZero = throwOnNonZero;
 	}
 
+	private with(patch: Partial<exec.ExecOptions>, throwOnNonZero = this.throwOnNonZero): ExecBuilder {
+		return new ExecBuilder(this.cmd, this.args, { ...this.opts, ...patch }, throwOnNonZero);
+	}
+
+	/** Pipe data to the command's stdin. */
 	input(data: Buffer | string): ExecBuilder {
-		return new ExecBuilder(this.cmd, this.args, {
-			...this.opts,
-			input: Buffer.isBuffer(data) ? data : Buffer.from(data),
-		});
+		return this.with({ input: Buffer.isBuffer(data) ? data : Buffer.from(data) });
 	}
 
+	/** Set the working directory. */
 	cwd(dir: string): ExecBuilder {
-		return new ExecBuilder(this.cmd, this.args, { ...this.opts, cwd: dir });
+		return this.with({ cwd: dir });
 	}
 
+	/** Suppress streaming stdout/stderr to the live log (still captured). */
 	silent(): ExecBuilder {
-		return new ExecBuilder(this.cmd, this.args, { ...this.opts, silent: true });
+		return this.with({ silent: true });
 	}
 
-	then<T = number, R = never>(
-		onfulfilled?: ((v: number) => T | PromiseLike<T>) | null,
-		onrejected?: ((e: any) => R | PromiseLike<R>) | null,
+	/** Merge/override environment variables for this command. @actions/exec
+	 * *replaces* the environment when `env` is set. */
+	env(vars: Record<string, string>): ExecBuilder {
+		const base = this.opts.env ?? (process.env as Record<string, string>);
+		return this.with({ env: { ...base, ...vars } });
+	}
+
+	/** Resolve even on a non-zero exit; read `exitCode` instead of catching. */
+	nothrow(): ExecBuilder {
+		return this.with({}, false);
+	}
+
+	/** Lazy stdout accessor. Awaitable on its own (`await $`cmd`.stdout`) and the
+	 * reason `await $`cmd`.stdout.json()` works paren-free. */
+	get stdout(): StreamPromise {
+		return new StreamPromise(() => this.run(), (o) => o.stdout);
+	}
+
+	/** Lazy stderr accessor — `await $`cmd`.stderr` / `.stderr.json()`. */
+	get stderr(): StreamPromise {
+		return new StreamPromise(() => this.run(), (o) => o.stderr);
+	}
+
+	/** Run the command and resolve to its stdout parsed as JSON. */
+	json<T = unknown>(): Promise<T> {
+		return this.stdout.json<T>();
+	}
+
+	/** Run the command and resolve to its stdout as a string with a single
+	 * trailing newline trimmed (like `toString()`). */
+	text(): Promise<string> {
+		return this.stdout.text();
+	}
+
+	private async run(): Promise<ProcessOutput> {
+		// Always capture and never let getExecOutput throw on a non-zero exit (ignoreReturnCode), so stdout/stderr survive a failure.
+		const raw = await exec.getExecOutput(this.cmd, this.args, { ...this.opts, ignoreReturnCode: true });
+		const output = new ProcessOutput(raw);
+		if (this.throwOnNonZero && raw.exitCode !== 0) {
+			throw new ProcessError([this.cmd, ...this.args].join(' '), output);
+		}
+		return output;
+	}
+
+	then<T = ProcessOutput, R = never>(
+		onfulfilled?: ((v: ProcessOutput) => T | PromiseLike<T>) | null,
+		onrejected?: ((e: unknown) => R | PromiseLike<R>) | null,
 	): Promise<T | R> {
-		return exec.exec(this.cmd, this.args, this.opts).then(onfulfilled, onrejected);
+		return this.run().then(onfulfilled, onrejected);
 	}
 }
 
@@ -69,20 +222,15 @@ function $(strings: TemplateStringsArray, ...values: ShellArg[]): ExecBuilder {
 	return new ExecBuilder(cmd, cmdArgs);
 }
 
-// dist/ layout produced by `just build`:
-//   dist/index.js                  (bundled action)
-//   dist/lib.es*.d.ts              (TypeScript standard libs)
-//   dist/types/node_modules/...    (mirrored types for module resolution)
+// dist/ layout produced by ` build`: dist/index.js (bundled action) dist/lib.es*.d.ts (TypeScript standard libs).
 const DIST_DIR = __dirname;
 const TYPES_DIR = path.join(DIST_DIR, 'types');
-// Virtual file for type-checking. Located under TYPES_DIR so node module
-// resolution finds dist/types/node_modules/* by walking up.
+// A host path from ${{ github.action_path }} resolves to the `_actions` tree this action runs from.
+const ACTIONS_ROOT = actionsRoot(DIST_DIR);
+const toContainer = (p: string): string => containerPath(p, ACTIONS_ROOT, fs.existsSync);
+// Virtual file for type-checking.
 const VIRTUAL_FILE = path.join(TYPES_DIR, '__user-script.ts');
-// The ambient declarations for the injected helpers are served to tsc as their
-// own in-memory global script file (a .d.ts with no top-level import/export),
-// not prepended into the user's module: that keeps user line numbers intact and
-// lets a user-level `import * as path from 'node:path'` legally shadow the
-// injected `path` instead of colliding with a same-file declaration.
+// The ambient declarations for the injected helpers are served to tsc as their own in-memory global script file.
 const GLOBALS_VIRTUAL_FILE = path.join(TYPES_DIR, '__globals.d.ts');
 
 const GLOBALS_DTS = fs.readFileSync(path.join(DIST_DIR, 'globals.d.ts'), 'utf-8');
@@ -112,8 +260,7 @@ function maybeParseJson(name: string): unknown {
 	}
 }
 
-// Like maybeParseJson, but defaults to {} when unset (for contexts the runner
-// never exposes — vars, secrets, steps, needs, inputs, strategy, matrix).
+// Like maybeParseJson, but defaults to {} when unset.
 function parseOptionalContext(name: string): unknown {
 	return maybeParseJson(name) ?? {};
 }
@@ -125,7 +272,6 @@ function deriveGithubContext(): Record<string, unknown> {
 		try {
 			event = JSON.parse(fs.readFileSync(eventPath, 'utf-8'));
 		} catch {
-			// fall through to empty event
 		}
 	}
 	// Mirror the shape of the workflow `github` context. Numeric fields are
@@ -191,8 +337,7 @@ function deriveRunnerContext(): Record<string, unknown> {
 
 function deriveJobContext(): Record<string, unknown> {
 	// `job.container` and `job.services` are only available via the runner's
-	// expression substitution, never to the action process. Surface what we
-	// can — the job id — and leave a placeholder status.
+	// expression substitution, never to the action process.
 	return {
 		status: process.env.GITHUB_ACTION_STATUS ?? 'success',
 	};
@@ -200,17 +345,13 @@ function deriveJobContext(): Record<string, unknown> {
 
 function readContexts(): WorkflowContexts {
 	return {
-		// Auto-derived from env vars and the event-payload file. An explicit
-		// JSON input (when present) wins, mainly for tests / dry runs.
+		// Auto-derived from env vars and the event-payload file.
 		github: maybeParseJson('github') ?? deriveGithubContext(),
 		runner: maybeParseJson('runner') ?? deriveRunnerContext(),
 		job: maybeParseJson('job') ?? deriveJobContext(),
-		// Workflow `env:` context: GitHub doesn't distinguish those vars from
-		// system env in the action's process, so we default to all of process.env.
+		// Workflow `env:` context: GitHub doesn't distinguish those vars from system env in the action's process.
 		env: maybeParseJson('env') ?? { ...process.env },
-		// The runner never exposes these contexts to action processes — they
-		// only exist as workflow-expression substitutions. Default to {}; the
-		// caller passes JSON only when they actually need them.
+		// The runner never exposes these contexts to action processes — they only exist as workflow-expression substitutions. Default to {}.
 		steps: parseOptionalContext('steps'),
 		needs: parseOptionalContext('needs'),
 		vars: parseOptionalContext('vars'),
@@ -219,6 +360,23 @@ function readContexts(): WorkflowContexts {
 		strategy: parseOptionalContext('strategy'),
 		matrix: parseOptionalContext('matrix'),
 	};
+}
+
+// lib.dom is opt-in per step. It declares hundreds of browser globals whose
+// names collide with ordinary identifiers, so a script that does not touch the
+// DOM type-checks more strictly without it.
+function domEnabled(): boolean {
+	const raw = core.getInput('dom').trim().toLowerCase();
+	if (raw === '' || raw === 'false') return false;
+	if (raw === 'true') return true;
+	throw new Error(`Input 'dom' must be 'true' or 'false', got '${core.getInput('dom')}'.`);
+}
+
+function libFiles(): string[] {
+	const libs = ['lib.es2022.d.ts'];
+	// dom.iterable comes with it: without it a NodeList is not iterable.
+	if (domEnabled()) libs.push('lib.dom.d.ts', 'lib.dom.iterable.d.ts');
+	return libs;
 }
 
 function baseCompilerOptions(): ts.CompilerOptions {
@@ -232,12 +390,18 @@ function baseCompilerOptions(): ts.CompilerOptions {
 		forceConsistentCasingInFileNames: true,
 		resolveJsonModule: true,
 		allowSyntheticDefaultImports: true,
-		lib: ['lib.es2022.d.ts'],
+		lib: libFiles(),
 		types: ['node'],
 		typeRoots: [path.join(TYPES_DIR, 'node_modules', '@types')],
 		baseUrl: TYPES_DIR,
 	};
 }
+
+// GitHub evaluates every ${{ ... }} expression into the script text before
+// this action runs.
+const SUBSTITUTION_UNSOUND_CODES = new Set([
+	2367, // This comparison appears to be unintentional because the types X and Y have no overlap.
+]);
 
 function typeCheck(source: string): readonly ts.Diagnostic[] {
 	const opts: ts.CompilerOptions = { ...baseCompilerOptions(), noEmit: true };
@@ -250,13 +414,20 @@ function typeCheck(source: string): readonly ts.Diagnostic[] {
 	const originalReadFile = host.readFile.bind(host);
 	const originalFileExists = host.fileExists.bind(host);
 	const originalGetSourceFile = host.getSourceFile.bind(host);
+	const originalDirectoryExists = host.directoryExists?.bind(host);
 
-	host.readFile = (fileName) => sources.get(fileName) ?? originalReadFile(fileName);
-	host.fileExists = (fileName) => sources.has(fileName) || originalFileExists(fileName);
+	host.readFile = (fileName) => sources.get(fileName) ?? originalReadFile(toContainer(fileName));
+	host.fileExists = (fileName) => sources.has(fileName) || originalFileExists(toContainer(fileName));
+	if (originalDirectoryExists) host.directoryExists = (dir) => originalDirectoryExists(toContainer(dir));
 	host.getSourceFile = (fileName, languageVersion, onError, shouldCreate) => {
 		const synthetic = sources.get(fileName);
 		if (synthetic !== undefined) {
 			return ts.createSourceFile(fileName, synthetic, languageVersion, true);
+		}
+		const mapped = toContainer(fileName);
+		if (mapped !== fileName) {
+			const text = originalReadFile(mapped);
+			return text === undefined ? undefined : ts.createSourceFile(fileName, text, languageVersion);
 		}
 		return originalGetSourceFile(fileName, languageVersion, onError, shouldCreate);
 	};
@@ -267,20 +438,17 @@ function typeCheck(source: string): readonly ts.Diagnostic[] {
 		host,
 	});
 
-	// Syntactic/semantic diagnostics are scoped to the user's file: the globals
-	// file is the action's own (and skipLibCheck'd), and collecting program-wide
-	// would surface its diagnostics under a misleading user-facing label.
+	// Syntactic/semantic diagnostics are scoped to the user's file.
 	const userFile = program.getSourceFile(VIRTUAL_FILE);
 	return [
 		...program.getSyntacticDiagnostics(userFile),
 		...program.getSemanticDiagnostics(userFile),
 		...program.getGlobalDiagnostics(),
-	];
+	].filter((d) => !SUBSTITUTION_UNSOUND_CODES.has(d.code));
 }
 
 // Maps an emitted (transformed) 0-based line back to a 1-based user-script
-// line. Synthetic wrapper lines have no source line; fall back to the nearest
-// preceding user line so errors like "'}' expected" still point somewhere sane.
+// line.
 function toUserLine(lineMap: number[], outLine: number): number {
 	for (let i = Math.min(outLine, lineMap.length - 1); i >= 0; i--) {
 		if (lineMap[i] >= 0) return lineMap[i] + 1;
@@ -293,13 +461,18 @@ function formatDiagnostic(d: ts.Diagnostic, label: string, lineMap: number[]): s
 	if (d.file && d.start !== undefined) {
 		const { line, character } = d.file.getLineAndCharacterOfPosition(d.start);
 		if (d.file.fileName !== VIRTUAL_FILE) {
-			// Diagnostics are scoped to the user file; anything else (e.g. from
-			// getGlobalDiagnostics) is labeled by its own name, unmapped.
+			// Diagnostics are scoped to the user file.
 			return `${path.basename(d.file.fileName)}:${line + 1}:${character + 1}: error TS${d.code}: ${message}`;
 		}
 		return `${label}:${toUserLine(lineMap, line)}:${character + 1}: error TS${d.code}: ${message}`;
 	}
 	return `error TS${d.code}: ${message}`;
+}
+
+// Keep the sentence naming the real limit.
+function formatCommentBlock(b: CommentBlock, label: string): string {
+	const count = b.endLine - b.startLine + 1;
+	return `${label}:${b.startLine}:1: error: ${count} consecutive \`//\` comment lines (${b.startLine}-${b.endLine}). The limit is ONE: any two adjacent \`//\` lines fail, so shortening the block does not help. Stacked line comments are prose, not code — say it in a single line, or delete it.`;
 }
 
 function transpile(source: string): string {
@@ -316,17 +489,18 @@ function transpile(source: string): string {
 	return result.outputText;
 }
 
-async function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: string): Promise<unknown> {
+async function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: string, githubToken: string): Promise<unknown> {
+	// The pre-authenticated `octokit` instance is built lazily from the `github-token` action input (default ${{ github.token }}).
 	let _preAuth: ReturnType<typeof github.getOctokit> | null = null;
 	const octokitProxy = new Proxy(
-		function deprecatedOctokit(token: string, options?: Record<string, unknown>) {
+		function deprecatedOctokit(token: string, options?: Parameters<typeof github.getOctokit>[1]) {
 			core.warning('octokit(token) is deprecated; use the pre-authenticated octokit instance directly, or getOctokit(token) for a custom token');
-			return github.getOctokit(token, options as any);
+			return github.getOctokit(token, options);
 		},
 		{
 			get(_target, prop) {
-				if (!_preAuth) _preAuth = github.getOctokit(process.env.GITHUB_TOKEN ?? '');
-				return (_preAuth as any)[prop];
+				if (!_preAuth) _preAuth = github.getOctokit(githubToken);
+				return Reflect.get(_preAuth, prop);
 			},
 		}
 	);
@@ -342,34 +516,47 @@ async function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: str
 		fs, path, os, child_process, util,
 	});
 
+	// yaml is bundled here, so a script gets it on every runner. Shelling out to
+	// yq instead fails on Windows, which has no yq on PATH.
 	const actionModules: Record<string, unknown> = {
 		'@actions/core': core,
 		'@actions/github': github,
 		'@actions/exec': exec,
 		'@actions/io': io,
+		yaml,
 	};
 
 	const NodeModule = require('module');
 	const origResolve = NodeModule._resolveFilename;
 	const workspaceDir = process.env.GITHUB_WORKSPACE;
 
-	NodeModule._resolveFilename = function (request: string, parent: unknown, isMain: boolean, options: unknown) {
+	// require.resolve() goes through this same hook, so a request nothing can
+	// resolve used to re-enter the fallback until the stack overflowed. the
+	// resolver is restored across the call, which turns that into the ordinary
+	// "Cannot find module" the caller needs to read.
+	const patched = function (this: unknown, request: string, parent: unknown, isMain: boolean, options: unknown) {
 		if (request in actionModules) return request;
+		if (path.isAbsolute(request)) request = toContainer(request);
 		try {
 			return origResolve.call(this, request, parent, isMain, options);
 		} catch (e) {
-			if (workspaceDir) {
+			if (!workspaceDir) throw e;
+			NodeModule._resolveFilename = origResolve;
+			try {
 				return createRequire(path.join(workspaceDir, 'noop.js')).resolve(request);
+			} finally {
+				NodeModule._resolveFilename = patched;
 			}
-			throw e;
 		}
 	};
+	NodeModule._resolveFilename = patched;
 
 	for (const [name, mod] of Object.entries(actionModules)) {
-		(require.cache as any)[name] = {
+		// A cache entry the loader only ever reads `exports` off.
+		require.cache[name] = {
 			id: name, filename: name, loaded: true, exports: mod,
 			parent: null, children: [], paths: [],
-		};
+		} as unknown as NodeJS.Module;
 	}
 
 	const scriptFilename = path.join(baseDir, `.user-script-${process.pid}-${Date.now()}.js`);
@@ -379,26 +566,21 @@ async function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: str
 		const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
 		const fn = new AsyncFunction('require', 'exports', 'module', '__filename', '__dirname', transpiledJs);
 		const mod = { exports: {} as Record<string, unknown> };
-		// Running the transpiled module executes the hoisted module-scope
-		// statements (imports become require() calls, export initializers run)
-		// and defines __main on exports. The rest of the user's code lives in
-		// __main's body — invoke it and use its resolved value as the result
-		// (so `return <value>` works).
+		// Running the transpiled module executes the hoisted module-scope statements (imports become require() calls, export initializers run).
 		await fn(scriptRequire, mod.exports, mod, scriptFilename, baseDir);
 		const main = mod.exports[MAIN_FN];
 		if (typeof main !== 'function') {
-			// buildSource always wraps the script in __main; only reachable if the
-			// user reassigned module.exports. Treat as "no result".
+			// buildSource always wraps the script in __main; only reachable if the user reassigned module.exports.
 			return undefined;
 		}
 		return await (main as () => Promise<unknown>)();
 	} finally {
 		NodeModule._resolveFilename = origResolve;
-		for (const name of Object.keys(actionModules)) delete (require.cache as any)[name];
+		for (const name of Object.keys(actionModules)) delete require.cache[name];
 	}
 }
 
-function readUserScript(): { script: string; label: string; dir: string } {
+function readUserScript(): { script: string; label: string; dir: string; inline: boolean } {
 	const inline = core.getInput('script');
 	const file = core.getInput('file');
 
@@ -415,18 +597,49 @@ function readUserScript(): { script: string; label: string; dir: string } {
 		if (!fs.existsSync(resolved)) {
 			throw new Error(`File not found: ${resolved}`);
 		}
-		return { script: fs.readFileSync(resolved, 'utf-8'), label: file, dir: path.dirname(resolved) };
+		return { script: fs.readFileSync(resolved, 'utf-8'), label: file, dir: path.dirname(resolved), inline: false };
 	}
 
-	return { script: inline, label: 'script', dir: process.env.GITHUB_WORKSPACE ?? process.cwd() };
+	return { script: inline, label: 'script', dir: process.env.GITHUB_WORKSPACE ?? process.cwd(), inline: true };
+}
+
+// Reads the running workflow to find this step and check it carries a `name:`.
+// A step reached through a composite action is not in that file, and neither is
+// anything outside a workflow run, so both cases return no findings.
+async function unnamedStepPositions(): Promise<{workflow: string; job: string; positions: number[]}> {
+	const ref = process.env.GITHUB_WORKFLOW_REF;
+	const job = process.env.GITHUB_JOB;
+	const workspace = process.env.GITHUB_WORKSPACE;
+	const none = {workflow: '', job: job ?? '', positions: []};
+	if (!ref || !job || !workspace) return none;
+
+	const workflow = ref.split('@')[0].split('/').slice(2).join('/');
+	const file = path.join(workspace, workflow);
+	if (!workflow || !fs.existsSync(file)) return none;
+
+	const doc = yaml.parse(fs.readFileSync(file, 'utf-8')) as WorkflowDoc;
+	return {workflow, job, positions: unnamedSteps(doc, job)};
 }
 
 async function run(): Promise<void> {
-	const { script: userScript, label, dir } = readUserScript();
-	const ctx = readContexts();
-	const { text: source, lineMap } = transformScript(userScript);
+	const { script: userScript, label, dir, inline } = readUserScript();
 
-	core.startGroup('Type-checking with tsc');
+	// Everything up to execution shares one group: the source echo plus a line each from the type-check and the transpile.
+	core.startGroup('Compiling script');
+	core.info(highlightSource(trimTrailingNewline(userScript)));
+
+	const commentBlocks = inline ? findCommentBlocks(userScript) : [];
+	for (const b of commentBlocks) {
+		core.error(formatCommentBlock(b, label));
+	}
+
+	// Deferred with the comment gate, for the same reason: the script still runs.
+	const unnamed = await unnamedStepPositions();
+	if (unnamed.positions.length > 0) {
+		core.error(unnamedStepMessage(unnamed.workflow, unnamed.job, unnamed.positions));
+	}
+
+	const { text: source, lineMap } = transformScript(userScript);
 	const diagnostics = typeCheck(source);
 	if (diagnostics.length > 0) {
 		for (const d of diagnostics) {
@@ -437,19 +650,30 @@ async function run(): Promise<void> {
 		return;
 	}
 	core.info('Type-check passed.');
-	core.endGroup();
 
-	core.startGroup('Transpiling');
 	const js = transpile(source);
 	core.info(`Transpiled output: ${js.length} bytes`);
 	core.endGroup();
 
+	const ctx = readContexts();
+	// Token for the injected `octokit` (and the default getOctokit() token).
+	const githubToken = core.getInput('github-token');
+
 	core.startGroup('Executing script');
-	const result = await execute(js, ctx, dir);
+	const result = await execute(js, ctx, dir, githubToken);
 	core.endGroup();
 
 	if (result !== undefined) {
 		core.setOutput('result', JSON.stringify(result));
+	}
+
+	// The step ran to completion; a comment-block violation only fails it now,
+	// after the type-check and execution results are already visible.
+	if (commentBlocks.length > 0) {
+		core.setFailed(`Comment check failed: ${commentBlocks.length} block(s) of consecutive \`//\` comment lines.`);
+	}
+	if (unnamed.positions.length > 0) {
+		core.setFailed(`Step name check failed: ${unnamed.positions.length} typescript step(s) in job '${unnamed.job}' carry no \`name:\`.`);
 	}
 }
 
