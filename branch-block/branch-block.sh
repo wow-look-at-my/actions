@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: branch-block.sh --branch <branch> [--ruleset <name>]
-# Adds a branch pattern to a ruleset that blocks branch creation
+# Usage: branch-block.sh --branch <branch> [--ruleset <name>] Adds a branch pattern to a ruleset.
 
 branch=""
 ruleset_name="merged-branches"

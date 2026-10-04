@@ -1,44 +1,20 @@
 import * as crypto from 'crypto';
 
-// The single copy of the cache-xfer wire format: key layout, envelope, and
-// the constant version seed. cache-upload, cache-download, and cache-cleanup
-// all import it from here -- a second copy would fork the format silently.
+// The copy of the cache-xfer wire format: key layout, envelope, and the constant version seed. cache-upload, cache-download.
 
 /** Key prefix shared by cache-upload, cache-download, and cache-cleanup. */
 export const KEY_PREFIX = 'cache-xfer';
 
-/**
- * Seed of the constant cache "version" sent to the cache service.
- *
- * The service treats `version` as an opaque request parameter alongside the
- * key; the path/compression-derived sha256 that actions/cache sends is purely
- * client-side convention (computed in @actions/cache 5.2.0,
- * lib/internal/cacheUtils.js:202-217, from the literal path spec strings). We
- * send sha256 of this literal instead, so version never depends on user
- * input and upload/download need no path contract at all.
- *
- * Bump the trailing revision whenever the envelope layout or codec set
- * changes: mixed-revision producers/consumers then land on different
- * versions, turning a would-be misparse into a clean cache miss.
- *
- * v2: run-id-first key layout (`cache-xfer-<run_id>-<name>-<attempt>`) and
- * the envelope header now carries the hand-off `name` (nameless discovery).
- */
-export const VERSION_SEED = 'wow-look-at-my/actions/cache-xfer/v2';
+/** Seed of the constant cache "version" sent to the cache service. */
+export const VERSION_SEED = 'wow-look-at-my/actions/cache-xfer/v3';
 
-/**
- * TRANSITION (remove with the named-download legacy fallback once the v2
- * rollout is done): the v1 seed, still sent by pre-v2 cache-upload
- * producers. A NAMED download falls back to the v1 (key, version) pair when
- * the v2 lookup misses, so a new-layout consumer riding `#latest` keeps
- * working against an old-layout producer mid-rollout.
- */
+/** TRANSITION (remove with the named-download legacy fallback once the v2 rollout is done): the v1 seed. */
 export const LEGACY_VERSION_SEED = 'wow-look-at-my/actions/cache-xfer/v1';
 
 /** Magic bytes opening every hand-off archive. */
 export const ENVELOPE_MAGIC = 'WXFR1';
 
-/** The cache service rejects keys longer than 512 characters. */
+/** The cache service rejects keys longer than many characters. */
 const MAX_KEY_LENGTH = 512;
 
 /** Sanity bound for the envelope's JSON header. */
@@ -72,30 +48,21 @@ export function handoffKey(name: string, runId: string, runAttempt: string): str
 	return key;
 }
 
-/**
- * Name-scoped restore prefix: matches any attempt of this run, so
- * "re-run failed jobs" (new attempt, producer not re-run) still restores the
- * newest earlier attempt's files.
- */
+/** Name-scoped restore prefix: matches any attempt of this run, so "re-run
+ * failed jobs" (new attempt, producer not re-run). */
 export function handoffRestorePrefix(name: string, runId: string): string {
 	return `${KEY_PREFIX}-${runId}-${name}-`;
 }
 
-/**
- * Run-scoped restore prefix: matches EVERY hand-off of this run (any name,
- * any attempt) — the nameless-discovery search. The run-id-first key layout
- * guarantees it can never cross runs.
- */
+/** Run-scoped restore prefix: matches EVERY hand-off of this run (any name,
+ * any attempt) — the nameless-discovery search. */
 export function runRestorePrefix(runId: string): string {
 	return `${KEY_PREFIX}-${runId}-`;
 }
 
-/**
- * Extract the hand-off name from a (current-layout) key of run `runId`, or
+/** Extract the hand-off name from a (current-layout) key of run `runId`, or
  * undefined for anything else — old-layout keys, other runs, foreign
- * namespaces. The attempt segment is numeric-terminal, so a name containing
- * dashes (even dash-digit segments) parses greedily and correctly.
- */
+ * namespaces. */
 export function nameFromKey(key: string, runId: string): string | undefined {
 	const match = new RegExp(`^${KEY_PREFIX}-${escapeRegExp(runId)}-(.+)-\\d+$`).exec(key);
 	return match?.[1];
@@ -107,13 +74,7 @@ export function handoffVersion(): string {
 }
 
 // ---------------------------------------------------------------------------
-// TRANSITION (remove with the named-download legacy fallback once every
-// producer runs a v2 cache-upload): the pre-v2 key layout put the name first
-// — `cache-xfer-<name>-<run_id>-<attempt>` — which is exactly why nameless
-// discovery was impossible (a nameless prefix search could match another
-// run's entry). Only a NAMED download may consult these; a nameless
-// old-layout prefix search would reintroduce the cross-run bug.
-// ---------------------------------------------------------------------------
+// TRANSITION.
 
 /** TRANSITION: exact key under the pre-v2 (name-first) layout. */
 export function legacyHandoffKey(name: string, runId: string, runAttempt: string): string {
@@ -130,29 +91,21 @@ export function legacyHandoffVersion(): string {
 	return crypto.createHash('sha256').update(LEGACY_VERSION_SEED).digest('hex');
 }
 
-/**
- * Self-describing envelope, so the download side needs nothing from the key:
- *
- *   'WXFR1' | uint32 BE header length | header JSON | compressed payload
- *
- * mode 'raw' is the single-file fast path (no tar process at all): the file
- * body is streamed straight through the codec, and basename/fileMode let the
- * download side recreate `<dest>/<basename>` with its permission bits.
- * mode 'tar' carries a directory's contents as a tar stream (exec bits and
- * symlinks preserved by tar itself).
- *
- * `name` is the hand-off name the producer saved under — what lets a
- * nameless download report which hand-off it picked without trusting the
- * key. Optional on parse: v1 envelopes (reachable only through the named
- * download's TRANSITION legacy fallback) predate it.
- */
+/** Self-describing envelope, so the download side needs nothing from the key. */
 export interface EnvelopeHeader {
 	mode: 'tar' | 'raw';
 	codec: 'zstd';
 	name?: string;
 	basename?: string;
 	fileMode?: number;
+	/** process.platform of the producer. A win32 archive carries no exec bits, so a unix consumer sets them on every file. */
+	producer?: string;
+	/** Every archive ends in a SUM_BYTES digest of its compressed payload, and a reader hashes what it feeds the decoder. */
+	sum: 'sha256';
 }
+
+/** Length of the digest trailer a `sum: 'sha256'` archive ends with. */
+export const SUM_BYTES = 32;
 
 export function encodeEnvelope(header: EnvelopeHeader): Buffer {
 	const json = Buffer.from(JSON.stringify(header), 'utf8');
@@ -200,6 +153,9 @@ export function parseEnvelope(buf: Buffer): {header: EnvelopeHeader; dataOffset:
 	}
 	if (header.name !== undefined && (typeof header.name !== 'string' || header.name === '')) {
 		throw new Error(`Envelope name ${JSON.stringify(header.name)} is not a non-empty string`);
+	}
+	if (header.sum !== 'sha256') {
+		throw new Error(`Envelope sum '${String(header.sum)}' is missing or not supported by this version of the action`);
 	}
 	if (header.mode === 'raw') {
 		if (typeof header.basename !== 'string' || header.basename === '' || header.basename === '.' || header.basename === '..' || header.basename.includes('/') || header.basename.includes('\\')) {
