@@ -1,0 +1,13 @@
+name: Fail Fast
+description: 'Cancels the whole workflow run. Put it last in a job under `if: failure()`, and grant the job `actions: write`'
+
+runs:
+  using: composite
+  steps:
+    # A matrix fail-fast stops only the legs of its own matrix. This stops every job, so one red job ends the run in minutes.
+    - name: Cancel the run
+      uses: wow-look-at-my/actions@typescript#latest
+      with:
+        script: |
+          core.error(`${context.job} failed; cancelling run ${context.runId} so no other job keeps running`);
+          await octokit.rest.actions.cancelWorkflowRun({ ...context.repo, run_id: context.runId });
