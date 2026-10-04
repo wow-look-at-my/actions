@@ -1,0 +1,53 @@
+name: Orphan Release
+version: 1
+description: Create orphan tags from a directory
+
+inputs:
+  source:
+    description: 'Source directory to package (not needed for cleanup)'
+    required: false
+    default: ''
+  name:
+    description: 'Tag name prefix (defaults to source directory)'
+    required: false
+    default: ''
+  version:
+    description: 'Force specific version (otherwise auto-increments)'
+    required: false
+    default: ''
+  exclude:
+    description: 'Space-separated patterns to exclude'
+    required: false
+    default: ''
+  message:
+    description: 'Commit message (defaults to "Release {first_tag}")'
+    required: false
+    default: ''
+  cleanup:
+    description: 'Run cleanup mode (delete stale release tags)'
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Cleanup stale release tags
+      if: inputs.cleanup == 'true'
+      uses: wow-look-at-my/actions@tag-cleanup#latest
+
+    - name: Create and push orphan tags
+      if: inputs.cleanup != 'true'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        if [ -z "${{ inputs.source }}" ]; then
+          echo "Error: source is required for release" >&2
+          exit 1
+        fi
+        args=(--source "${{ inputs.source }}")
+        [ -n "${{ inputs.name }}" ] && args+=(--name "${{ inputs.name }}")
+        [ -n "${{ inputs.version }}" ] && args+=(--version "${{ inputs.version }}")
+        [ -n "${{ inputs.exclude }}" ] && args+=(--exclude "${{ inputs.exclude }}")
+        [ -n "${{ inputs.message }}" ] && args+=(--message "${{ inputs.message }}")
+        node "${{ github.action_path }}/dist/index.js" "${args[@]}"
