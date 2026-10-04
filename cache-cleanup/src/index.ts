@@ -3,17 +3,7 @@ import * as github from '@actions/github';
 import {isAgedOut, isRunEntry, keyMatchesName, listPrefix, parseMaxAge} from './lib';
 
 // The cache service has no per-entry TTL, so short hand-off lifetime is done
-// by explicit deletion through the DOCUMENTED public REST API (unlike the
-// upload/download pair, nothing internal is touched here):
-//   - GET    /repos/{owner}/{repo}/actions/caches
-//       `key` is "An explicit key or prefix for identifying the cache";
-//       entries carry id, key, ref, last_accessed_at, created_at,
-//       size_in_bytes.
-//   - DELETE /repos/{owner}/{repo}/actions/caches/{cache_id}
-// (https://docs.github.com/en/rest/actions/cache — octokit methods
-// actions.getActionsCacheList / actions.deleteActionsCacheById.)
-// Both need a token with `actions: write` on the repository — the consumer
-// job must declare that permission for github.token.
+// by explicit deletion through the DOCUMENTED public REST API.
 
 function requireEnv(name: string): string {
 	const value = process.env[name];
@@ -35,16 +25,10 @@ async function run(): Promise<void> {
 
 	const octokit = github.getOctokit(token);
 	const {owner, repo} = github.context.repo;
-	// Always list the whole cache-xfer namespace: under the run-id-first key
-	// layout a name is no longer a key prefix, so name scoping is applied
-	// client-side below (both key layouts, during the v2 transition).
+	// Always list the whole cache-xfer namespace: under the run-id-first key layout a name is no longer a key prefix.
 	const prefix = listPrefix();
 
-	// One paginated pass over the namespace; each entry is then judged twice:
-	// belongs-to-this-run (delete, all attempts) or aged-out (sweep). The
-	// sweep is what bounds leftovers from crashed/cancelled runs whose own
-	// cleanup never ran; the service's 7-day-unused GC stays as the final
-	// backstop.
+	// One paginated pass over the namespace.
 	let caches: Array<{id?: number; key?: string; last_accessed_at?: string; created_at?: string; size_in_bytes?: number}>;
 	try {
 		caches = await octokit.paginate(octokit.rest.actions.getActionsCacheList, {owner, repo, key: prefix, per_page: 100});

@@ -2,28 +2,17 @@ import {KEY_PREFIX, escapeRegExp} from '../../_shared/cache-xfer/lib';
 
 export {KEY_PREFIX};
 
-/**
- * REST list prefix: always the whole cache-xfer namespace. The current
- * (run-id-first) key layout is `cache-xfer-<run_id>-<name>-<attempt>`, so a
- * hand-off name is no longer a key prefix — name scoping happens client-side
- * via keyMatchesName. The list API's `key` parameter is documented as "An
- * explicit key or prefix for identifying the cache".
- */
+/** REST list prefix: always the whole cache-xfer namespace. */
 export function listPrefix(): string {
 	return `${KEY_PREFIX}-`;
 }
 
-/**
- * Does `key` belong to run `runId` (any attempt), optionally scoped to one
- * hand-off name? Matches BOTH key layouts during the v2 transition:
- *
- *   current: `cache-xfer-<runId>-<name>-<attempt>`  (run-id-first)
- *   legacy:  `cache-xfer-<name>-<runId>-<attempt>`  (pre-v2; TRANSITION —
- *            keep until no pre-v2 cache-upload can still be producing)
- *
- * The dashes around runId anchor it, so a runId can never match inside
- * another run's longer id.
- */
+/** Does `key` belong to run `runId` (any attempt), optionally scoped to one
+ * hand-off name? Matches BOTH key layouts during the v2 transition: current:
+ * `cache-xfer-<runId>-<name>-<attempt>` (run-id-first) legacy:
+ * `cache-xfer-<name>-<runId>-<attempt>` (pre-v2; TRANSITION — keep until no
+ * pre-v2 cache-upload can still be producing) The dashes around runId anchor
+ * it. */
 export function isRunEntry(key: string, runId: string, name?: string): boolean {
 	const nameSegment = name === undefined ? '.+' : escapeRegExp(name);
 	const run = escapeRegExp(runId);
@@ -32,13 +21,9 @@ export function isRunEntry(key: string, runId: string, name?: string): boolean {
 	return current.test(key) || legacy.test(key);
 }
 
-/**
- * Does `key` carry hand-off name `name` under EITHER layout? Used to scope
+/** Does `key` carry hand-off name `name` under EITHER layout? Used to scope
  * the aged sweep client-side (the run-id-first layout made name-prefix
- * listing impossible). A key whose two interpretations disagree (an
- * all-numeric name) matches if either reads as `name` — over-matching is
- * acceptable for cleanup, under-matching would leak entries.
- */
+ * listing impossible). */
 export function keyMatchesName(key: string, name: string): boolean {
 	const escaped = escapeRegExp(name);
 	const current = new RegExp(`^${KEY_PREFIX}-\\d+-${escaped}-\\d+$`);

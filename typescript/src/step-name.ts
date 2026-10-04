@@ -1,7 +1,4 @@
-// An unnamed step shows in the log as the action it runs, so every unnamed
-// typescript step reads `Run wow-look-at-my/actions@typescript#latest`. The
-// script is the whole point of the step and the name is the only place its
-// purpose can appear.
+// An unnamed step shows in the log as the action it runs.
 
 export interface WorkflowStep {
 	name?: unknown;
