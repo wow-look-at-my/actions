@@ -136,6 +136,13 @@ ts0 supplies the compiler, the bundler and `@types/node`, so an action's `packag
     repo: # Repository (owner/name) to download from
 ```
 
+### [Fail Fast](fail-fast/)
+
+```yml
+# Cancels the whole workflow run. Put it last in a job under `if: failure()`, and grant the job `actions: write`.
+- uses: wow-look-at-my/actions@fail-fast#latest
+```
+
 ### [GHCR Prune](ghcr-prune/)
 
 ```yml
