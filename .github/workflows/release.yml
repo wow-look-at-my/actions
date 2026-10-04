@@ -6,6 +6,10 @@ on:
       - '**'
   workflow_dispatch:
 
+concurrency:
+  group: gha_${{ github.repository }}_${{ github.workflow }}_${{ github.ref != 'refs/heads/master' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
 jobs:
   # Every suite, guard and dogfood run this repo does.
   checks:
@@ -58,6 +62,8 @@ jobs:
       - uses: ./_shared/cache-key/test
       - uses: ./cached-run/test
       - uses: ./cached-apt/test
+      - if: failure()
+        uses: ./fail-fast
 
   # The shared cache-xfer tests on NT: its tar and path handling, and that a unix-origin hand-off runs there.
   cache-xfer-windows:
