@@ -7,9 +7,5 @@
   "dependencies": {
     "@actions/cache": "5.2.0",
     "@actions/core": "^2.0.2"
-  },
-  "devDependencies": {
-    "@types/node": "^25.0.10",
-    "tsx": "^4.21.0"
   }
 }

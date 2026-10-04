@@ -34,8 +34,7 @@ test('isRunEntry scoped to a name — both layouts', () => {
 test('isRunEntry never matches other runs', () => {
 	assert.ok(!isRunEntry('cache-xfer-999999-go-build-1', '123456'));
 	assert.ok(!isRunEntry('cache-xfer-go-build-999999-1', '123456'));
-	// A short run id must not match inside a longer one: the dashes around
-	// the run id anchor it (both layouts).
+	// A short run id must not match inside a longer one: the dashes around the run id anchor it (both layouts).
 	assert.ok(!isRunEntry('cache-xfer-123-foo-9', '3'));
 	assert.ok(!isRunEntry('cache-xfer-123-foo-9', '23'));
 	assert.ok(!isRunEntry('cache-xfer-foo-123-9', '3'));

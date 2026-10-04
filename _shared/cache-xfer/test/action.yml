@@ -1,17 +1,18 @@
 name: Test cache-xfer
 version: 1
-description: Round-trip the cache hand-off trio against the real cache service, and run the shared wire-format unit tests (never released)
+description: The shared cache-xfer unit tests on this host, and on Linux the hand-off trio round-tripped against the real cache service (never released)
 
 runs:
   using: composite
   steps:
-    # _shared/cache-xfer has no package.json, so the release matrix never tests it.
     - name: Shared cache-xfer unit tests
-      working-directory: cache-download
-      shell: bash
-      run: pnpm tsx --test ../_shared/cache-xfer/*.test.ts
+      uses: wow-look-at-my/ts0@master
+      with:
+        working-directory: _shared/cache-xfer
 
+    # The dogfood below drives the built dist/ of the three actions, which only the Linux job builds.
     - name: Create hand-off payload
+      if: runner.os != 'Windows'
       shell: bash
       run: |
         mkdir -p handoff-src/sub
@@ -19,18 +20,21 @@ runs:
         echo nested > handoff-src/sub/nested.txt
 
     - name: Upload hand-off (dogfood-a)
+      if: runner.os != 'Windows'
       uses: ./cache-upload
       with:
         name: dogfood-a
         path: handoff-src
 
     - name: Nameless download discovers the single hand-off
+      if: runner.os != 'Windows'
       id: nameless
       uses: ./cache-download
       with:
         path: restore-nameless
 
     - name: Assert nameless discovery picked dogfood-a
+      if: runner.os != 'Windows'
       shell: bash
       run: |
         test "${{ steps.nameless.outputs.name }}" = "dogfood-a"
@@ -38,6 +42,7 @@ runs:
         diff handoff-src/sub/nested.txt restore-nameless/sub/nested.txt
 
     - name: Named download still works
+      if: runner.os != 'Windows'
       id: named
       uses: ./cache-download
       with:
@@ -45,6 +50,7 @@ runs:
         path: restore-named
 
     - name: Assert named download restored the files
+      if: runner.os != 'Windows'
       shell: bash
       run: |
         test "${{ steps.named.outputs.cache-hit }}" = "true"
@@ -52,6 +58,7 @@ runs:
         diff handoff-src/hello.txt restore-named/hello.txt
 
     - name: Upload a second hand-off (dogfood-b)
+      if: runner.os != 'Windows'
       uses: ./cache-upload
       with:
         name: dogfood-b
@@ -59,12 +66,11 @@ runs:
 
     # The REST list lags the twirp finalize, so wait for both entries.
     - name: Wait for both hand-offs to be listable
+      if: runner.os != 'Windows'
       shell: bash
-      env:
-        GH_TOKEN: ${{ github.token }}
       run: |
         for i in $(seq 1 15); do
-          n=$(curl -sf -H "Authorization: Bearer ${GH_TOKEN}" \
+          n=$(curl -sf -H "Authorization: Bearer ${{ github.token }}" \
             "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/caches?key=cache-xfer-${GITHUB_RUN_ID}-&per_page=100" \
             | jq '[.actions_caches[].key] | length')
           echo "listed ${n:-0} run-scoped entries"
@@ -75,6 +81,7 @@ runs:
         exit 1
 
     - name: Nameless download must hard-fail on ambiguity
+      if: runner.os != 'Windows'
       id: ambiguous
       continue-on-error: true
       uses: ./cache-download
@@ -82,15 +89,18 @@ runs:
         path: restore-ambiguous
 
     - name: Assert the ambiguous nameless download failed without restoring
+      if: runner.os != 'Windows'
       shell: bash
       run: |
         test "${{ steps.ambiguous.outcome }}" = "failure"
         test ! -e restore-ambiguous/hello.txt
 
     - name: Cleanup deletes this run's entries
+      if: runner.os != 'Windows'
       id: cleanup
       uses: ./cache-cleanup
 
     - name: Assert cleanup deleted both hand-offs
+      if: runner.os != 'Windows'
       shell: bash
       run: test "${{ steps.cleanup.outputs.deleted-count }}" -ge 2

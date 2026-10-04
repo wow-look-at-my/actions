@@ -25,9 +25,8 @@ const BLK_PKG_IDX = 1;
 const BLK_FILE = 2;
 // Number of blocks (determines Offsets array length)
 const N_BLK = 15;
-// goobj header: Magic(8) + Fingerprint(8) + Flags(4) + Offsets(N_BLK*4)
 const GOOBJ_HEADER_SIZE = 8 + 8 + 4 + N_BLK * 4;
-// String references in goobj are 8 bytes: uint32 length + uint32 offset
+// String references in goobj are several bytes: uint32 length + uint32 offset
 const STRING_REF_SIZE = 8;
 
 function humanSize(bytes: number): string {
@@ -57,7 +56,6 @@ function dirSize(dir: string): number {
 			try {
 				total += fs.statSync(full).size;
 			} catch {
-				// skip unreadable files
 			}
 		}
 	}
@@ -79,12 +77,8 @@ function readUint32LE(buf: Buffer, off: number): number {
 	return buf.readUInt32LE(off);
 }
 
-// Parse a Go archive to find the go object entry and return its offset within the file.
-// Go archives: "!<arch>\n" followed by 60-byte entry headers.
-// The __.PKGDEF entry can be very large (100+ KB of export data), so we parse
-// entry headers to compute offsets and seek directly rather than reading everything.
-// Returns the file offset where the goobj binary data starts (after the "\n!\n" text header end),
-// or -1 if not found.
+// Parse a Go archive to find the go object entry and return its offset within
+// the file. Go archives: "!<arch>\n" followed by 60-byte entry headers.
 function findGoobjOffset(fd: number, fileSize: number): number {
 	// Read archive magic
 	const magicBuf = Buffer.alloc(8);
@@ -104,14 +98,12 @@ function findGoobjOffset(fd: number, fileSize: number): number {
 		pos += 60; // past entry header
 
 		if (name === '__.PKGDEF' || name === 'preferlinkext' || name === 'dynimportfail') {
-			// Skip non-object entries entirely (PKGDEF can be 100+ KB)
 			pos += entrySize;
 			if (entrySize & 1) pos++;
 			continue;
 		}
 
-		// This should be the go object entry. Read its text header to find "\n!\n".
-		// The text header is typically < 256 bytes.
+		// This should be the go object entry. Read its text header to find "\n!\n". The text header is typically < 256 bytes.
 		const textBuf = Buffer.alloc(Math.min(512, entrySize));
 		const textRead = fs.readSync(fd, textBuf, 0, textBuf.length, pos);
 		for (let i = 0; i + 2 < textRead; i++) {
@@ -126,21 +118,20 @@ function findGoobjOffset(fd: number, fileSize: number): number {
 	return -1;
 }
 
-// Extract source file paths and package paths from a Go build cache data file
-// by parsing the goobj binary format.
+// Extract source file paths and package paths from a Go build cache data file by parsing the goobj binary format.
 //
 // Go build cache -d files are Go archives containing:
-//   1. __.PKGDEF (export data)
-//   2. Go object entries with goobj binary format (magic "\x00go120ld")
+//   - __.PKGDEF (export data)
+//   - Go object entries with goobj binary format (magic "\x00go120ld")
 //
 // The goobj format (cmd/internal/goobj/objfile.go) has:
-//   Header: Magic(8) + Fingerprint(8) + Flags(4) + Offsets(NBlk*4)
+//   Header: Magic + Fingerprint + Flags + Offsets, sized as GOOBJ_HEADER_SIZE spells out
 //   Then data blocks including:
 //     - Strings: raw string bytes
 //     - PkgIndex: imported package paths (string refs)
 //     - Files: source file paths (string refs)
 //
-// String refs are 8 bytes: uint32 length + uint32 offset (into the goobj data).
+// String refs are several bytes: uint32 length + uint32 offset (into the goobj data).
 function extractModulePath(filePath: string): string | null {
 	let fd: number;
 	let fileSize: number;
@@ -195,10 +186,9 @@ function readModuleFromBlock(
 	const refBuf = Buffer.alloc(blockSize);
 	fs.readSync(fd, refBuf, 0, blockSize, goobjBase + blockStart);
 
-	// Also need to read the strings data. The strings block is at the start
-	// of goobj data, from byte GOOBJ_HEADER_SIZE to offsets[0] (BlkAutolib).
-	// But string offsets are absolute from the goobj start, so we just read
-	// individual strings on demand using their offset+length.
+	// Also need to read the strings data. But string offsets are absolute from
+	// the goobj start, so we read individual strings on demand using their
+	// offset+length.
 
 	for (let i = 0; i < Math.min(entryCount, 20); i++) {
 		const strLen = readUint32LE(refBuf, i * STRING_REF_SIZE);
@@ -220,7 +210,7 @@ function readModuleFromBlock(
 }
 
 // Extract a module path from a Go source file path.
-// The Go compiler stores paths in the Files block as:
+// The Go compiler stores paths in the Files block as.
 //   - $GOROOT/src/runtime/proc.go           (stdlib)
 //   - $GOROOT/src/vendor/golang.org/x/...   (vendored in stdlib)
 //   - /home/runner/go/pkg/mod/golang.org/x/net@v0.33.0/http2/hpack/encode.go (module cache)
@@ -412,9 +402,7 @@ function collectAtDepth(dir: string, currentDepth: number, maxDepth: number): Si
 		return [];
 	}
 
-	// If this directory has a single subdirectory child (and only small files
-	// otherwise), pass through it without counting as a depth level. This
-	// flattens structures like cache/ → cache/download/ → domain dirs.
+	// If this directory has a single subdirectory child (and only small files otherwise).
 	const subdirs = entries.filter(e => e.isDirectory());
 	if (subdirs.length === 1) {
 		return collectAtDepth(path.join(dir, subdirs[0].name), currentDepth, maxDepth);
@@ -435,7 +423,6 @@ function collectAtDepth(dir: string, currentDepth: number, maxDepth: number): Si
 				const size = fs.statSync(full).size;
 				results.push({ path: full, bytes: size, human: humanSize(size) });
 			} catch {
-				// skip
 			}
 		}
 	}

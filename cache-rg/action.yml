@@ -30,11 +30,9 @@ runs:
     - name: Install rg
       id: install
       shell: bash
-      env:
-        CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
       run: |
         set -euo pipefail
-        if [ "$CACHE_HIT" != "true" ]; then
+        if [ "${{ steps.cache.outputs.cache-hit }}" != "true" ]; then
           sudo apt-get update
           mkdir -p /tmp/cache-rg
           cd /tmp/cache-rg
