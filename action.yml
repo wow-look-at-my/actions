@@ -1,0 +1,23 @@
+name: Has Permission
+description: Report whether a permission is granted to the running job by its job or workflow permissions block
+
+inputs:
+  permission:
+    description: Permission scope to look for, such as id-token, contents or packages
+    required: true
+  level:
+    description: Level the caller needs - read, write or none. write satisfies read.
+    required: false
+    default: write
+
+runs:
+  using: composite
+  steps:
+    - id: download
+      name: Download slopfix
+      uses: wow-look-at-my/buildhost/.github/actions/buildhost-download@master
+      with:
+        project: slopfix
+
+    - shell: bash
+      run: '"${{ steps.download.outputs.path }}" check workflow-permission --permission "${{ inputs.permission }}" --level "${{ inputs.level }}"'
