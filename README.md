@@ -163,8 +163,10 @@ ts0 supplies the compiler, the bundler and `@types/node`, so an action's `packag
 ### [Has Permission](has-permission/)
 
 ```yml
-# Run the full slopfix check over the checkout.
+# Report whether a permission is granted to the running job by its job or workflow permissions block.
 - uses: wow-look-at-my/actions@has-permission#latest
+  with:
+    permission: # Permission scope to look for, such as id-token, contents or packages
 ```
 
 ### [Multi-Command](multicmd/)
