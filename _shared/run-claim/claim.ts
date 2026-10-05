@@ -105,7 +105,7 @@ export async function claimRun(service: ClaimService, key: string, version: stri
 		if (looksLikeCollision(detail)) {
 			const {held} = await claimIsHeld(service, key, version);
 			if (held) {
-				return {first: false, reason: `another job of this run holds the claim ${key}`};
+				return {first: false, reason: `another job of this run holds the claim ${key}, so this job skips the work`};
 			}
 		}
 		return {first: true, reason: 'the claim could not be attempted, so this job runs the work', warning: `run-once could not reach the cache service: ${detail}`};
@@ -114,7 +114,7 @@ export async function claimRun(service: ClaimService, key: string, version: stri
 	if (!created.ok) {
 		const {held, lookupError} = await claimIsHeld(service, key, version);
 		if (held) {
-			return {first: false, reason: `another job of this run holds the claim ${key}`};
+			return {first: false, reason: `another job of this run holds the claim ${key}, so this job skips the work`};
 		}
 		const detail = lookupError ?? created.message ?? 'the service gave no message';
 		return {first: true, reason: 'the claim was refused with no entry to show for it, so this job runs the work', warning: `run-once could not claim ${key}: ${detail}`};
