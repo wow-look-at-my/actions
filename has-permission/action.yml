@@ -9,45 +9,15 @@ inputs:
     description: Level the caller needs - read, write or none. write satisfies read.
     required: false
     default: write
-  assert:
-    description: Fail the step when the permission is not granted
-    required: false
-    default: 'false'
-
-outputs:
-  granted:
-    description: 'true when the job holds the permission at the requested level'
-    value: ${{ fromJSON(steps.resolve.outputs.result).granted }}
-  level:
-    description: Level the resolved block gives for this permission - none, read or write
-    value: ${{ fromJSON(steps.resolve.outputs.result).level }}
-  source:
-    description: Block the level came from - job, workflow or default
-    value: ${{ fromJSON(steps.resolve.outputs.result).source }}
 
 runs:
   using: composite
   steps:
-    # slopfix check workflow-permission owns the whole check. The slopfix action downloads and runs it.
-    - id: check
-      name: Resolve the permission from the job and workflow blocks
-      uses: wow-look-at-my/slopfix@master
+    - id: download
+      name: Download slopfix
+      uses: wow-look-at-my/buildhost/.github/actions/buildhost-download@master
       with:
-        permission: ${{ inputs.permission }}
-        level: ${{ inputs.level }}
+        project: slopfix
 
-    - id: resolve
-      name: Report the answer
-      uses: wow-look-at-my/actions@typescript#latest
-      with:
-        script: |
-          const answer = JSON.parse(${{ toJSON(steps.check.outputs.stdout) }}) as {
-            granted: boolean;
-            level: string;
-            source: string;
-            message: string;
-          };
-          if (answer.granted) core.info(answer.message);
-          else if (${{ inputs.assert == 'true' }}) throw new Error(answer.message);
-          else core.warning(answer.message);
-          return {granted: String(answer.granted), level: answer.level, source: answer.source};
+    - shell: bash
+      run: '"${{ steps.download.outputs.path }}" check workflow-permission --permission "${{ inputs.permission }}" --level "${{ inputs.level }}"'
