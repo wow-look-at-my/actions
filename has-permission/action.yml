@@ -41,7 +41,7 @@ runs:
       env:
         PERMISSION: ${{ inputs.permission }}
         LEVEL: ${{ inputs.level }}
-      run: echo "stdout=$(sh "${{ steps.download.outputs.path }}" check workflow-permission --json --permission "$PERMISSION" --level "$LEVEL")" >> "$GITHUB_OUTPUT"
+      run: echo "stdout=$("${{ steps.download.outputs.path }}" check workflow-permission --json --permission "$PERMISSION" --level "$LEVEL")" >> "$GITHUB_OUTPUT"
 
     - id: resolve
       name: Report the answer
