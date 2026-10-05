@@ -28,13 +28,20 @@ outputs:
 runs:
   using: composite
   steps:
-    # slopfix check workflow-permission owns the whole check. The slopfix action downloads and runs it.
+    - id: download
+      name: Download slopfix
+      uses: wow-look-at-my/buildhost/.github/actions/buildhost-download@master
+      with:
+        project: slopfix
+
+    # slopfix check workflow-permission owns the whole check. A missing grant exits nonzero, and the next step decides whether that fails.
     - id: check
       name: Resolve the permission from the job and workflow blocks
-      uses: wow-look-at-my/slopfix@master
-      with:
-        permission: ${{ inputs.permission }}
-        level: ${{ inputs.level }}
+      shell: bash
+      env:
+        PERMISSION: ${{ inputs.permission }}
+        LEVEL: ${{ inputs.level }}
+      run: echo "stdout=$(sh "${{ steps.download.outputs.path }}" check workflow-permission --json --permission "$PERMISSION" --level "$LEVEL")" >> "$GITHUB_OUTPUT"
 
     - id: resolve
       name: Report the answer
