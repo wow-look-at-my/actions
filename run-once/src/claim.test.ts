@@ -71,7 +71,7 @@ test('a later job whose claim collides with a stored entry skips the work', asyn
 	const outcome = await claimRun(s, KEY, VERSION);
 	assert.equal(outcome.first, false);
 	assert.equal(outcome.warning, undefined);
-	assert.match(outcome.reason, /Skipped: another job in this run already claimed/);
+	assert.match(outcome.reason, /another job of this run holds the claim/);
 	assert.deepEqual(calls, {create: 1, upload: 0, finalize: 0, exists: 1});
 });
 
@@ -132,7 +132,7 @@ test('a create that throws a conflict skips the work when the entry is really th
 	const outcome = await claimRun(s, KEY, VERSION);
 	assert.equal(outcome.first, false);
 	assert.equal(outcome.warning, undefined);
-	assert.match(outcome.reason, /Skipped: another job in this run already claimed/);
+	assert.match(outcome.reason, /another job of this run holds the claim/);
 	assert.deepEqual(calls, {create: 1, upload: 0, finalize: 0, exists: 1});
 });
 
