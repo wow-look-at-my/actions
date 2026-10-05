@@ -20,4 +20,4 @@ runs:
         project: slopfix
 
     - shell: bash
-      run: '"${{ steps.download.outputs.path }}" check workflow-permission --json --permission "${{ inputs.permission }}" --level "${{ inputs.level }}"'
+      run: '"${{ steps.download.outputs.path }}" check workflow-permission --permission "${{ inputs.permission }}" --level "${{ inputs.level }}"'
