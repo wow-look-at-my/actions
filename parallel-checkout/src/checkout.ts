@@ -18,7 +18,7 @@ export type Options = {
 	submodules: Submodules;
 	// Threads git spends writing files, per checkout.
 	workers: number;
-	// Local config every repository gets, such as a persisted credential.
+	// Local config written into every repository once its checkout is done, such as a persisted credential.
 	config: Array<[string, string]>;
 	// A way to read the superproject's tree without waiting for its fetch, such as the hosting API.
 	rootTree?: () => Promise<Tree | undefined>;
@@ -52,6 +52,7 @@ export function ms(since: number): string {
 // fetch lands. Nothing waits on a sibling.
 export class Checkout {
 	private repos = 0;
+	private readonly dirs: string[] = [];
 	// Config writes into one repository are serialized.
 	private readonly configLocks = new Map<string, Promise<void>>();
 
@@ -69,6 +70,13 @@ export class Checkout {
 			label: this.opts.url,
 		};
 		const commit = await this.take(root, this.opts.rootTree);
+		await Promise.all(
+			this.dirs.map(async dir => {
+				for (const [key, value] of this.opts.config) {
+					await this.opts.git.must(['config', '--local', key, value], dir);
+				}
+			}),
+		);
 		return {commit, repos: this.repos};
 	}
 
@@ -129,19 +137,25 @@ export class Checkout {
 			await git.must(['config', '--local', 'core.worktree', path.relative(repo.gitdir, repo.dir)], repo.dir);
 		}
 		await git.must(['config', '--local', 'gc.auto', '0'], repo.dir);
-		for (const [key, value] of this.opts.config) {
-			await git.must(['config', '--local', key, value], repo.dir);
-		}
+		this.dirs.push(repo.dir);
 		await git.must(['remote', 'add', 'origin', repo.url], repo.dir);
 	}
 
 	private async writeTree(repo: Repo, started: number): Promise<void> {
 		const args = ['-c', `checkout.workers=${this.opts.workers}`, '-c', 'advice.detachedHead=false', 'checkout', '--quiet', '--force'];
 		if (repo.branch !== undefined) {
-			args.push('-B', repo.branch);
+			// --no-track keeps checkout out of .git/config, which the submodule registrations are writing at the same time.
+			args.push('--no-track', '-B', repo.branch);
 		}
 		args.push(repo.target);
 		await this.opts.git.must(args, repo.dir);
+		if (repo.branch !== undefined) {
+			const branch = repo.branch;
+			await this.configure(repo, [
+				[`branch.${branch}.remote`, 'origin'],
+				[`branch.${branch}.merge`, `refs/heads/${branch}`],
+			]);
+		}
 		this.opts.log(`${repo.label}: worktree written in ${ms(started)}`);
 	}
 
@@ -181,12 +195,22 @@ export class Checkout {
 	// register records the submodule in its parent's config, which is what
 	// `git submodule status` and later submodule commands read.
 	private register(parent: Repo, name: string, url: string): Promise<void> {
-		const previous = this.configLocks.get(parent.gitdir) ?? Promise.resolve();
+		return this.configure(parent, [
+			[`submodule.${name}.url`, url],
+			[`submodule.${name}.active`, 'true'],
+		]);
+	}
+
+	// configure writes into one repository's config, one writer at a time per
+	// repository, because `git config` gives up on a held lock instead of waiting.
+	private configure(repo: Repo, settings: Array<[string, string]>): Promise<void> {
+		const previous = this.configLocks.get(repo.gitdir) ?? Promise.resolve();
 		const next = previous.then(async () => {
-			await this.opts.git.must(['config', '--local', `submodule.${name}.url`, url], parent.dir);
-			await this.opts.git.must(['config', '--local', `submodule.${name}.active`, 'true'], parent.dir);
+			for (const [key, value] of settings) {
+				await this.opts.git.must(['config', '--local', key, value], repo.dir);
+			}
 		});
-		this.configLocks.set(parent.gitdir, next);
+		this.configLocks.set(repo.gitdir, next);
 		return next;
 	}
 }

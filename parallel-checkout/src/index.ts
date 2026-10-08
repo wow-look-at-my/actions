@@ -100,6 +100,8 @@ async function run(): Promise<void> {
 			[`url.${server}/.insteadOf`, `git@${host}:`],
 			[`url.${server}/.insteadOf`, `ssh://git@${host}/`],
 		];
+		// On the command line for every call, so an ls-remote outside any
+		// repository is authenticated too.
 		for (const [key, value] of settings) {
 			configArgs.push('-c', `${key}=${value}`);
 		}
