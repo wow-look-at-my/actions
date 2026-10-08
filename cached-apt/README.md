@@ -34,7 +34,9 @@ On a runner that is not Linux the action installs nothing and succeeds. A cross-
 
 The cache key is `cached-apt-v1-<os id>-<os version>-<arch>[-<key label>]-<sha256 prefix>`. The digest covers the action version, the sorted package list, the OS id and version, the dpkg architecture and your `key`. It does not cover the apt sources or `apt-get update` state. Those move on their own and miss the cache on every run.
 
-On a miss the action records the installed-package set. It then runs `apt-get update` and `apt-get install`. It records the set again and diffs it. The diff gives the requested packages plus every dependency apt pulled in. For each one `dpkg-query -L` gives the paths. The action keeps the files and the symlinks. It drops the directories and the paths the image excluded. It packs the rest into a tarball and saves that to the cache.
+On a miss the action records the installed-package set. It then runs `apt-get update` and `apt-get install`. It records the set again and diffs it. The diff gives the requested packages plus every dependency apt pulled in. For each one `dpkg-query -L` gives the paths. The action keeps the files and the symlinks.
+
+It drops the directories and the paths the image excluded. It packs the rest into a tarball and saves that to the cache.
 
 The action saves the cache only after `apt-get install` exits 0. There is no post step. A failed install therefore leaves no half-populated tarball behind for later runs.
 
@@ -48,6 +50,8 @@ The action saves the cache only after `apt-get install` exits 0. There is no pos
 
 This action therefore suits build and test dependencies. Headers, libraries, compilers and command-line tools all work. A package that registers a service, adds a user or owns an alternative does not. Use plain `apt-get install` for those.
 
-**A hit pins you to the version the first run installed.** The key names the package list, not the versions apt resolved. A later security update therefore does not reach a job whose key still hits. Change the `key` input to discard the entries. You can also pin the version yourself. `curl=7.81.0-1ubuntu1.15` is a valid entry in `packages`. A changed pin is a changed key.
+**A hit pins you to the version the first run installed.** The key names the package list, not the versions apt resolved. A later security update therefore does not reach a job whose key still hits. Change the `key` input to discard the entries. You can also pin the version yourself. `curl=7.81.0-1ubuntu1.15` is a valid entry in `packages`.
+
+A changed pin is a changed key.
 
 **Nothing new to cache is not an error.** Sometimes every requested package is already on the runner image. Then apt installs nothing, the action saves no cache and a notice says so. Every later run repeats the apt call.

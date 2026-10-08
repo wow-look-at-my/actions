@@ -19,12 +19,12 @@ const PRIMITIVE_FLAGS =
 	ts.TypeFlags.NumberLike |
 	ts.TypeFlags.BooleanLike;
 
-/** Classify the primitive *kind* wrapped by a branded primitive, so we can
- * offer a coercion suggestion that is correct for that kind: - a boxed String
- * -> `String(x)` recovers the primitive, - a boxed Number -> `String(x)` would
- * give "42", which is wrong; the right coercion is `x.valueOf()` (or
+/** Classify the primitive *kind* wrapped by a branded primitive. Do this so we
+ * can offer a coercion suggestion that is correct for that kind: - a boxed
+ * String -> `String(x)` recovers the primitive. A boxed Number -> `String(x)`
+ * would give "42". This is wrong. The right coercion is `x.valueOf()` (or
  * `Number(x)`), - a boxed Boolean -> `Boolean(x)` is always `true` for any
- * object, also wrong; the right coercion is `x.valueOf()`. */
+ * object, also wrong. The right coercion is `x.valueOf()`. */
 function brandedPrimitiveKind(type) {
 	let sawString = false;
 	let sawNumber = false;
@@ -134,7 +134,7 @@ function isBrandedPrimitive(type, checker) {
 	return false;
 }
 
-/** Is `type` a "plain primitive" suitable as the OTHER operand -- i.e. a value
+/** Is `type` a "plain primitive" suitable as the OTHER operand. I.e. a value
  * that is genuinely a primitive (or null/undefined) at runtime, so that
  * `brandedPrimitive === thisOperand` is provably always false? */
 function isPlainPrimitiveOperand(type, checker) {

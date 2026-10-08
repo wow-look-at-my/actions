@@ -1,13 +1,13 @@
 # orphan-release.sh publishes tags: a numbered one that is immutable and unique
 # to the run, and #latest, a pointer every concurrent release moves. GitHub
 # applies one push in one ref transaction, so while both refs travelled
-# together, a run that lost the race for #latest had its whole push rejected --
-# taking down the numbered tag, which was never contested. The release then had
+# together. A run that lost the race for #latest had its whole push rejected --
+# taking down the numbered tag. This was never contested. The release then had
 # no tag at all, and callers papered over it by repeating the step.
 #
 # A real race is not reproducible on demand. The remote refuses the pointer
 # instead: a pre-receive hook that rejects #latest stands in for losing the
-# race, and the question is only what happens to the OTHER ref in the same
+# race. The question is only what happens to the OTHER ref in the same
 # push. Run this suite against the one-push version and both
 # NUMBERED_TAG_PUBLISHED cases fail.
 #
@@ -23,10 +23,10 @@ shared:
 		# looks like from the client.
 		#
 		# release runs the script the way the action does. The script builds
-		# its push URL out of GITHUB_REPOSITORY, so the URL is sent to the
-		# local bare repo through git's own insteadOf, in the environment
-		# rather than in a config file. Nothing in the script changes for the
-		# test's benefit.
+		# its push URL out of GITHUB_REPOSITORY. The URL is sent to the local
+		# bare repo through git's own insteadOf, in the environment rather
+		# than in a config file. Nothing in the script changes for the test's
+		# benefit.
 		lib.sh: |
 			set -uo pipefail
 			REMOTE_URL="https://x-access-token:@github.com/owner/repo"

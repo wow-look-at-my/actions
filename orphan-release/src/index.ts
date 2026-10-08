@@ -29,13 +29,13 @@ function served(prefix: string, staging: string): { sha: string; number: number 
 
 /** Moves #latest to this run's release when no higher number holds it.
  *
- *#latest belongs to the default branch. A side branch that moves it serves its
- *own tree under that name. On the default branch the order is the release
- *number, not the tip of the branch: a run that a later commit superseded is
- *still the newest release of a plugin that the later run took from a cache and
- *never published. The push is a compare-and-swap on the commit #latest named
- *when it was read. An older run that finishes last therefore cannot walk the
- *pointer backwards. */
+ * #latest belongs to the default branch. A side branch that moves it serves
+ * its own tree under that name. On the default branch the order is the release
+ * number, not the tip of the branch. This is a run that a later commit
+ * superseded is still the newest release of a plugin that the later run took
+ * from a cache and never published. The push is a compare-and-swap on the
+ * commit #latest named when it was read. An older run that finishes last
+ * therefore cannot walk the pointer backwards. */
 function moveLatest(branch: string, prefix: string, version: number, staging: string): void {
 	const latest = `${prefix}#latest`;
 	if (!isDefaultBranch(branch)) {
