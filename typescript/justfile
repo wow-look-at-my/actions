@@ -71,9 +71,9 @@ build:
 	find "$types_root" -type f \( -name '*.js' -o -name '*.js.map' -o -name '*.d.ts.map' -o -name 'README.md' \) -delete
 
 	# TypeScript standard libs. Only the `/// <reference lib="..." />` closure of the libs
-	# the action can select -- lib.es2022.d.ts always, and lib.dom.d.ts +
-	# lib.dom.iterable.d.ts when a step passes dom: true -- seeded with any lib the staged
-	# type packages reference (@types/node pulls in a couple of esnext.* libs).
+	# the action can select. This is lib.es2022.d.ts always, and lib.dom.d.ts +
+	# lib.dom.iterable.d.ts when a step passes dom: true. It is seeded with any lib the
+	# staged type packages reference (@types/node pulls in a couple of esnext.* libs).
 	libdir="node_modules/typescript/lib"
 	declare -A staged_libs
 	queue="es2022 dom dom.iterable $(grep -rhoP '(?<=<reference lib=")[^"]+' "$types_root" | sort -u || true)"
