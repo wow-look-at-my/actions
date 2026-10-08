@@ -1,0 +1,51 @@
+name: Parallel Checkout
+version: 1
+description: Check a repository and its whole submodule tree out with every fetch and every file write running at once. Each submodule is fetched by commit the moment its parent's fetch lands, nested ones start as soon as their parent's tree is readable, and every worktree is written with git's parallel checkout while the fetches around it continue
+
+inputs:
+  repository:
+    description: 'Repository to check out, as owner/name. Defaults to the repository the workflow runs in.'
+    required: false
+    default: ${{ github.repository }}
+  ref:
+    description: 'Branch, tag, full ref or commit to check out. Defaults to the ref and commit that triggered the workflow, or the default branch of another repository.'
+    required: false
+    default: ''
+  token:
+    description: 'Token for fetching the repository and its submodules. Empty fetches anonymously.'
+    required: false
+    default: ${{ github.token }}
+  path:
+    description: 'Directory under the workspace to check out into. Defaults to the workspace itself.'
+    required: false
+    default: ''
+  fetch-depth:
+    description: 'Commits of history to fetch at every level. 0 fetches everything.'
+    required: false
+    default: '1'
+  submodules:
+    description: 'Which submodules to take: `recursive` for the whole tree, `true` for the first level, `false` for none.'
+    required: false
+    default: 'recursive'
+  jobs:
+    description: 'How many git processes may run at once across the whole tree.'
+    required: false
+    default: '32'
+  persist-credentials:
+    description: 'Write the token into every checked-out repository, so later steps can fetch and push with it.'
+    required: false
+    default: 'true'
+  clean:
+    description: 'Delete whatever is in the target directory before the checkout.'
+    required: false
+    default: 'true'
+
+outputs:
+  commit:
+    description: 'The commit the worktree is at.'
+  ref:
+    description: 'The full ref that was checked out, or the commit when a bare commit was asked for.'
+
+runs:
+  using: node24
+  main: dist/index.js

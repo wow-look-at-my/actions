@@ -1,0 +1,106 @@
+name: Test parallel-checkout
+version: 1
+description: Check real repositories out with parallel-checkout and let git judge the result (never released)
+
+runs:
+  using: composite
+  steps:
+    # The superproject of the log this action was written against: 26 submodules, one of them nested, 15k files.
+    - name: Check gosmopolitan out at a pinned commit
+      id: gosmo
+      uses: ./parallel-checkout
+      with:
+        repository: wow-look-at-my/gosmopolitan
+        ref: c2fce1410da52e977c1c76e4fcd0ab0f96f810fb
+        path: .parallel-checkout-test/gosmo
+
+    - name: Every level is populated at the commit its parent pins
+      shell: bash
+      working-directory: .parallel-checkout-test/gosmo
+      run: |
+        set -euo pipefail
+        fail=0
+        if [ "${{ steps.gosmo.outputs.commit }}" != "c2fce1410da52e977c1c76e4fcd0ab0f96f810fb" ]; then
+          echo "::error::the commit output reads ${{ steps.gosmo.outputs.commit }}"
+          fail=1
+        fi
+        if [ "$(git rev-parse HEAD)" != "c2fce1410da52e977c1c76e4fcd0ab0f96f810fb" ]; then
+          echo "::error::HEAD is $(git rev-parse HEAD)"
+          fail=1
+        fi
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "::error::the worktree is not clean:"
+          git status --porcelain
+          fail=1
+        fi
+        # A leading space means the submodule sits at its gitlink; + or - would mean moved or missing.
+        git submodule status --recursive
+        if git submodule status --recursive | grep -v '^ '; then
+          echo "::error::a submodule is missing or at the wrong commit"
+          fail=1
+        fi
+        if [ "$(git submodule status --recursive | wc -l)" -ne 26 ]; then
+          echo "::error::expected 26 submodules, got $(git submodule status --recursive | wc -l)"
+          fail=1
+        fi
+        if [ ! -f src/cmd/vendor/github.com/wow-look-at-my/go-ipc/spec/README.md ]; then
+          echo "::error::the nested submodule go-ipc/spec is empty"
+          fail=1
+        fi
+        if ! git -C src/vendor/golang.org/x/crypto config --local http.https://github.com/.extraheader >/dev/null; then
+          echo "::error::the credential was not persisted into the submodule"
+          fail=1
+        fi
+        exit "$fail"
+
+    # The repository the workflow runs in, through GITHUB_REF and GITHUB_SHA, onto a local branch.
+    - name: Check this repository out at the triggering ref
+      id: self
+      uses: ./parallel-checkout
+      with:
+        path: .parallel-checkout-test/self
+        persist-credentials: false
+
+    - name: The triggering commit is on a branch that tracks origin, with no credential left behind
+      shell: bash
+      working-directory: .parallel-checkout-test/self
+      env:
+        EXPECT_REF: ${{ github.ref }}
+      run: |
+        set -euo pipefail
+        fail=0
+        if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
+          echo "::error::HEAD is $(git rev-parse HEAD), the event is $GITHUB_SHA"
+          fail=1
+        fi
+        if [ "${{ steps.self.outputs.ref }}" != "$EXPECT_REF" ]; then
+          echo "::error::the ref output reads ${{ steps.self.outputs.ref }}"
+          fail=1
+        fi
+        case "$EXPECT_REF" in
+          refs/heads/*)
+            branch="${EXPECT_REF#refs/heads/}"
+            if [ "$(git rev-parse --abbrev-ref HEAD)" != "$branch" ]; then
+              echo "::error::HEAD is $(git rev-parse --abbrev-ref HEAD), not $branch"
+              fail=1
+            fi
+            if [ "$(git rev-parse "refs/remotes/origin/$branch")" != "$GITHUB_SHA" ]; then
+              echo "::error::origin/$branch does not point at the event commit"
+              fail=1
+            fi
+            ;;
+        esac
+        if git config --local http.https://github.com/.extraheader; then
+          echo "::error::persist-credentials was off and the credential is in the config"
+          fail=1
+        fi
+        if [ ! -f parallel-checkout/action.yml ]; then
+          echo "::error::the worktree is empty"
+          fail=1
+        fi
+        exit "$fail"
+
+    - name: Clean up
+      if: always()
+      shell: bash
+      run: rm -rf .parallel-checkout-test

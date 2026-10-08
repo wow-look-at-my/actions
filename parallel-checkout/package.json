@@ -1,0 +1,10 @@
+{
+	"name": "parallel-checkout",
+	"version": "1.0.0",
+	"description": "Check a repository and its whole submodule tree out with every fetch and every file write running concurrently",
+	"main": "dist/index.js",
+	"type": "commonjs",
+	"dependencies": {
+		"@actions/core": "^2.0.2"
+	}
+}
