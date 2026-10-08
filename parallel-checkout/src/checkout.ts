@@ -1,7 +1,7 @@
 import * as fsp from 'fs/promises';
 import * as path from 'path';
 import {Git} from './git';
-import {RefPlan, gitdirFor, gitlinks, parseGitmodules, resolveUrl} from './plan';
+import {Head, RefPlan, followed, gitdirFor, gitlinks, parseGitmodules, pickHead, resolveUrl} from './plan';
 
 export type Submodules = 'false' | 'true' | 'recursive';
 
@@ -22,6 +22,8 @@ export type Options = {
 	config: Array<[string, string]>;
 	// A way to read the superproject's tree without waiting for its fetch, such as the hosting API.
 	rootTree?: () => Promise<Tree | undefined>;
+	// Direct submodules whose url starts with a scope prefix take the head of `branch` on their remote instead of the gitlink.
+	follow?: {branch: string; scope: string[]};
 	log: (message: string) => void;
 };
 
@@ -175,21 +177,46 @@ export class Checkout {
 				continue;
 			}
 			const url = resolveUrl(module.url, repo.url);
+			const child: Repo = {
+				dir: path.join(repo.dir, module.path),
+				gitdir: gitdirFor(repo.gitdir, module.name),
+				url,
+				refspec: sha,
+				target: sha,
+				submodules: below,
+				label: path.relative(this.opts.dir, path.join(repo.dir, module.path)),
+			};
+			// Only the superproject's direct submodules follow a branch; a dependency's own submodules sit at the commits it names.
+			const follow = repo.dir === this.opts.dir && this.opts.follow !== undefined && followed(url, this.opts.follow.scope) ? this.opts.follow : undefined;
 			tasks.push(
-				this.register(repo, module.name, url).then(() =>
-					this.take({
-						dir: path.join(repo.dir, module.path),
-						gitdir: gitdirFor(repo.gitdir, module.name),
-						url,
-						refspec: sha,
-						target: sha,
-						submodules: below,
-						label: path.relative(this.opts.dir, path.join(repo.dir, module.path)),
-					}),
-				),
+				this.register(repo, module.name, url).then(async () => {
+					if (follow !== undefined) {
+						const head = await this.headOf(child, follow.branch, module.branch);
+						child.refspec = `+${head.sha}:refs/remotes/origin/${head.branch}`;
+						child.target = head.sha;
+						await this.configure(repo, [[`submodule.${module.name}.branch`, head.branch]]);
+						this.opts.log(`${child.label}: follows ${head.branch} at ${head.sha}, not the gitlink ${sha}`);
+					}
+					return this.take(child);
+				}),
 			);
 		}
 		await Promise.all(tasks);
+	}
+
+	// headOf asks a followed submodule's remote, in one round trip, for the
+	// branches it may take and which is the default.
+	private async headOf(child: Repo, here: string, configured: string): Promise<Head> {
+		const refs = ['HEAD', `refs/heads/${here}`];
+		if (configured !== '' && configured !== '.') {
+			refs.push(`refs/heads/${configured}`);
+		}
+		const listing = await this.opts.git.must(['ls-remote', '--symref', child.url, ...refs]);
+		try {
+			return pickHead(here, configured, listing);
+		} catch (error) {
+			throw new Error(`${child.label}: cannot follow a branch on ${child.url}: ${error instanceof Error ? error.message : String(error)}`);
+		}
 	}
 
 	// register records the submodule in its parent's config, which is what

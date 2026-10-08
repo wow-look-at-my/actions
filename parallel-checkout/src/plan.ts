@@ -1,12 +1,12 @@
 // Pure planning: what to fetch, where to put it, and how the submodule tree reads out of a fetched commit.
 
-export type Submodule = {name: string; path: string; url: string};
+export type Submodule = {name: string; path: string; url: string; branch: string};
 
 // parseGitmodules reads the sections of a .gitmodules file. Keys git does not
-// use for cloning (branch, update, ignore) pass through unread.
+// use for cloning (update, ignore) pass through unread.
 export function parseGitmodules(text: string): Submodule[] {
 	const out: Submodule[] = [];
-	let current: {name: string; path?: string; url?: string} | undefined;
+	let current: {name: string; path?: string; url?: string; branch: string} | undefined;
 	const flush = () => {
 		if (current === undefined) {
 			return;
@@ -14,7 +14,7 @@ export function parseGitmodules(text: string): Submodule[] {
 		if (current.path === undefined || current.url === undefined) {
 			throw new Error(`.gitmodules: submodule "${current.name}" has no ${current.path === undefined ? 'path' : 'url'}`);
 		}
-		out.push({name: current.name, path: current.path, url: current.url});
+		out.push({name: current.name, path: current.path, url: current.url, branch: current.branch});
 		current = undefined;
 	};
 	for (const raw of text.split('\n')) {
@@ -25,7 +25,7 @@ export function parseGitmodules(text: string): Submodule[] {
 		const section = /^\[submodule\s+"((?:[^"\\]|\\.)*)"\]$/.exec(line);
 		if (section !== null) {
 			flush();
-			current = {name: section[1].replace(/\\(.)/g, '$1')};
+			current = {name: section[1].replace(/\\(.)/g, '$1'), branch: ''};
 			continue;
 		}
 		if (/^\[/.test(line)) {
@@ -45,10 +45,58 @@ export function parseGitmodules(text: string): Submodule[] {
 			current.path = value;
 		} else if (key === 'url') {
 			current.url = value;
+		} else if (key === 'branch') {
+			current.branch = value;
 		}
 	}
 	flush();
 	return out;
+}
+
+// followed says whether a submodule at this url follows a branch head: its
+// url starts with one of the scope prefixes.
+export function followed(url: string, scope: string[]): boolean {
+	return scope.some(prefix => prefix !== '' && url.startsWith(prefix));
+}
+
+export type Head = {branch: string; sha: string};
+
+// pickHead chooses the branch a followed submodule takes, from one `git
+// ls-remote --symref` listing of its remote: the superproject's own branch.
+// This happens when the remote has it, else the branch .gitmodules names, else
+// the remote's default branch. `.` in .gitmodules means the superproject's
+// branch, which was already tried.
+export function pickHead(here: string, configured: string, listing: string): Head {
+	const heads = new Map<string, string>();
+	let fallback = '';
+	let headSha = '';
+	for (const line of listing.split('\n')) {
+		const symref = /^ref: refs\/heads\/(\S+)\tHEAD$/.exec(line);
+		if (symref !== null) {
+			fallback = symref[1];
+			continue;
+		}
+		const head = /^([0-9a-f]{40,64})\t(.+)$/.exec(line);
+		if (head === null) {
+			continue;
+		}
+		if (head[2] === 'HEAD') {
+			headSha = head[1];
+		} else if (head[2].startsWith('refs/heads/')) {
+			heads.set(head[2].slice('refs/heads/'.length), head[1]);
+		}
+	}
+	if (fallback !== '' && headSha !== '' && !heads.has(fallback)) {
+		heads.set(fallback, headSha);
+	}
+	const wanted = [here, configured === '.' ? '' : configured, fallback].filter(name => name !== '');
+	for (const branch of wanted) {
+		const sha = heads.get(branch);
+		if (sha !== undefined) {
+			return {branch, sha};
+		}
+	}
+	throw new Error(`the remote lists none of ${wanted.join(', ')} and no default branch`);
 }
 
 // gitlinks picks the submodule commits out of `git ls-tree -r` output.

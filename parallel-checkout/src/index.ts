@@ -123,7 +123,17 @@ async function run(): Promise<void> {
 
 	const apiUrl = (process.env.GITHUB_API_URL || 'https://api.github.com').replace(/\/+$/, '');
 	const rootTree = () => readTree({git, apiUrl, repository, token, url, ref, sha, log: core.info});
-	const {commit, repos} = await new Checkout({git, dir, url, plan, depth, submodules, workers, config, rootTree, log: core.info}).run();
+	const branch = core.getInput('submodule-branch').trim();
+	const scope = core
+		.getInput('submodule-branch-scope')
+		.split('\n')
+		.map(prefix => prefix.trim())
+		.filter(prefix => prefix !== '');
+	const follow = branch === '' ? undefined : {branch, scope: scope.length > 0 ? scope : [`${server}/${repository.split('/')[0]}/`]};
+	if (follow !== undefined) {
+		core.info(`direct submodules under ${follow.scope.join(', ')} follow ${follow.branch}, their .gitmodules branch, or their default branch`);
+	}
+	const {commit, repos} = await new Checkout({git, dir, url, plan, depth, submodules, workers, config, rootTree, follow, log: core.info}).run();
 	core.setOutput('commit', commit);
 	core.setOutput('ref', ref);
 	core.info(`${repos} repositor${repos === 1 ? 'y' : 'ies'} checked out in ${Date.now() - started}ms`);

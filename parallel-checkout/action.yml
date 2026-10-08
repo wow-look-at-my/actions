@@ -27,6 +27,14 @@ inputs:
     description: 'Which submodules to take: `recursive` for the whole tree, `true` for the first level, `false` for none.'
     required: false
     default: 'recursive'
+  submodule-branch:
+    description: 'A branch name. Each direct submodule inside `submodule-branch-scope` then takes the head of this branch on its remote instead of its gitlink, falling back to the `branch` its .gitmodules entry names, then to the remote''s default branch. Pass `${{ github.ref_name }}` so a dependency rides the same-named branch. A dependency''s own submodules stay at the commits it names. Empty keeps every gitlink.'
+    required: false
+    default: ''
+  submodule-branch-scope:
+    description: 'URL prefixes, one per line, of the submodules that follow `submodule-branch`. Defaults to every repository of the superproject''s owner on the same server.'
+    required: false
+    default: ''
   jobs:
     description: 'How many git processes may run at once across the whole tree.'
     required: false

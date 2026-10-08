@@ -53,6 +53,43 @@ runs:
         fi
         exit "$fail"
 
+    # The same superproject with its org submodules following master, as gosmopolitan's own submodulebranch.bash puts them.
+    - name: Check gosmopolitan out with org submodules on master
+      uses: ./parallel-checkout
+      with:
+        repository: wow-look-at-my/gosmopolitan
+        ref: c2fce1410da52e977c1c76e4fcd0ab0f96f810fb
+        path: .parallel-checkout-test/follow
+        submodule-branch: master
+
+    - name: Org submodules sit at master, third-party and nested ones at their gitlinks
+      shell: bash
+      working-directory: .parallel-checkout-test/follow
+      run: |
+        set -euo pipefail
+        fail=0
+        ipc=src/cmd/vendor/github.com/wow-look-at-my/go-ipc
+        want=$(git ls-remote https://github.com/wow-look-at-my/go-ipc refs/heads/master | cut -f1)
+        if [ "$(git -C "$ipc" rev-parse HEAD)" != "$want" ]; then
+          echo "::error::$ipc is at $(git -C "$ipc" rev-parse HEAD), master is $want"
+          fail=1
+        fi
+        if [ "$(git config --local submodule.src/cmd/vendor/github.com/wow-look-at-my/go-ipc.branch)" != master ]; then
+          echo "::error::the followed branch was not recorded in the superproject config"
+          fail=1
+        fi
+        # A third-party submodule keeps its gitlink, so git reports it unmoved.
+        if ! git submodule status src/vendor/golang.org/x/sys | grep -q '^ '; then
+          echo "::error::golang.org/x/sys moved off its gitlink: $(git submodule status src/vendor/golang.org/x/sys)"
+          fail=1
+        fi
+        # The dependency's own submodules sit where the dependency names them.
+        if ! git -C "$ipc" submodule status | grep -q '^ '; then
+          echo "::error::go-ipc's nested submodule is not at the commit go-ipc names: $(git -C "$ipc" submodule status)"
+          fail=1
+        fi
+        exit "$fail"
+
     # The repository the workflow runs in, through GITHUB_REF and GITHUB_SHA, onto a local branch.
     - name: Check this repository out at the triggering ref
       id: self

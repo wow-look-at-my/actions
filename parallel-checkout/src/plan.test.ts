@@ -1,13 +1,43 @@
 import * as assert from 'assert';
 import {test} from 'node:test';
-import {basicAuth, gitdirFor, gitlinks, parseGitmodules, pickRef, planRef, resolveUrl} from './plan';
+import {basicAuth, followed, gitdirFor, gitlinks, parseGitmodules, pickHead, pickRef, planRef, resolveUrl} from './plan';
 
 test('a .gitmodules file reads into name, path and url', () => {
 	const text = `[submodule "x/crypto"]\n\tpath = src/vendor/golang.org/x/crypto\n\turl = https://github.com/golang/crypto\n\tbranch = master\n[submodule "bats"]\n\tpath = test_helper/bats-assert\n\turl = ../bats-assert.git\n`;
 	assert.deepStrictEqual(parseGitmodules(text), [
-		{name: 'x/crypto', path: 'src/vendor/golang.org/x/crypto', url: 'https://github.com/golang/crypto'},
-		{name: 'bats', path: 'test_helper/bats-assert', url: '../bats-assert.git'},
+		{name: 'x/crypto', path: 'src/vendor/golang.org/x/crypto', url: 'https://github.com/golang/crypto', branch: 'master'},
+		{name: 'bats', path: 'test_helper/bats-assert', url: '../bats-assert.git', branch: ''},
 	]);
+});
+
+test('a .gitmodules branch is read, and defaults to empty', () => {
+	const text = `[submodule "a"]\n\tpath = a\n\turl = ../a\n\tbranch = .\n[submodule "b"]\n\tpath = b\n\turl = ../b\n`;
+	assert.deepStrictEqual(
+		parseGitmodules(text).map(module => module.branch),
+		['.', ''],
+	);
+});
+
+test('a submodule follows a branch only inside the scope', () => {
+	assert.ok(followed('https://github.com/org/dep', ['https://github.com/org/']));
+	assert.ok(!followed('https://github.com/other/dep', ['https://github.com/org/']));
+	assert.ok(!followed('https://github.com/org/dep', ['']));
+});
+
+const listing = 'ref: refs/heads/main\tHEAD\naaa1111111111111111111111111111111111111\tHEAD\nbbb1111111111111111111111111111111111111\trefs/heads/feature\nccc1111111111111111111111111111111111111\trefs/heads/release\n';
+
+test('the superproject branch wins when the remote has it', () => {
+	assert.deepStrictEqual(pickHead('feature', 'release', listing), {branch: 'feature', sha: 'bbb1111111111111111111111111111111111111'});
+});
+
+test('the .gitmodules branch is next, and `.` means the superproject branch', () => {
+	assert.deepStrictEqual(pickHead('nope', 'release', listing), {branch: 'release', sha: 'ccc1111111111111111111111111111111111111'});
+	assert.deepStrictEqual(pickHead('nope', '.', listing), {branch: 'main', sha: 'aaa1111111111111111111111111111111111111'});
+});
+
+test('the default branch is the last fallback, and no branch at all fails', () => {
+	assert.deepStrictEqual(pickHead('nope', '', listing), {branch: 'main', sha: 'aaa1111111111111111111111111111111111111'});
+	assert.throws(() => pickHead('nope', '', ''), /none of nope/);
 });
 
 test('a submodule with no url fails loudly', () => {

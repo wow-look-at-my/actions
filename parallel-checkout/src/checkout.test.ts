@@ -52,8 +52,18 @@ function fixture(): Fixture {
 }
 
 type Early = () => Promise<Tree | undefined>;
+type Follow = {branch: string; scope: string[]};
 
-function take(fx: Fixture, dir: string, submodules: 'false' | 'true' | 'recursive', ref = 'refs/heads/main', sha = head(fx.top), rootTree?: Early) {
+// advance commits a new file on `branch` of an origin, creating the branch if needed, and returns the new head.
+function advance(dir: string, branch: string, file: string): string {
+	sh(['checkout', '--quiet', '-B', branch], dir);
+	fs.writeFileSync(path.join(dir, file), `${file}\n`);
+	sh(['add', '-A'], dir);
+	sh(['commit', '--quiet', '-m', `advance ${branch}`], dir);
+	return head(dir);
+}
+
+function take(fx: Fixture, dir: string, submodules: 'false' | 'true' | 'recursive', ref = 'refs/heads/main', sha = head(fx.top), rootTree?: Early, follow?: Follow) {
 	const log: string[] = [];
 	const checkout = new Checkout({
 		git: new Git(new Pool(8), ['-c', 'protocol.file.allow=always']),
@@ -65,10 +75,48 @@ function take(fx: Fixture, dir: string, submodules: 'false' | 'true' | 'recursiv
 		workers: 2,
 		config: [['test.marker', 'yes']],
 		rootTree,
+		follow,
 		log: message => log.push(message),
 	});
 	return {checkout, log};
 }
+
+test('a followed submodule takes the superproject branch head, then the default branch, and nested ones stay pinned', async () => {
+	const fx = fixture();
+	const dir = path.join(fx.root, 'work');
+	// The gitlinks in top still name the heads of mid and plain.
+	const midPinned = head(fx.mid);
+	const midFeature = advance(fx.mid, 'feature', 'feature.txt');
+	const plainMain = advance(fx.plain, 'main', 'later.txt');
+	const leafLater = advance(fx.leaf, 'main', 'later.txt');
+	const {checkout, log} = take(fx, dir, 'recursive', undefined, undefined, undefined, {branch: 'feature', scope: [`${fx.root}/`]});
+	await checkout.run();
+
+	// mid has a feature branch; plain has none and takes its default branch head.
+	assert.strictEqual(head(path.join(dir, 'vendor/mid')), midFeature);
+	assert.ok(fs.existsSync(path.join(dir, 'vendor/mid/feature.txt')));
+	assert.strictEqual(head(path.join(dir, 'vendor/plain')), plainMain);
+	// mid's own submodule sits at the commit mid names, not at leaf's newest head.
+	assert.notStrictEqual(head(path.join(dir, 'vendor/mid/deps/leaf')), leafLater);
+	assert.strictEqual(sh(['submodule', 'status', '--recursive'], path.join(dir, 'vendor/mid')).startsWith(' '), true);
+	// The superproject's gitlink now differs, and git says so, which is the point.
+	assert.match(sh(['status', '--porcelain'], dir), /^ M vendor\/mid$/m);
+	assert.strictEqual(sh(['config', '--local', 'submodule.mid.branch'], dir).trim(), 'feature');
+	assert.strictEqual(sh(['config', '--local', 'submodule.plain.branch'], dir).trim(), 'main');
+	assert.ok(log.some(line => line.includes(`vendor/mid: follows feature at ${midFeature}, not the gitlink ${midPinned}`)), log.join('\n'));
+});
+
+test('a submodule outside the scope keeps its gitlink', async () => {
+	const fx = fixture();
+	const dir = path.join(fx.root, 'work');
+	const plainPinned = head(fx.plain);
+	advance(fx.plain, 'feature', 'feature.txt');
+	const midFeature = advance(fx.mid, 'feature', 'feature.txt');
+	const {checkout} = take(fx, dir, 'recursive', undefined, undefined, undefined, {branch: 'feature', scope: [fx.mid]});
+	await checkout.run();
+	assert.strictEqual(head(path.join(dir, 'vendor/mid')), midFeature);
+	assert.strictEqual(head(path.join(dir, 'vendor/plain')), plainPinned);
+});
 
 test('a recursive checkout lands every level at the commit its parent pins', async () => {
 	const fx = fixture();
