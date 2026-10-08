@@ -36,9 +36,9 @@ export function escapeRegExp(s: string): string {
 /**
  * Exact key for this hand-off: unique per (name, run, attempt). The run id
  * comes FIRST so every key of one run shares the run-scoped prefix below —
- * that is what makes nameless discovery safe: a prefix search scoped to the
- * current run can never match another run's entry (the dash after the run
- * id anchors it against longer run ids).
+ * that is what makes nameless discovery safe. A prefix search scoped to the
+ * current run can never match another run's entry (the dash after the run id
+ * anchors it against longer run ids).
  */
 export function handoffKey(name: string, runId: string, runAttempt: string): string {
 	const key = `${KEY_PREFIX}-${runId}-${name}-${runAttempt}`;

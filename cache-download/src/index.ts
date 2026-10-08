@@ -88,8 +88,8 @@ async function resolveNamed(twirpClient: TwirpClient, name: string, runId: strin
 	let legacy = false;
 	if (!lookup.ok) {
 		// TRANSITION fallback (remove after the v2 rollout): a producer still on
-		// the pre-v2 cache-upload saved under the name-first layout and the v1
-		// version. #latest tags move on merge.
+		// the pre-v2 cache-upload. That cache-upload is saved under the
+		// name-first layout and the v1 version. #latest tags move on merge.
 		lookup = await twirpClient.GetCacheEntryDownloadURL({
 			key: legacyHandoffKey(name, runId, runAttempt),
 			restoreKeys: [legacyHandoffRestorePrefix(name, runId)],

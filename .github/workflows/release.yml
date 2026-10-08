@@ -31,9 +31,9 @@ jobs:
         with:
           script: |
             const dirs = ['tag-cleanup', 'cache-upload', 'cache-download', 'cache-cleanup', 'run-once',
-              'orphan-release', 'submodule-gte', 'cached-apt', 'cached-run'];
+              'orphan-release', 'submodule-gte', 'cached-apt', 'cached-run', 'parallel-checkout'];
             await Promise.all(dirs.map(dir => $`just build`.cwd(dir)));
-      # This job runs every common-check below from THIS checkout, so it claims the once-per-run slot: otherwise a downstream action pulls in the PUBLISHED copy and the repo cannot publish a fix for its own check.
+      # This job runs every common-check below from THIS checkout. It claims the once-per-run slot: otherwise a downstream action pulls in the PUBLISHED copy. The repo cannot publish a fix for its own check.
       - uses: ./run-once
         with:
           name: common-checks
@@ -61,8 +61,19 @@ jobs:
       - uses: ./_shared/cache-key/test
       - uses: ./cached-run/test
       - uses: ./cached-apt/test
+      - uses: ./parallel-checkout/test
       - if: failure()
         uses: ./fail-fast
+
+  # The checkout this action replaces was timed on a macOS runner, so it is measured there too.
+  parallel-checkout-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-and-build
+        with:
+          action-dir: parallel-checkout
+      - uses: ./parallel-checkout/test
 
   # The shared cache-xfer tests on NT: its tar and path handling, and that a unix-origin hand-off runs there.
   cache-xfer-windows:
