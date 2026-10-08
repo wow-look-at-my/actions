@@ -208,10 +208,11 @@ export class Checkout {
 	// branches it may take and which is the default.
 	private async headOf(child: Repo, here: string, configured: string): Promise<Head> {
 		const refs = ['HEAD', `refs/heads/${here}`];
-		if (configured !== '' && configured !== '.') {
+		if (configured !== '' && configured !== '.' && configured !== here) {
 			refs.push(`refs/heads/${configured}`);
 		}
-		const listing = await this.opts.git.must(['ls-remote', '--symref', child.url, ...refs]);
+		// Run inside the superproject, whose config.
+		const listing = await this.opts.git.must(['ls-remote', '--symref', child.url, ...refs], this.opts.dir);
 		try {
 			return pickHead(here, configured, listing);
 		} catch (error) {

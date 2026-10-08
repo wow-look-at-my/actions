@@ -37,6 +37,8 @@ export class Git {
 		private readonly pool: Pool,
 		// `-c` settings every call carries, such as the auth header.
 		private readonly configArgs: string[],
+		// Where a call with no repository runs.
+		private readonly home?: string,
 	) {}
 
 	// run executes git and reports the exit code, so a caller that expects a
@@ -49,7 +51,7 @@ export class Git {
 						'git',
 						[...this.configArgs, ...args],
 						{
-							cwd,
+							cwd: cwd ?? this.home,
 							maxBuffer: 1 << 30,
 							env: {...process.env, GIT_TERMINAL_PROMPT: '0'},
 						},

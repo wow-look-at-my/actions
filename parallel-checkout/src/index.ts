@@ -109,7 +109,9 @@ async function run(): Promise<void> {
 			config.push(...settings);
 		}
 	}
-	const git = new Git(new Pool(jobs), configArgs);
+	// A directory in no repository, for the calls made before the checkout exists.
+	const home = await fsp.mkdtemp(path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'parallel-checkout-'));
+	const git = new Git(new Pool(jobs), configArgs, home);
 
 	const {ref, sha} = await resolveRef(git, url, repository);
 	const plan = planRef(ref, sha);
