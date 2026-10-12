@@ -14,11 +14,7 @@ export const LEGACY_VERSION_SEED = 'wow-look-at-my/actions/cache-xfer/v1';
 /** Magic bytes opening every hand-off archive. */
 export const ENVELOPE_MAGIC = 'WXFR1';
 
-<<<<<<< HEAD
-/* */
-=======
 /** The cache service rejects keys longer than many characters. */
->>>>>>> origin/master
 const MAX_KEY_LENGTH = 512;
 
 /** Sanity bound for the envelope's JSON header. */
@@ -40,9 +36,9 @@ export function escapeRegExp(s: string): string {
 /**
  * Exact key for this hand-off: unique per (name, run, attempt). The run id
  * comes FIRST so every key of one run shares the run-scoped prefix below —
- * that is what makes nameless discovery safe: a prefix search scoped to the
- * current run can never match another run's entry (the dash after the run
- * id anchors it against longer run ids).
+ * that is what makes nameless discovery safe. A prefix search scoped to the
+ * current run can never match another run's entry (the dash after the run id
+ * anchors it against longer run ids).
  */
 export function handoffKey(name: string, runId: string, runAttempt: string): string {
 	const key = `${KEY_PREFIX}-${runId}-${name}-${runAttempt}`;

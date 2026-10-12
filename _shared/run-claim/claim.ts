@@ -9,11 +9,7 @@ export const VERSION_SEED = 'wow-look-at-my/actions/run-once/v1';
 /** Body of a claim entry. The bytes carry no meaning; the key existing does. */
 export const CLAIM_PAYLOAD = 'wow-look-at-my/actions run-once claim\n';
 
-<<<<<<< HEAD
-/* */
-=======
 /** The cache service rejects keys longer than many characters. */
->>>>>>> origin/master
 const MAX_KEY_LENGTH = 512;
 
 export function validateName(name: string): void {
@@ -81,7 +77,7 @@ function looksLikeCollision(message: string): boolean {
  * Whether the entry is really there.
  *
  * A claim is only ever surrendered on a positive answer. A lookup that fails,
- * or that finds nothing, keeps the fail-open behaviour: running a check twice
+ * or that finds nothing, keeps the fail-open behaviour. Running a check twice
  * costs seconds, and skipping it everywhere on a guess hides what it reports.
  */
 async function claimIsHeld(service: ClaimService, key: string, version: string): Promise<{held: boolean; lookupError?: string}> {
@@ -97,8 +93,9 @@ async function claimIsHeld(service: ClaimService, key: string, version: string):
  *
  * `first` is true when this job holds the claim and the work behind it runs
  * here. Every failure mode outside a genuine collision returns first=true with
- * a warning: running a check twice costs seconds, and skipping it everywhere
- * because the cache service misbehaved hides whatever the check would report.
+ * a warning: running a check twice costs seconds, and skipping it everywhere.
+ * This is because the cache service misbehaved hides whatever the check would
+ * report.
  */
 export async function claimRun(service: ClaimService, key: string, version: string): Promise<ClaimOutcome> {
 	let created: CreateResult;

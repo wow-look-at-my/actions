@@ -22,12 +22,7 @@ type ShellArg = string | number | boolean | null | undefined | string[];
 // eslint-disable-next-line local/no-callable-primitive-intersection
 type OutputStream = string & { json<T = unknown>(): T };
 
-<<<<<<< HEAD
-// eslint-disable-next-line @typescript-eslint/no-wrapper-object-types --
-// known: $ output is a boxed branded-primitive.
-=======
 // eslint-disable-next-line @typescript-eslint/no-wrapper-object-types
->>>>>>> origin/master
 function streamJson<T = unknown>(this: String): T {
 	return JSON.parse(this.toString()) as T;
 }
@@ -368,7 +363,7 @@ function readContexts(): WorkflowContexts {
 }
 
 // lib.dom is opt-in per step. It declares hundreds of browser globals whose
-// names collide with ordinary identifiers, so a script that does not touch the
+// names collide with ordinary identifiers. A script that does not touch the
 // DOM type-checks more strictly without it.
 function domEnabled(): boolean {
 	const raw = core.getInput('dom').trim().toLowerCase();
@@ -379,7 +374,6 @@ function domEnabled(): boolean {
 
 function libFiles(): string[] {
 	const libs = ['lib.es2022.d.ts'];
-	// dom.iterable comes with it: without it a NodeList is not iterable.
 	if (domEnabled()) libs.push('lib.dom.d.ts', 'lib.dom.iterable.d.ts');
 	return libs;
 }
@@ -575,7 +569,6 @@ async function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: str
 		await fn(scriptRequire, mod.exports, mod, scriptFilename, baseDir);
 		const main = mod.exports[MAIN_FN];
 		if (typeof main !== 'function') {
-			// buildSource always wraps the script in __main; only reachable if the user reassigned module.exports.
 			return undefined;
 		}
 		return await (main as () => Promise<unknown>)();
@@ -609,7 +602,7 @@ function readUserScript(): { script: string; label: string; dir: string; inline:
 }
 
 // Reads the running workflow to find this step and check it carries a `name:`.
-// A step reached through a composite action is not in that file, and neither is
+// A step reached through a composite action is not in that file. Neither is
 // anything outside a workflow run, so both cases return no findings.
 async function unnamedStepPositions(): Promise<{workflow: string; job: string; positions: number[]}> {
 	const ref = process.env.GITHUB_WORKFLOW_REF;

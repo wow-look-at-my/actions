@@ -26,10 +26,7 @@ const BLK_FILE = 2;
 // Number of blocks (determines Offsets array length)
 const N_BLK = 15;
 const GOOBJ_HEADER_SIZE = 8 + 8 + 4 + N_BLK * 4;
-<<<<<<< HEAD
-=======
 // String references in goobj are several bytes: uint32 length + uint32 offset
->>>>>>> origin/master
 const STRING_REF_SIZE = 8;
 
 function humanSize(bytes: number): string {
@@ -124,28 +121,17 @@ function findGoobjOffset(fd: number, fileSize: number): number {
 // Extract source file paths and package paths from a Go build cache data file by parsing the goobj binary format.
 //
 // Go build cache -d files are Go archives containing:
-<<<<<<< HEAD
-//. __.PKGDEF (export data)
-//. Go object entries with goobj binary format (magic "\x00go120ld")
-//
-// The goobj format (cmd/internal/goobj/objfile.go) has:
-//   Header: Magic() + Fingerprint() + Flags() + Offsets(NBlk*)
-=======
 //   - __.PKGDEF (export data)
 //   - Go object entries with goobj binary format (magic "\x00go120ld")
 //
 // The goobj format (cmd/internal/goobj/objfile.go) has:
 //   Header: Magic + Fingerprint + Flags + Offsets, sized as GOOBJ_HEADER_SIZE spells out
->>>>>>> origin/master
 //   Then data blocks including:
 //     - Strings: raw string bytes
 //     - PkgIndex: imported package paths (string refs)
 //     - Files: source file paths (string refs)
-<<<<<<< HEAD
-=======
 //
 // String refs are several bytes: uint32 length + uint32 offset (into the goobj data).
->>>>>>> origin/master
 function extractModulePath(filePath: string): string | null {
 	let fd: number;
 	let fileSize: number;
@@ -177,7 +163,6 @@ function extractModulePath(filePath: string): string | null {
 		const mod = readModuleFromBlock(fd, goobjFileOffset, offsets[BLK_FILE], offsets[BLK_FILE + 1], true);
 		if (mod) return mod;
 
-		// Fall back to PkgIndex block (BlkPkgIdx=1) — imported package paths
 		return readModuleFromBlock(fd, goobjFileOffset, offsets[BLK_PKG_IDX], offsets[BLK_PKG_IDX + 1], false);
 	} finally {
 		fs.closeSync(fd);
@@ -225,8 +210,8 @@ function readModuleFromBlock(
 
 // Extract a module path from a Go source file path.
 // The Go compiler stores paths in the Files block as.
-//   - $GOROOT/src/runtime/proc.go           (stdlib)
-//   - $GOROOT/src/vendor/golang.org/x/...   (vendored in stdlib)
+//   - $GOROOT/src/runtime/proc.go (stdlib)
+//   - $GOROOT/src/vendor/golang.org/x/... (vendored in stdlib)
 //   - /home/runner/go/pkg/mod/golang.org/x/net@v0.33.0/http2/hpack/encode.go (module cache)
 //   - /home/runner/work/repo/internal/foo.go (local source)
 function moduleFromFilePath(filePath: string): string | null {

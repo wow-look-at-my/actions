@@ -40,9 +40,10 @@ function isModuleScopeStatement(stmt: ts.Statement): boolean {
 //   <remaining statements, original relative order>
 //   }
 //
-// A module allows top-level import/export but not top-level `return`; an async function body allows top-level `await` and `return` but not import/export. Splitting gives every construct a legal home: __main's resolved value becomes the action's `result` output, and hoisted imports execute before the body — matching ESM import-hoisting semantics.
+// A module allows top-level import/export but not top-level `return`. An async function body allows top-level `await` and `return` but not import/export. Splitting gives every construct a legal home: __main's resolved value becomes the action's `result` output, and hoisted imports execute before the body. It is matching ESM import-hoisting
+// semantics.
 //
-// __main's return type is intentionally left to inference: an explicit non-void type (e.g. Promise<unknown>) would make a script that never returns a value trip TS2355 ("must return a value").
+// __main's return type is intentionally left to inference. An explicit non-void type (e.g. Promise<unknown>) would make a script that never returns a value trip TS2355 ("must return a value").
 export function transformScript(script: string): TransformedScript {
 	// Strip a leading BOM so line-1 columns in diagnostics stay exact.
 	if (script.charCodeAt(0) === 0xfeff) {

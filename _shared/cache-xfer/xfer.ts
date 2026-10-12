@@ -85,10 +85,8 @@ async function awaitStages(stages: Array<Promise<void>>): Promise<void> {
  * The tar invocation. On non-Windows this is simply `tar` from PATH. On
  * Windows both tars in the image work for our stream usage, but GNU tar
  * (Git's, sometimes first on PATH) treats `C:` in paths as a remote-host
- * prefix, so it needs --force-local and forward slashes — the same handling
- * @actions/cache applies in lib/internal/tar.js (getTarArgs/getTarPath,
+ * prefix. It needs --force-local and forward slashes — the same handling
  * IS_WINDOWS branches; GNU-ness sniffed via `tar --version` like
- * cacheUtils.getGnuTarPathOnWindows does).
  */
 async function tarInvocation(): Promise<{cmd: string; extraArgs: string[]; fixPath: (p: string) => string}> {
 	if (process.platform !== 'win32') {
@@ -112,7 +110,7 @@ async function tarInvocation(): Promise<{cmd: string; extraArgs: string[]; fixPa
  * report which hand-off it picked).
  *
  * A single regular file takes the raw fast path: its bytes stream straight
- * through zstd with no tar process, and the envelope carries basename +
+ * through zstd with no tar process. The envelope carries basename +
  * permission bits. A directory is captured as its CONTENTS: `tar -cf - -C
  * <dir> .` piped through zstd (exec bits, symlinks, and dotfiles preserved
  * by tar). Nothing is ever buffered whole in JS — header write aside, both
@@ -189,9 +187,8 @@ export async function readEnvelope(archivePath: string): Promise<{header: Envelo
  * no path through here that checks nothing.
  *
  * The check runs before the decoder starts. A corrupt payload otherwise
- * reaches zstd, which exits 70 and reports a codec error, and a codec error
- * reads as a bug in the archive format rather than as the damaged download it
- * is.
+ * reaches zstd, which exits 70 and reports a codec error. A codec error reads
+ * as a bug in the archive format rather than as the damaged download it is.
  */
 async function verifyPayload(archivePath: string, header: EnvelopeHeader, dataOffset: number): Promise<number> {
 	const {size} = await fsp.stat(archivePath);
