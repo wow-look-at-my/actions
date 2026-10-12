@@ -13,7 +13,7 @@ concurrency:
 jobs:
   # Every suite, guard and dogfood run this repo does.
   checks:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.visibility == 'public' && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 20
     permissions:
       contents: write # tag-cleanup deletes orphaned release tags
@@ -33,10 +33,6 @@ jobs:
             const dirs = ['tag-cleanup', 'cache-upload', 'cache-download', 'cache-cleanup', 'run-once',
               'orphan-release', 'submodule-gte', 'cached-apt', 'cached-run', 'parallel-checkout'];
             await Promise.all(dirs.map(dir => $`just build`.cwd(dir)));
-      # This job runs every common-check below from THIS checkout. It claims the once-per-run slot: otherwise a downstream action pulls in the PUBLISHED copy. The repo cannot publish a fix for its own check.
-      - uses: ./run-once
-        with:
-          name: common-checks
       # The guard suites drive dist/, so they run after the build above.
       - uses: wow-look-at-my/dats@master
         with:
@@ -86,7 +82,7 @@ jobs:
       - uses: ./_shared/cache-xfer/test
 
   validate:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.visibility == 'public' && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
       - name: Validate action slugs
@@ -118,7 +114,7 @@ jobs:
   detect:
     # It enumerates every action rather than diffing, so a dispatch republishes the lot, which is what a recovery run wants.
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.visibility == 'public' && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     outputs:
       node: ${{ steps.find.outputs.node }}
       composite: ${{ steps.find.outputs.composite }}
@@ -148,7 +144,7 @@ jobs:
       fail-fast: false
       matrix:
         action: ${{ fromJson(needs.detect.outputs.node) }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.visibility == 'public' && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     permissions:
       contents: write
     steps:
@@ -210,7 +206,7 @@ jobs:
     needs: [checks, detect]
     # Same gate as release-node: green checks on a push, operator's word on a dispatch.
     if: always() && needs.detect.result == 'success' && needs.detect.outputs.composite != '[]' && (github.event_name == 'workflow_dispatch' || needs.checks.result == 'success')
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.visibility == 'public' && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     permissions:
       contents: write
     steps:

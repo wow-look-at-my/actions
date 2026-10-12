@@ -45,7 +45,7 @@ on:
 
 jobs:
   publish-ghcr:
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.repository.visibility == 'public' && 'ubuntu-latest' || vars.CI_RUNNER_DIND || 'ubuntu-latest' }}
     permissions:
       contents: read # a private caller repo cannot be checked out without it
       packages: write
