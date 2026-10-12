@@ -27,9 +27,9 @@ function isPrimitiveMember(node) {
 
 /** Does a single object *member* node constitute a CALLABLE member? - TSMethodSignature
  * -> `foo(): T` - TSCallSignatureDeclaration -> `(): T` -
- * TSConstructSignatureDeclaration-> `new (): T` - TSPropertySignature whose value
- * annotation is a TSFunctionType / TSConstructorType -> `run: () => void` / `make: new
- * () => T` */
+ * TSConstructSignatureDeclaration-> `new (): T`. This is TSPropertySignature whose
+ * value annotation is a TSFunctionType / TSConstructorType -> `run: () => void` /
+ * `make: new () => T` */
 function isCallableMember(member) {
   switch (member.type) {
     case 'TSMethodSignature':
@@ -37,7 +37,6 @@ function isCallableMember(member) {
     case 'TSConstructSignatureDeclaration':
       return true;
     case 'TSPropertySignature': {
-      // `prop: <type>` parses as a TSPropertySignature whose `.typeAnnotation` is a TSTypeAnnotation wrapper.
       const inner = member.typeAnnotation && member.typeAnnotation.typeAnnotation;
       return !!inner && (inner.type === 'TSFunctionType' || inner.type === 'TSConstructorType');
     }
@@ -47,7 +46,7 @@ function isCallableMember(member) {
 }
 
 /** Given an object-ish intersection member, decide whether it is "object members
- * worth" under the current options. Returns one of: 'callable' -> contains at
+ * worth" under the current options. Returns one of: 'callable' -> contains. At
  * least one callable member 'nonempty' -> has >=1 member but none callable (only
  * matters in blunt mode) null -> not an object member type, or an empty `{}`
  * Handles: - TSTypeLiteral : an inline `{ ... }` with a `members` array. */
@@ -68,7 +67,6 @@ function classifyObjectMember(node) {
   return null;
 }
 
-/** @type {import('eslint').Rule.RuleModule} */
 module.exports = {
   meta: {
     type: 'problem',

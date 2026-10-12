@@ -3,7 +3,7 @@
 # variable name GO_BUILDCACHE_CONFIG\r, and go-toolchain's own
 # os.Getenv("GO_BUILDCACHE_CONFIG") then finds nothing set.
 #
-# A real jq.exe is not available here, so a wrapper stands in for it: real
+# A real jq.exe is not available here. A wrapper stands in for it: real
 # jq's output, with \r appended to every line, the same shape Windows
 # produces. export-secrets.sh must still emit clean keys and values through
 # it.
