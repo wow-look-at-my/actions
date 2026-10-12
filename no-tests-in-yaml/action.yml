@@ -1,28 +1,5 @@
 name: No Tests In YAML
-<<<<<<< HEAD
-description: Fail CI when a GitHub Actions YAML file in the local call chain carries a test instead of invoking the repository's own suite
-
-inputs:
-  paths:
-    description: >-
-      Files to scan, newline or comma separated, relative to the workspace.
-      Leave empty to scan every workflow file and every action.yml in the
-      workspace, except under a nested repository (a submodule or a clone,
-      marked by its .git entry): its own CI scans those, and a `./` in them
-      names that repository's root. Whatever the roots are, the scan follows
-      `uses: ./...` from them through the rest of the local call chain.
-    required: false
-    default: ''
-
-  exclude:
-    description: >-
-      Glob patterns for files the scan skips, newline or comma separated.
-      Intended for fixtures that violate the rule on purpose.
-    required: false
-    default: ''
-=======
 description: Run the full slopfix check over the checkout, which fails a GitHub Actions YAML file that carries a test instead of invoking the repository's own suite
->>>>>>> origin/master
 
 runs:
   using: composite
