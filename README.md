@@ -104,13 +104,6 @@ ts0 supplies the compiler, the bundler and `@types/node`, so an action's `packag
     project-name: # Cloudflare Pages project name (auto-created on first use)
 ```
 
-### [Common Checks](common-checks/)
-
-```yml
-# Run this org's GitHub Actions checks once per workflow run, over the calling repo only.
-- uses: wow-look-at-my/actions@common-checks#latest
-```
-
 ### [Disable Windows Defender](disable-windows-defender/)
 
 ```yml
