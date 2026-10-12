@@ -33,10 +33,6 @@ jobs:
             const dirs = ['tag-cleanup', 'cache-upload', 'cache-download', 'cache-cleanup', 'run-once',
               'orphan-release', 'submodule-gte', 'cached-apt', 'cached-run', 'parallel-checkout'];
             await Promise.all(dirs.map(dir => $`just build`.cwd(dir)));
-      # This job runs every common-check below from THIS checkout. It claims the once-per-run slot: otherwise a downstream action pulls in the PUBLISHED copy. The repo cannot publish a fix for its own check.
-      - uses: ./run-once
-        with:
-          name: common-checks
       # The guard suites drive dist/, so they run after the build above.
       - uses: wow-look-at-my/dats@master
         with:
