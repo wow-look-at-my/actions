@@ -32,13 +32,14 @@ function service(overrides: Partial<ClaimService>): {service: ClaimService; call
 	return {service: wrapped, calls};
 }
 
-const KEY = 'run-once-42-1-common-checks';
+const KEY = 'run-once-42-1-lint';
 const VERSION = claimVersion();
 
 test('the claim key is unique per run, attempt, and name', () => {
-	assert.equal(claimKey('common-checks', '42', '1'), KEY);
-	assert.notEqual(claimKey('common-checks', '42', '2'), claimKey('common-checks', '42', '1'));
-	assert.notEqual(claimKey('common-checks', '43', '1'), claimKey('common-checks', '42', '1'));
+	assert.equal(claimKey('lint', '42', '1'), KEY);
+	assert.notEqual(claimKey('lint', '42', '2'), claimKey('lint', '42', '1'));
+	assert.notEqual(claimKey('lint', '43', '1'), claimKey('lint', '42', '1'));
+	assert.notEqual(claimKey('docs', '42', '1'), claimKey('lint', '42', '1'));
 });
 
 test('the claim version is a stable hash', () => {
