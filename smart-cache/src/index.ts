@@ -104,7 +104,6 @@ async function post(): Promise<void> {
 		return;
 	}
 
-	// Print changes (first 100)
 	for (let i = 0; i < Math.min(changed.length, 100); i++) {
 		core.info(changed[i]);
 	}

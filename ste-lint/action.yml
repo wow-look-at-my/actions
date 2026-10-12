@@ -1,19 +1,8 @@
 name: ste-lint
-version: 1
-description: Run slopfix's hard-wrap and STE rules on the markdown lines a change wrote, fail on any error and warn on the rest
-
-inputs:
-  files:
-    description: 'Glob patterns to check, separated by whitespace or commas. The scope is then narrowed to the files this event changed. Matching nothing is a failure, never a quiet pass.'
-    required: false
-    default: '**/*.md'
-
-outputs:
-  files:
-    description: 'How many files were checked'
-  violations:
-    description: 'How many findings failed the run'
+description: Run the full slopfix check over the checkout, which includes the hard-wrap and STE rules on the repository's markdown
 
 runs:
-  using: node24
-  main: dist/index.js
+  using: composite
+  steps:
+    # Kept as a name every repository already calls. The slopfix action takes no input that narrows the check.
+    - uses: wow-look-at-my/slopfix@master

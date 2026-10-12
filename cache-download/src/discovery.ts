@@ -1,17 +1,4 @@
-// Download-only module (NOT part of the shared cache-xfer sources used by
-// cache-upload): nameless discovery — turning "the hand-offs this run
-// saved" into a single unambiguous pick, or a loud refusal.
-//
-// The pinned @actions/cache 5.2.0 twirp client exposes no list RPC (only
-// CreateCacheEntry / FinalizeCacheEntryUpload / GetCacheEntryDownloadURL),
-// so listing uses the DOCUMENTED public REST API cache-cleanup already
-// relies on: GET /repos/{owner}/{repo}/actions/caches with `key` as a
-// prefix ("An explicit key or prefix for identifying the cache"). That
-// endpoint needs a github-token with `actions: read`; the twirp
-// ACTIONS_RUNTIME_TOKEN cannot call it. When no usable token is available
-// the ambiguity check degrades to a warning and the newest run-scoped entry
-// is restored — which is why multi-producer runs must keep explicit names
-// (see action.yml / README).
+// Download-only module (NOT part of the shared cache-xfer sources used by cache-upload).
 
 import {nameFromKey} from '../../_shared/cache-xfer/lib';
 
@@ -32,11 +19,7 @@ export function distinctHandoffNames(keys: string[], runId: string): string[] {
 	return names;
 }
 
-/**
- * The hard-error for an ambiguous nameless download. Deliberately a refusal,
- * never a silent pick: the candidates are named so the fix ("pass one of
- * these as `name`", or stop producing the extra hand-off) is obvious.
- */
+/** The hard-error for an ambiguous nameless download. Deliberately a refusal, never a silent pick: the candidates are named so the fix ("pass one of these as `name`", or stop producing the extra hand-off) is obvious. */
 export function ambiguityMessage(names: string[]): string {
 	const listed = names.map(n => `'${n}'`).join(', ');
 	return `This run saved ${names.length} distinct hand-offs (${listed}); a nameless cache-download refuses to pick one. Pass one of them as the 'name' input, or stop uploading the extra hand-off.`;

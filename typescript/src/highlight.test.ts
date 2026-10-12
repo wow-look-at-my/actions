@@ -32,9 +32,7 @@ describe('highlightSource', () => {
 	});
 
 	it('keeps every line of a multi-line token self-contained', () => {
-		// The block comment spans two lines: the color must close before the
-		// newline and re-open after it, so viewers that reset SGR state at line
-		// boundaries still color the continuation.
+		// The block comment spans a couple of lines: the color must close before the newline and re-open after it.
 		const out = highlightSource('/* one\ntwo */');
 		assert.equal(out, `${COMMENT}/* one${RESET}\n${COMMENT}two */${RESET}`);
 	});

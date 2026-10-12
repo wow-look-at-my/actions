@@ -18,8 +18,7 @@ test('distinctHandoffNames dedupes attempts — a re-run never manufactures ambi
 });
 
 test('distinctHandoffNames keeps dash-digit names apart (per-job hand-off names)', () => {
-	// go-toolchain#311-style names: go-build-<job id>. The terminal numeric
-	// attempt segment must not swallow the job-id part of the name.
+	// go-toolchain#311-style names: go-build-<job id>.
 	const keys = [handoffKey('go-build-42', '123456', '1'), handoffKey('go-build', '123456', '1')];
 	assert.deepEqual(distinctHandoffNames(keys, '123456'), ['go-build-42', 'go-build']);
 });

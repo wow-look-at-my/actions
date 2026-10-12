@@ -94,7 +94,6 @@ jobs:
       - name: Notify docker-updater
         if: steps.meta.outputs.push == 'true' && inputs.updater-webhook-url != ''
         env:
-          UPDATER_URL: ${{ inputs.updater-webhook-url }}
           UPDATER_SECRET: ${{ secrets.updater-webhook-secret }}
         run: |
           PKG="${GITHUB_REPOSITORY##*/}"; PKG="${PKG,,}"
@@ -102,7 +101,7 @@ jobs:
           BODY="{\"action\":\"published\",\"package\":{\"name\":\"$PKG\",\"namespace\":\"$NS\",\"package_type\":\"CONTAINER\"}}"
           [ -z "${UPDATER_SECRET:-}" ] && { echo "no updater secret; skipping"; exit 0; }
           SIG="sha256=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$UPDATER_SECRET" | awk '{print $NF}')"
-          curl -fsS -m 15 -X POST "$UPDATER_URL" \
+          curl -fsS -m 15 -X POST "${{ inputs.updater-webhook-url }}" \
             -H "X-GitHub-Event: package" \
             -H "X-Hub-Signature-256: $SIG" \
             -H "Content-Type: application/json" \

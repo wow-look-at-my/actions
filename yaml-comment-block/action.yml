@@ -1,20 +1,8 @@
 name: YAML Comment Block
-description: Fail CI when a GitHub Actions YAML file carries more than 1 comment line in a row
-
-inputs:
-  paths:
-    description: >-
-      Paths to read, space separated. A directory is walked for every workflow
-      and every action manifest under it. Defaults to the whole workspace, so
-      the step must run after the checkout.
-    required: false
-    default: '.'
+description: Run the full slopfix check over the checkout, which includes the YAML comment-block rule
 
 runs:
   using: composite
   steps:
-    # Kept as a name every repository already calls, over the action in slopfix, which owns the rule and the download.
+    # Kept as a name every repository already calls. The slopfix action takes no input that narrows the check.
     - uses: wow-look-at-my/slopfix@master
-      with:
-        only: yaml/comment-block
-        paths: ${{ inputs.paths }}

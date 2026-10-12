@@ -1,6 +1,4 @@
-// Pure classification of orphan-release tags. A tag is junk when the thing it
-// names is gone: the action directory on the default branch, the branch on the
-// remote, or a sane version suffix.
+// Pure classification of orphan-release tags.
 
 export interface TagContext {
 	// Directories on the default branch that carry an action.yml
@@ -33,7 +31,7 @@ export function parseTag(ref: string): ParsedTag | null {
 
 // Reduce `git ls-tree -r --name-only` output to action directories. A
 // repo-root action.yml resolves to '', which would make every tag name an
-// action, so it is not a directory a release tag can name.
+// action. It is not a directory a release tag can name.
 export function actionDirsFromPaths(paths: string[]): Set<string> {
 	const dirs = new Set<string>();
 	for (const path of paths) {
@@ -48,10 +46,8 @@ function isSaneVersion(version: string): boolean {
 	return version === 'latest' || /^[0-9]+$/.test(version);
 }
 
-// Walk ancestors-or-self of the name and return the first directory that is an
-// action, so an "action/branch#1" branch tag resolves to its action root. The
-// walk goes from the full name upward, which matches how orphan-release names
-// branch tags: the action root is the shortest prefix, the branch is the rest.
+// Walk ancestors-or-self of the name. It return the first directory that is
+// an action, so an "action/branch#1" branch tag resolves to its action root.
 function actionRoot(name: string, actionDirs: ReadonlySet<string>): string | null {
 	const parts = name.split('/');
 	for (let end = parts.length; end >= 1; end--) {

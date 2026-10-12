@@ -19,8 +19,8 @@ export function short(sha: string): string {
 	return sha.slice(0, 12);
 }
 
-// A gitlink line of `git ls-tree -r <rev>`: mode 160000 names a commit of
-// another repository. Every other mode is a file of this one.
+// A gitlink line of `git ls-tree -r <rev>`: mode multiple names a commit
+// of another repository. Every other mode is a file of this.
 export function gitlinks(lsTree: string): Map<string, string> {
 	const found = new Map<string, string>();
 	for (const line of lsTree.split('\n')) {
@@ -37,8 +37,8 @@ export function gitlinks(lsTree: string): Map<string, string> {
 // question could not be answered.
 //
 // Forward is the move a build makes on its own, so it passes. Backward points
-// the superproject at an older commit than the base branch already names, and
-// every consumer of the merge then builds against code the base branch has
+// the superproject at an older commit than the base branch already names.
+// Every consumer of the merge then builds against code the base branch has
 // moved past.
 //
 // Unrelated is the pair on separate lines of history, which a force-push over
@@ -82,7 +82,7 @@ export function judge(entry: Entry, ancestry?: Ancestry): Verdict {
 	return {path, ok: true, message: `${path}: unmoved at ${short(base)}`};
 }
 
-// ancestryOf reads the two `merge-base --is-ancestor` answers a caller already
+// ancestryOf reads both `merge-base --is-ancestor` answers a caller already
 // asked git for. Each is true when the first named commit is an ancestor of the
 // second.
 export function ancestryOf(baseInHead: boolean, headInBase: boolean): Ancestry {

@@ -119,9 +119,7 @@ test('a reservation with no upload URL runs the work and warns', async () => {
 	assert.equal(calls.upload, 0);
 });
 
-// The live service does not answer a collision with ok:false. It throws a 409,
-// which used to read as an unreachable service, so every job failed open and
-// ran the work -- the whole point of the claim, lost.
+// The live service does not answer a collision with ok:false.
 const CONFLICT = 'Failed to CreateCacheEntry: Received non-retryable error: Failed request: (409) Conflict: cache entry with the same key, version, and scope already exists';
 
 test('a create that throws a conflict skips the work when the entry is really there', async () => {
@@ -138,7 +136,7 @@ test('a create that throws a conflict skips the work when the entry is really th
 	assert.deepEqual(calls, {create: 1, upload: 0, finalize: 0, exists: 1});
 });
 
-// The negative control: a claim is only surrendered on a POSITIVE lookup.
+// The.
 test('a create that throws a conflict still runs the work when no entry is there', async () => {
 	const {service: s} = service({
 		create: async () => {

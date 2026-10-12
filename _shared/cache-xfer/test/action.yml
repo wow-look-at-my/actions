@@ -68,11 +68,9 @@ runs:
     - name: Wait for both hand-offs to be listable
       if: runner.os != 'Windows'
       shell: bash
-      env:
-        GH_TOKEN: ${{ github.token }}
       run: |
         for i in $(seq 1 15); do
-          n=$(curl -sf -H "Authorization: Bearer ${GH_TOKEN}" \
+          n=$(curl -sf -H "Authorization: Bearer ${{ github.token }}" \
             "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/caches?key=cache-xfer-${GITHUB_RUN_ID}-&per_page=100" \
             | jq '[.actions_caches[].key] | length')
           echo "listed ${n:-0} run-scoped entries"

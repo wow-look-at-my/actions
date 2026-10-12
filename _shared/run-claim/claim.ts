@@ -9,7 +9,7 @@ export const VERSION_SEED = 'wow-look-at-my/actions/run-once/v1';
 /** Body of a claim entry. The bytes carry no meaning; the key existing does. */
 export const CLAIM_PAYLOAD = 'wow-look-at-my/actions run-once claim\n';
 
-/** The cache service rejects keys longer than 512 characters. */
+/** The cache service rejects keys longer than many characters. */
 const MAX_KEY_LENGTH = 512;
 
 export function validateName(name: string): void {
@@ -50,7 +50,7 @@ export interface FinalizeResult {
 	message?: string;
 }
 
-/** The four cache-service calls a claim needs, injected so the logic is testable. */
+/** Those cache-service calls a claim needs, injected so the logic is testable. */
 export interface ClaimService {
 	create(key: string, version: string): Promise<CreateResult>;
 	upload(signedUploadUrl: string): Promise<number>;
@@ -68,15 +68,7 @@ function messageOf(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
-/**
- * Whether a create failure says the entry is already there.
- *
- * The live service does not answer a collision with ok:false -- it THROWS, with
- * "Failed request: (409) Conflict: cache entry with the same key, version, and
- * scope already exists". That is the claim being HELD, which is the one signal
- * this action exists to read, and reading it as an unreachable service made
- * every job fail open and run the work.
- */
+/** Whether a create failure says the entry is already there. */
 function looksLikeCollision(message: string): boolean {
 	return /already exists/i.test(message) || /\bconflict\b/i.test(message) || /\b409\b/.test(message);
 }
@@ -85,7 +77,7 @@ function looksLikeCollision(message: string): boolean {
  * Whether the entry is really there.
  *
  * A claim is only ever surrendered on a positive answer. A lookup that fails,
- * or that finds nothing, keeps the fail-open behaviour: running a check twice
+ * or that finds nothing, keeps the fail-open behaviour. Running a check twice
  * costs seconds, and skipping it everywhere on a guess hides what it reports.
  */
 async function claimIsHeld(service: ClaimService, key: string, version: string): Promise<{held: boolean; lookupError?: string}> {
@@ -101,8 +93,9 @@ async function claimIsHeld(service: ClaimService, key: string, version: string):
  *
  * `first` is true when this job holds the claim and the work behind it runs
  * here. Every failure mode outside a genuine collision returns first=true with
- * a warning: running a check twice costs seconds, and skipping it everywhere
- * because the cache service misbehaved hides whatever the check would report.
+ * a warning: running a check twice costs seconds, and skipping it everywhere.
+ * This is because the cache service misbehaved hides whatever the check would
+ * report.
  */
 export async function claimRun(service: ClaimService, key: string, version: string): Promise<ClaimOutcome> {
 	let created: CreateResult;

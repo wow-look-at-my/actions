@@ -6,7 +6,7 @@ export interface CommentBlock {
 	endLine: number;
 }
 
-/** Start offset of every line in `text` (index 0 = line 1). */
+/* */
 function lineStarts(text: string): number[] {
 	const starts = [0];
 	for (let i = 0; i < text.length; i++) {
@@ -33,7 +33,7 @@ function lineOf(starts: number[], pos: number): number {
  */
 function commentOnlyLines(script: string): number[] {
 	const starts = lineStarts(script);
-	const scanner = ts.createScanner(ts.ScriptTarget.Latest, /* skipTrivia */ false, ts.LanguageVariant.Standard, script);
+	const scanner = ts.createScanner(ts.ScriptTarget.Latest, /* */ false, ts.LanguageVariant.Standard, script);
 	const lines: number[] = [];
 	for (let kind = scanner.scan(); kind !== ts.SyntaxKind.EndOfFileToken; kind = scanner.scan()) {
 		if (kind !== ts.SyntaxKind.SingleLineCommentTrivia) continue;
@@ -45,10 +45,7 @@ function commentOnlyLines(script: string): number[] {
 	return lines;
 }
 
-/**
- * Runs of two or more consecutive `//`-only lines — the shape a paragraph of
- * prose takes once it is pasted into a script.
- */
+/* */
 export function findCommentBlocks(script: string): CommentBlock[] {
 	const lines = commentOnlyLines(script);
 	const blocks: CommentBlock[] = [];
