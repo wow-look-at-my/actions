@@ -11,7 +11,7 @@ runs:
       shell: bash
       run: echo "ns=cached-run-test-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT:-1}" >> "$GITHUB_OUTPUT"
 
-    # Both calls run the SAME script text, because a difference there is meant to change the key. The `ran` stamp sits outside `paths`, so only the script itself can put it back. `save-on: any` runs throughout: this suite runs on a feature branch, where the default policy writes nothing and every warm case below would have nothing to hit.
+    # Both calls run the SAME script text, because a difference there is meant to change the key. The `ran` stamp sits outside `paths`, so only the script itself can put it back. `save-on: any` runs throughout. This suite runs on a feature branch, where the default policy writes nothing and every warm case below would have nothing to hit.
     - name: Cold run, which must execute and save
       id: cold
       uses: ./cached-run

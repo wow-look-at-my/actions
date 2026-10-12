@@ -3,8 +3,8 @@ import { exec } from '@actions/exec';
 import { actionDirsFromPaths, classifyTag, TagContext } from './classify';
 
 // One git call with captured output. A nonzero exit is always a hard error:
-// a failed existence probe must never read as "nothing exists", or the sweep
-// would delete every tag in the repository.
+// a failed existence probe must never read as "nothing exists". Otherwise,
+// the sweep would delete every tag in the repository.
 async function git(args: string[], cwd: string): Promise<string> {
 	let stdout = '';
 	let stderr = '';

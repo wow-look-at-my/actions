@@ -33,7 +33,7 @@ function lineOf(starts: number[], pos: number): number {
  */
 function commentOnlyLines(script: string): number[] {
 	const starts = lineStarts(script);
-	const scanner = ts.createScanner(ts.ScriptTarget.Latest, /* skipTrivia */ false, ts.LanguageVariant.Standard, script);
+	const scanner = ts.createScanner(ts.ScriptTarget.Latest, /* */ false, ts.LanguageVariant.Standard, script);
 	const lines: number[] = [];
 	for (let kind = scanner.scan(); kind !== ts.SyntaxKind.EndOfFileToken; kind = scanner.scan()) {
 		if (kind !== ts.SyntaxKind.SingleLineCommentTrivia) continue;

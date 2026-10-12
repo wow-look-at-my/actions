@@ -163,7 +163,6 @@ function extractModulePath(filePath: string): string | null {
 		const mod = readModuleFromBlock(fd, goobjFileOffset, offsets[BLK_FILE], offsets[BLK_FILE + 1], true);
 		if (mod) return mod;
 
-		// Fall back to PkgIndex block (BlkPkgIdx=1) — imported package paths
 		return readModuleFromBlock(fd, goobjFileOffset, offsets[BLK_PKG_IDX], offsets[BLK_PKG_IDX + 1], false);
 	} finally {
 		fs.closeSync(fd);
@@ -211,8 +210,8 @@ function readModuleFromBlock(
 
 // Extract a module path from a Go source file path.
 // The Go compiler stores paths in the Files block as.
-//   - $GOROOT/src/runtime/proc.go           (stdlib)
-//   - $GOROOT/src/vendor/golang.org/x/...   (vendored in stdlib)
+//   - $GOROOT/src/runtime/proc.go (stdlib)
+//   - $GOROOT/src/vendor/golang.org/x/... (vendored in stdlib)
 //   - /home/runner/go/pkg/mod/golang.org/x/net@v0.33.0/http2/hpack/encode.go (module cache)
 //   - /home/runner/work/repo/internal/foo.go (local source)
 function moduleFromFilePath(filePath: string): string | null {
