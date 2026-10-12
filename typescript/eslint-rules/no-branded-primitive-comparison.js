@@ -134,9 +134,7 @@ function isBrandedPrimitive(type, checker) {
 	return false;
 }
 
-/** Is `type` a "plain primitive" suitable as the OTHER operand. I.e. a value
- * that is genuinely a primitive (or null/undefined) at runtime, so that
- * `brandedPrimitive === thisOperand` is provably always false? */
+/** Is `type` a "plain primitive" suitable as the OTHER operand. */
 function isPlainPrimitiveOperand(type, checker) {
 	if (isBrandedPrimitive(type, checker)) return false;
 
