@@ -42,7 +42,6 @@ async function runAction(script: string, env: Record<string, string> = {}): Prom
 }
 
 // Parse the heredoc-style $GITHUB_OUTPUT file that @actions/core writes:
-//   <name><<ghadelimiter_<uuid>\n<value>\nghadelimiter_<uuid>\n
 function parseGithubOutput(raw: string): Record<string, string> {
 	const out: Record<string, string> = {};
 	const lines = raw.split('\n');
@@ -454,8 +453,8 @@ describe('typescript action', () => {
 
 	it('supports top-level ESM import of @actions/github (context + getOctokit)', async () => {
 		// The bundled stub must expose the module's real surface, not the Context
-		// class — `getOctokit` and `context` have to type-check AND resolve to
-		// the action's own module instance at runtime.
+		// class. `getOctokit` and `context` have to type-check AND resolve to the
+		// action's own module instance at runtime.
 		const { stdout, exitCode } = await runAction(
 			[
 				'import { getOctokit } from "@actions/github";',

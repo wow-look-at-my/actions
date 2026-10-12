@@ -41,7 +41,6 @@ const lowlight = createLowlight({ typescript });
 
 /**
  * Reconstruct the dotted highlight.js scope from a hast element's classes —
- * lowlight emits scope `title.function` as `className: ['hljs-title', 'function_']`
  * (first part prefixed, sub-scope parts underscore-suffixed).
  */
 function scopeOf(node: Element): string {
@@ -64,10 +63,10 @@ function colorFor(scope: string): string | undefined {
 }
 
 /**
- * Append `value` wrapped in `color`. Every physical line is kept
- * self-contained — a multi-line token (block comment, template literal) closes
- * its color before each newline and re-opens it after — so the rendering also
- * survives viewers that reset SGR state at line boundaries.
+ * Append `value` wrapped in `color`. Every physical line is kept. Self-contained
+ * — a multi-line token (block comment, template literal) closes its color
+ * before each newline and re-opens it after — so the rendering also survives
+ * viewers. Those viewers reset SGR state at line boundaries.
  */
 function emitText(value: string, color: string, out: string[]): void {
 	if (color === PLAIN) {
