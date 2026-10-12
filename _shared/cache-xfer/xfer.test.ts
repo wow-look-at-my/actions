@@ -199,7 +199,7 @@ test('an archive carrying no digest is refused, never read unchecked', async t =
 });
 
 // A child that exits 0 having read only a prefix of what we send closes its
-// stdin under the writer: EPIPE mid-write, or ERR_STREAM_PREMATURE_CLOSE when
+// stdin under the writer. EPIPE mid-write, or ERR_STREAM_PREMATURE_CLOSE when
 // the pipe's `close` beats the writable's `finish`.
 test('pipeIntoStdin resolves when the child exits 0 before draining its stdin', async () => {
 	for (let attempt = 0; attempt < 20; attempt++) {
@@ -220,9 +220,9 @@ test('pipeIntoStdin rethrows failures that are not a child closing its stdin', a
 	child.kill();
 });
 
-// The race is scheduling-dependent, so one round-trip proves nothing; a batch
-// makes a reintroduced bare pipeline overwhelmingly likely to show up, and
-// every restore is checked byte-for-byte rather than for absence of throw.
+// The race is scheduling-dependent, so one round-trip proves nothing. A batch
+// makes a reintroduced bare pipeline overwhelmingly likely to show up. Every
+// restore is checked byte-for-byte rather than for absence of throw.
 test('repeated directory round-trips neither fail nor lose bytes', async t => {
 	const src = await tempDir();
 	const work = await tempDir();
