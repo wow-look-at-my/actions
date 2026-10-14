@@ -52,5 +52,5 @@ test('a 4xx answer fails', async () => {
 });
 
 test('a lock name is the repository path and the branch', () => {
-	assert.strictEqual(lockName('https://github.com/wow-look-at-my/gosmopolitan.git', 'master'), 'submodule:github.com/wow-look-at-my/gosmopolitan@master');
+	assert.strictEqual(lockName('https://github.com/wow-look-at-my/gosmopolitan.git', 'master'), 'github.com/wow-look-at-my/gosmopolitan@master');
 });

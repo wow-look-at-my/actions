@@ -18,10 +18,10 @@ export type RunLockOptions = {
 
 type Answer = {found?: boolean; value?: string};
 
-// lockName is the name a followed submodule's head is locked under.
+// lockName is the name a followed submodule's head is locked under. go-toolchain's pipeline locks its fork checkout under the same name.
 export function lockName(url: string, branch: string): string {
 	const path = url.replace(/^[a-z+]+:\/\//, '').replace(/\.git$/, '');
-	return `submodule:${path}@${branch}`;
+	return `${path}@${branch}`;
 }
 
 // runLock returns a function that gives back the value the store holds for
