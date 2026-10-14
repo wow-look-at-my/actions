@@ -4,7 +4,6 @@ import {Fetch, lockName, runLock} from './runlock';
 
 const run = {repository: 'o/r', runId: '7', runAttempt: '1'};
 
-// store answers like buildhost's run lock endpoint, and fails the first `outages` requests with a 503.
 function store(outages = 0) {
 	const values = new Map<string, string>();
 	const seen: string[] = [];

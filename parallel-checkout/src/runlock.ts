@@ -1,6 +1,4 @@
 // A run lock holds one value per name for one attempt of one workflow run.
-// The first job to ask for a name records its value. Every later job of the
-// attempt gets that same value back.
 
 export type RunLockId = {repository: string; runId: string; runAttempt: string};
 
@@ -25,12 +23,13 @@ export function lockName(url: string, branch: string): string {
 }
 
 // runLock returns a function that gives back the value the store holds for
-// name in this run attempt, and records head as that value when it holds none.
+// name in this run attempt, and records head as that value. This happens when
+// it holds none.
 export function runLock(opts: RunLockOptions): (name: string, head: string) => Promise<string> {
 	const base = opts.store.replace(/\/+$/, '');
 	const retryMs = opts.retryMs ?? 2000;
 
-	// call sends a request until the store answers. A transport failure or a 5xx or 429 answer is tried again on a fixed cadence.
+	// call sends a request until the store answers.
 	async function call(method: string, url: string, body?: string): Promise<Answer> {
 		for (;;) {
 			let response: {status: number; text: string};
