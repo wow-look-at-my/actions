@@ -35,6 +35,10 @@ inputs:
     description: 'URL prefixes, one per line, of the submodules that follow `submodule-branch`. Defaults to every repository of the superproject''s owner on the same server.'
     required: false
     default: ''
+  submodule-branch-lock:
+    description: 'URL of a run lock store, such as https://pazer.build. Each followed submodule then takes the commit the first job of this run attempt found on its branch, so every job of the attempt builds the same commit. The job needs `id-token: write`. Empty takes the current head in each job.'
+    required: false
+    default: ''
   jobs:
     description: 'How many git processes may run at once across the whole tree.'
     required: false

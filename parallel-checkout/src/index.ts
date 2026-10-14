@@ -6,6 +6,7 @@ import {readTree} from './api';
 import {Checkout, Submodules} from './checkout';
 import {Git, Pool} from './git';
 import {basicAuth, pickRef, planRef} from './plan';
+import {lockName, runLock} from './runlock';
 
 function submodulesInput(value: string): Submodules {
 	const lower = value.trim().toLowerCase();
@@ -135,7 +136,23 @@ async function run(): Promise<void> {
 	if (follow !== undefined) {
 		core.info(`direct submodules under ${follow.scope.join(', ')} follow ${follow.branch}, their .gitmodules branch, or their default branch`);
 	}
-	const {commit, repos} = await new Checkout({git, dir, url, plan, depth, submodules, workers, config, rootTree, follow, log: core.info}).run();
+	const store = core.getInput('submodule-branch-lock').trim();
+	let lockHead: ((url: string, branch: string, head: string) => Promise<string>) | undefined;
+	if (store !== '') {
+		if (follow === undefined) {
+			throw new Error('submodule-branch-lock needs submodule-branch: only a followed submodule takes a locked head');
+		}
+		const lock = runLock({
+			store,
+			run: {repository: process.env.GITHUB_REPOSITORY || '', runId: process.env.GITHUB_RUN_ID || '', runAttempt: process.env.GITHUB_RUN_ATTEMPT || ''},
+			token: audience => core.getIDToken(audience),
+			fetch: (target, init) => fetch(target, init),
+			log: core.warning,
+		});
+		lockHead = (submoduleUrl, followBranch, head) => lock(lockName(submoduleUrl, followBranch), head);
+		core.info(`followed heads are locked for this run attempt in ${store}`);
+	}
+	const {commit, repos} = await new Checkout({git, dir, url, plan, depth, submodules, workers, config, rootTree, follow, lockHead, log: core.info}).run();
 	core.setOutput('commit', commit);
 	core.setOutput('ref', ref);
 	core.info(`${repos} repositor${repos === 1 ? 'y' : 'ies'} checked out in ${Date.now() - started}ms`);
