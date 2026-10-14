@@ -24,6 +24,8 @@ export type Options = {
 	rootTree?: () => Promise<Tree | undefined>;
 	// Direct submodules whose url starts with a scope prefix take the head of `branch` on their remote instead of the gitlink.
 	follow?: {branch: string; scope: string[]};
+	// lockHead gives back the commit this run locked for a followed submodule, and locks head when the run has none.
+	lockHead?: (url: string, branch: string, head: string) => Promise<string>;
 	log: (message: string) => void;
 };
 
@@ -192,6 +194,13 @@ export class Checkout {
 				this.register(repo, module.name, url).then(async () => {
 					if (follow !== undefined) {
 						const head = await this.headOf(child, follow.branch, module.branch);
+						if (this.opts.lockHead !== undefined) {
+							const locked = await this.opts.lockHead(url, head.branch, head.sha);
+							if (locked !== head.sha) {
+								this.opts.log(`${child.label}: takes ${locked}, the commit this run locked on ${head.branch}, not the current head ${head.sha}`);
+							}
+							head.sha = locked;
+						}
 						child.refspec = `+${head.sha}:refs/remotes/origin/${head.branch}`;
 						child.target = head.sha;
 						await this.configure(repo, [[`submodule.${module.name}.branch`, head.branch]]);

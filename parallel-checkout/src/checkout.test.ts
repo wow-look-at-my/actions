@@ -63,7 +63,9 @@ function advance(dir: string, branch: string, file: string): string {
 	return head(dir);
 }
 
-function take(fx: Fixture, dir: string, submodules: 'false' | 'true' | 'recursive', ref = 'refs/heads/main', sha = head(fx.top), rootTree?: Early, follow?: Follow) {
+type LockHead = (url: string, branch: string, head: string) => Promise<string>;
+
+function take(fx: Fixture, dir: string, submodules: 'false' | 'true' | 'recursive', ref = 'refs/heads/main', sha = head(fx.top), rootTree?: Early, follow?: Follow, lockHead?: LockHead) {
 	const log: string[] = [];
 	const checkout = new Checkout({
 		git: new Git(new Pool(8), ['-c', 'protocol.file.allow=always']),
@@ -76,10 +78,34 @@ function take(fx: Fixture, dir: string, submodules: 'false' | 'true' | 'recursiv
 		config: [['test.marker', 'yes']],
 		rootTree,
 		follow,
+		lockHead,
 		log: message => log.push(message),
 	});
 	return {checkout, log};
 }
+
+test('a followed submodule takes the commit the run locked, not a newer head', async () => {
+	const fx = fixture();
+	const locks = new Map<string, string>();
+	const lockHead: LockHead = async (url, branch, sha) => {
+		const name = `${url}@${branch}`;
+		if (!locks.has(name)) {
+			locks.set(name, sha);
+		}
+		return locks.get(name)!;
+	};
+	const follow = {branch: 'feature', scope: [`${fx.root}/`]};
+	const first = advance(fx.mid, 'feature', 'first.txt');
+	await take(fx, path.join(fx.root, 'one'), 'recursive', undefined, undefined, undefined, follow, lockHead).checkout.run();
+	// The branch moves between the jobs of one run.
+	const second = advance(fx.mid, 'feature', 'second.txt');
+	const {checkout, log} = take(fx, path.join(fx.root, 'two'), 'recursive', undefined, undefined, undefined, follow, lockHead);
+	await checkout.run();
+
+	assert.strictEqual(head(path.join(fx.root, 'one', 'vendor/mid')), first);
+	assert.strictEqual(head(path.join(fx.root, 'two', 'vendor/mid')), first);
+	assert.ok(log.some(line => line.includes(`takes ${first}, the commit this run locked on feature, not the current head ${second}`)), log.join('\n'));
+});
 
 test('a followed submodule takes the superproject branch head, then the default branch, and nested ones stay pinned', async () => {
 	const fx = fixture();
