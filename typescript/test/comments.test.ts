@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { findCommentBlocks } from './comments';
+import { findCommentBlocks } from '../src/comments';
 
 describe('findCommentBlocks', () => {
 	it('flags two `//`-only lines in a row', () => {
