@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { actionsRoot, containerPath } from './container-path';
+import { actionsRoot, containerPath } from '../src/container-path';
 
 const ROOT = '/__w/_actions';
 const HOST = '/home/runner/_work/_actions/acme/tool/master/lib/m.ts';
