@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
-import { runsTypescriptAction, unnamedStepMessage, unnamedSteps } from './step-name';
+import { runsTypescriptAction, unnamedStepMessage, unnamedSteps } from '../src/step-name';
 
 describe('runsTypescriptAction', () => {
 	it('matches the published action at any ref', () => {
