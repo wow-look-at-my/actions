@@ -47,6 +47,26 @@ runs:
       with:
         file: typescript/test/repro3.ts
 
+    - name: "inputs: a declared input reaches the inputs global"
+      id: inputs-global
+      uses: ./typescript
+      with:
+        inputs: '{"project":"demo"}'
+        script: |
+          const project: string | number | boolean = inputs.project;
+          return project;
+
+    - name: Assert the inputs global carried the project
+      shell: bash
+      env:
+        RESULT: ${{ steps.inputs-global.outputs.result }}
+      run: |
+        set -euo pipefail
+        if [ "${RESULT}" != '"demo"' ]; then
+          echo "::error::expected result '\"demo\"' from inputs.project, got '${RESULT}'"
+          exit 1
+        fi
+
     - name: Intentionally failing step (continue-on-error, for the outcome-gate test below)
       id: outcome-gate-check
       continue-on-error: true
