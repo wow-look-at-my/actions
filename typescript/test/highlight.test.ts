@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { highlightSource } from './highlight';
+import { highlightSource } from '../src/highlight';
 
 // Expected raw escapes, spelled out independently of the implementation.
 const KEYWORD = '\x1b[38;2;255;123;114m'; // #ff7b72

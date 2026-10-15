@@ -15,7 +15,7 @@ runs:
     - name: "repro.ts: import + globals + await + fetch"
       uses: ./typescript
       with:
-        file: typescript/test/repro.ts
+        file: typescript/test/fixtures/repro.ts
 
     # The seeded version must differ from repro2.ts's own exported VERSION.
     - name: Seed package.json for repro2 (readFile("package.json"))
@@ -26,7 +26,7 @@ runs:
       id: repro2
       uses: ./typescript
       with:
-        file: typescript/test/repro2.ts
+        file: typescript/test/fixtures/repro2.ts
 
     - name: Assert the top-level return reached the result output
       shell: bash
@@ -45,7 +45,7 @@ runs:
     - name: "repro3.ts: injected octokit authenticated with the default token"
       uses: ./typescript
       with:
-        file: typescript/test/repro3.ts
+        file: typescript/test/fixtures/repro3.ts
 
     - name: "inputs: a declared input reaches the inputs global"
       id: inputs-global
@@ -64,6 +64,28 @@ runs:
         set -euo pipefail
         if [ "${RESULT}" != '"demo"' ]; then
           echo "::error::expected result '\"demo\"' from inputs.project, got '${RESULT}'"
+          exit 1
+        fi
+
+    - name: Copy the imports fixture outside the workspace
+      shell: bash
+      run: cp -r "${GITHUB_WORKSPACE}/typescript/test/fixtures/imports" "${RUNNER_TEMP}/ts-imports"
+
+    - name: "imports: a file input imports ./helper from its own directory"
+      id: imports
+      uses: ./typescript
+      with:
+        file: ${{ runner.temp }}/ts-imports/entry.ts
+        inputs: '{"project":"demo"}'
+
+    - name: Assert the imported helper produced the result
+      shell: bash
+      env:
+        RESULT: ${{ steps.imports.outputs.result }}
+      run: |
+        set -euo pipefail
+        if [ "${RESULT}" != '"demo:2"' ]; then
+          echo "::error::expected result '\"demo:2\"' from entry.ts via ./helper, got '${RESULT}'"
           exit 1
         fi
 

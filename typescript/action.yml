@@ -8,7 +8,7 @@ inputs:
     required: false
     default: ''
   file:
-    description: Path to a .ts file to execute (resolved relative to $GITHUB_WORKSPACE). The file contents are treated like an inline `script`. Mutually exclusive with `script`.
+    description: Path to a .ts file to execute, absolute or relative to $GITHUB_WORKSPACE. An absolute path outside the workspace works, such as a file under a composite action's `github.action_path`. The file is type-checked and run at its own path, so `import { x } from "./helper"` and `import type` load helper.ts from the file's directory, and tsc checks every local module it imports. Imported modules see the same injected globals. Top-level `await` and `return` work in this file only. Mutually exclusive with `script`.
     required: false
     default: ''
   dom:
