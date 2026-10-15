@@ -38,6 +38,10 @@ inputs:
     description: 'needs workflow context as JSON. Callers must pass toJSON(needs) wrapped in an expression.'
     required: false
     default: '{}'
+  inputs:
+    description: 'inputs context as JSON. Callers must pass toJSON(inputs) wrapped in an expression.'
+    required: false
+    default: '{}'
   strategy:
     description: 'strategy workflow context as JSON.'
     required: false
