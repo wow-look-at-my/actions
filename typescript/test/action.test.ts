@@ -305,6 +305,20 @@ describe('typescript action', () => {
 		}
 	});
 
+	it('resolves an import that names the module with its .ts extension, as Node requires', async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-action-ext-'));
+		fs.writeFileSync(path.join(dir, 'leaf.ts'), 'export const n: number = 2;\n');
+		fs.writeFileSync(path.join(dir, 'helper.ts'), 'import { n } from "./leaf.ts";\nexport function twice(): number { return n * 2; }\n');
+		fs.writeFileSync(path.join(dir, 'entry.ts'), 'import { twice } from "./helper.ts";\ncore.info("twice:" + twice());\n');
+		try {
+			const { exitCode, stdout } = await runAction('', { INPUT_FILE: path.join(dir, 'entry.ts') });
+			assert.equal(exitCode, 0, stdout);
+			assert.ok(stdout.includes('twice:4'), stdout);
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
 	it('accepts single comment lines and trailing comments', async () => {
 		const { stdout, exitCode } = await runAction(
 			'// a lone comment\nconst a = 1; // trailing\nconst b = 2; // trailing\ncore.info("sum:" + (a + b));'
