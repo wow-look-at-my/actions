@@ -1,4 +1,5 @@
-import { execFile } from 'node:child_process';
+import { before } from 'node:test';
+import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -6,6 +7,37 @@ import * as fs from 'node:fs';
 
 export const execFileAsync = promisify(execFile);
 export const DIST = path.join(__dirname, '..', 'dist', 'index.js');
+
+// The test runner starts every test file as a child of one process, so its pid names the run.
+const runDir = path.join(os.tmpdir(), `typescript-action-build-${process.ppid}`);
+
+// buildOnce builds the action a single time per test run. The first test file
+// to take the lock runs `just build`. The other files wait for its verdict, so
+// no file reads a dist/ that another file is still writing.
+function buildOnce(): void {
+	const done = path.join(runDir, 'done');
+	const failed = path.join(runDir, 'failed');
+	try {
+		fs.mkdirSync(runDir);
+	} catch {
+		const wait = new Int32Array(new SharedArrayBuffer(4));
+		while (!fs.existsSync(done)) {
+			if (fs.existsSync(failed)) throw new Error(`just build failed: ${fs.readFileSync(failed, 'utf-8')}`);
+			Atomics.wait(wait, 0, 0, 100);
+		}
+		return;
+	}
+	try {
+		execFileSync('just', ['build'], { cwd: path.join(__dirname, '..'), stdio: 'inherit' });
+	} catch (err: unknown) {
+		fs.writeFileSync(failed, String(err));
+		throw err;
+	}
+	fs.writeFileSync(done, '');
+}
+
+// These tests run the shipped action, so it is built first. `ts0 test` runs before `ts0 build`.
+before(buildOnce);
 
 export interface RunResult {
 	/** Process stdout with the echoed script source removed. */
