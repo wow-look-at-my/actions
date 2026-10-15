@@ -67,6 +67,28 @@ runs:
           exit 1
         fi
 
+    - name: Copy the imports fixture outside the workspace
+      shell: bash
+      run: cp -r "${GITHUB_WORKSPACE}/typescript/test/imports" "${RUNNER_TEMP}/ts-imports"
+
+    - name: "imports: a file input imports ./helper from its own directory"
+      id: imports
+      uses: ./typescript
+      with:
+        file: ${{ runner.temp }}/ts-imports/entry.ts
+        inputs: '{"project":"demo"}'
+
+    - name: Assert the imported helper produced the result
+      shell: bash
+      env:
+        RESULT: ${{ steps.imports.outputs.result }}
+      run: |
+        set -euo pipefail
+        if [ "${RESULT}" != '"demo:2"' ]; then
+          echo "::error::expected result '\"demo:2\"' from entry.ts via ./helper, got '${RESULT}'"
+          exit 1
+        fi
+
     - name: Intentionally failing step (continue-on-error, for the outcome-gate test below)
       id: outcome-gate-check
       continue-on-error: true

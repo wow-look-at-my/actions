@@ -15,6 +15,7 @@ import { highlightSource } from './highlight';
 import { CommentBlock, findCommentBlocks } from './comments';
 import { unnamedStepMessage, unnamedSteps, WorkflowDoc } from './step-name';
 import { actionsRoot, containerPath } from './container-path';
+import { installTsLoader } from './ts-loader';
 
 type ShellArg = string | number | boolean | null | undefined | string[];
 
@@ -393,6 +394,8 @@ function baseCompilerOptions(): ts.CompilerOptions {
 		types: ['node'],
 		typeRoots: [path.join(TYPES_DIR, 'node_modules', '@types')],
 		baseUrl: TYPES_DIR,
+		// A `file:` script sits outside TYPES_DIR, so a bare import does not reach the staged types by walking up from it.
+		paths: { '*': ['node_modules/*'] },
 	};
 }
 
@@ -402,11 +405,16 @@ const SUBSTITUTION_UNSOUND_CODES = new Set([
 	2367, // This comparison appears to be unintentional because the types X and Y have no overlap.
 ]);
 
-function typeCheck(source: string): readonly ts.Diagnostic[] {
+// A source file the script owns: the entry and every local module it imports, never a declaration or a package.
+function isScriptSource(sf: ts.SourceFile): boolean {
+	return !sf.isDeclarationFile && !sf.fileName.split(/[\\/]/).includes('node_modules');
+}
+
+function typeCheck(source: string, entryFile: string): readonly ts.Diagnostic[] {
 	const opts: ts.CompilerOptions = { ...baseCompilerOptions(), noEmit: true };
 
 	const sources = new Map<string, string>([
-		[VIRTUAL_FILE, source],
+		[entryFile, source],
 		[GLOBALS_VIRTUAL_FILE, GLOBALS_DTS],
 	]);
 	const host = ts.createCompilerHost(opts);
@@ -432,16 +440,16 @@ function typeCheck(source: string): readonly ts.Diagnostic[] {
 	};
 
 	const program = ts.createProgram({
-		rootNames: [VIRTUAL_FILE, GLOBALS_VIRTUAL_FILE],
+		rootNames: [entryFile, GLOBALS_VIRTUAL_FILE],
 		options: opts,
 		host,
 	});
 
-	// Syntactic/semantic diagnostics are scoped to the user's file.
-	const userFile = program.getSourceFile(VIRTUAL_FILE);
+	// Syntactic/semantic diagnostics are scoped to the script's own files.
+	const scriptFiles = program.getSourceFiles().filter(isScriptSource);
 	return [
-		...program.getSyntacticDiagnostics(userFile),
-		...program.getSemanticDiagnostics(userFile),
+		...scriptFiles.flatMap((sf) => program.getSyntacticDiagnostics(sf)),
+		...scriptFiles.flatMap((sf) => program.getSemanticDiagnostics(sf)),
 		...program.getGlobalDiagnostics(),
 	].filter((d) => !SUBSTITUTION_UNSOUND_CODES.has(d.code));
 }
@@ -455,13 +463,13 @@ function toUserLine(lineMap: number[], outLine: number): number {
 	return 1;
 }
 
-function formatDiagnostic(d: ts.Diagnostic, label: string, lineMap: number[]): string {
+function formatDiagnostic(d: ts.Diagnostic, label: string, lineMap: number[], entryFile: string): string {
 	const message = ts.flattenDiagnosticMessageText(d.messageText, '\n');
 	if (d.file && d.start !== undefined) {
 		const { line, character } = d.file.getLineAndCharacterOfPosition(d.start);
-		if (d.file.fileName !== VIRTUAL_FILE) {
-			// Diagnostics are scoped to the user file.
-			return `${path.basename(d.file.fileName)}:${line + 1}:${character + 1}: error TS${d.code}: ${message}`;
+		if (d.file.fileName !== entryFile) {
+			// A module the entry imports is checked as written, so its lines need no mapping.
+			return `${path.relative(path.dirname(entryFile), d.file.fileName)}:${line + 1}:${character + 1}: error TS${d.code}: ${message}`;
 		}
 		return `${label}:${toUserLine(lineMap, line)}:${character + 1}: error TS${d.code}: ${message}`;
 	}
@@ -474,7 +482,7 @@ function formatCommentBlock(b: CommentBlock, label: string): string {
 	return `${label}:${b.startLine}:1: error: ${count} consecutive \`//\` comment lines (${b.startLine}-${b.endLine}). The limit is ONE: any two adjacent \`//\` lines fail, so shortening the block does not help. Stacked line comments are prose, not code — say it in a single line, or delete it.`;
 }
 
-function transpile(source: string): string {
+function transpile(source: string, fileName: string): string {
 	const result = ts.transpileModule(source, {
 		compilerOptions: {
 			target: ts.ScriptTarget.ES2022,
@@ -482,13 +490,13 @@ function transpile(source: string): string {
 			esModuleInterop: true,
 			allowSyntheticDefaultImports: true,
 		},
-		fileName: VIRTUAL_FILE,
+		fileName,
 		reportDiagnostics: false,
 	});
 	return result.outputText;
 }
 
-async function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: string, githubToken: string): Promise<unknown> {
+async function execute(transpiledJs: string, ctx: WorkflowContexts, scriptFilename: string, githubToken: string): Promise<unknown> {
 	// The pre-authenticated `octokit` instance is built lazily from the `github-token` action input (default ${{ github.token }}).
 	let _preAuth: ReturnType<typeof github.getOctokit> | null = null;
 	const octokitProxy = new Proxy(
@@ -558,27 +566,29 @@ async function execute(transpiledJs: string, ctx: WorkflowContexts, baseDir: str
 		} as unknown as NodeJS.Module;
 	}
 
-	const scriptFilename = path.join(baseDir, `.user-script-${process.pid}-${Date.now()}.js`);
 	const scriptRequire = createRequire(scriptFilename);
+	const uninstallTsLoader = installTsLoader(transpile);
 
 	try {
 		const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
 		const fn = new AsyncFunction('require', 'exports', 'module', '__filename', '__dirname', transpiledJs);
 		const mod = { exports: {} as Record<string, unknown> };
 		// Running the transpiled module executes the hoisted module-scope statements (imports become require() calls, export initializers run).
-		await fn(scriptRequire, mod.exports, mod, scriptFilename, baseDir);
+		await fn(scriptRequire, mod.exports, mod, scriptFilename, path.dirname(scriptFilename));
 		const main = mod.exports[MAIN_FN];
 		if (typeof main !== 'function') {
 			return undefined;
 		}
 		return await (main as () => Promise<unknown>)();
 	} finally {
+		uninstallTsLoader();
 		NodeModule._resolveFilename = origResolve;
 		for (const name of Object.keys(actionModules)) delete require.cache[name];
 	}
 }
 
-function readUserScript(): { script: string; label: string; dir: string; inline: boolean } {
+// `entry` is the path the script is checked and run as: a `file:` script's own path, so its relative imports resolve from its directory.
+function readUserScript(): { script: string; label: string; entry: string; inline: boolean } {
 	const inline = core.getInput('script');
 	const file = core.getInput('file');
 
@@ -591,14 +601,15 @@ function readUserScript(): { script: string; label: string; dir: string; inline:
 
 	if (file) {
 		const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
-		const resolved = path.resolve(workspace, file);
+		const resolved = toContainer(path.resolve(workspace, file));
 		if (!fs.existsSync(resolved)) {
 			throw new Error(`File not found: ${resolved}`);
 		}
-		return { script: fs.readFileSync(resolved, 'utf-8'), label: file, dir: path.dirname(resolved), inline: false };
+		return { script: fs.readFileSync(resolved, 'utf-8'), label: file, entry: resolved, inline: false };
 	}
 
-	return { script: inline, label: 'script', dir: process.env.GITHUB_WORKSPACE ?? process.cwd(), inline: true };
+	const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
+	return { script: inline, label: 'script', entry: path.join(workspace, `.user-script-${process.pid}-${Date.now()}.js`), inline: true };
 }
 
 // Reads the running workflow to find this step and check it carries a `name:`.
@@ -620,7 +631,8 @@ async function unnamedStepPositions(): Promise<{workflow: string; job: string; p
 }
 
 async function run(): Promise<void> {
-	const { script: userScript, label, dir, inline } = readUserScript();
+	const { script: userScript, label, entry, inline } = readUserScript();
+	const checkedFile = inline ? VIRTUAL_FILE : entry;
 
 	// Everything up to execution shares one group: the source echo plus a line each from the type-check and the transpile.
 	core.startGroup('Compiling script');
@@ -638,10 +650,10 @@ async function run(): Promise<void> {
 	}
 
 	const { text: source, lineMap } = transformScript(userScript);
-	const diagnostics = typeCheck(source);
+	const diagnostics = typeCheck(source, checkedFile);
 	if (diagnostics.length > 0) {
 		for (const d of diagnostics) {
-			core.error(formatDiagnostic(d, label, lineMap));
+			core.error(formatDiagnostic(d, label, lineMap, checkedFile));
 		}
 		core.endGroup();
 		core.setFailed(`TypeScript validation failed with ${diagnostics.length} error(s).`);
@@ -649,7 +661,7 @@ async function run(): Promise<void> {
 	}
 	core.info('Type-check passed.');
 
-	const js = transpile(source);
+	const js = transpile(source, checkedFile);
 	core.info(`Transpiled output: ${js.length} bytes`);
 	core.endGroup();
 
@@ -658,7 +670,7 @@ async function run(): Promise<void> {
 	const githubToken = core.getInput('github-token');
 
 	core.startGroup('Executing script');
-	const result = await execute(js, ctx, dir, githubToken);
+	const result = await execute(js, ctx, entry, githubToken);
 	core.endGroup();
 
 	if (result !== undefined) {

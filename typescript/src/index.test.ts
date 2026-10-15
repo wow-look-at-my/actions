@@ -339,6 +339,38 @@ describe('typescript action', () => {
 		}
 	});
 
+	it('resolves a file input relative imports from its own directory, outside the workspace', async () => {
+		const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-action-ws-'));
+		const entry = path.join(__dirname, '..', 'test', 'imports', 'entry.ts');
+		try {
+			const { exitCode, stdout, outputs } = await runActionWithOutputs('', {
+				INPUT_FILE: entry,
+				INPUT_INPUTS: '{"project":"demo"}',
+				GITHUB_WORKSPACE: workspace,
+			});
+			assert.equal(exitCode, 0, stdout);
+			assert.ok(stdout.includes('Type-check passed.'), stdout);
+			assert.ok(stdout.includes('entry saw demo:2'), stdout);
+			assert.equal(outputs.result, '"demo:2"');
+		} finally {
+			fs.rmSync(workspace, { recursive: true, force: true });
+		}
+	});
+
+	it('type-checks the modules a file input imports', async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-action-imports-'));
+		fs.writeFileSync(path.join(dir, 'helper.ts'), 'export const n: number = "not a number";\n');
+		fs.writeFileSync(path.join(dir, 'entry.ts'), 'import { n } from "./helper";\ncore.info("ran " + n);\n');
+		try {
+			const { exitCode, stdout } = await runAction('', { INPUT_FILE: path.join(dir, 'entry.ts') });
+			assert.notEqual(exitCode, 0);
+			assert.ok(stdout.includes('helper.ts:1:14: error TS2322'), stdout);
+			assert.ok(!stdout.includes('ran '), `a type error in an import must block execution:\n${stdout}`);
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
 	it('accepts single comment lines and trailing comments', async () => {
 		const { stdout, exitCode } = await runAction(
 			'// a lone comment\nconst a = 1; // trailing\nconst b = 2; // trailing\ncore.info("sum:" + (a + b));'
