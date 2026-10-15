@@ -56,8 +56,9 @@ export function ms(since: number): string {
 // fetch lands. Nothing waits on a sibling.
 export class Checkout {
 	private repos = 0;
-	private readonly dirs: string[] = [];
-	// Config writes into one repository are serialized.
+	// Every repository this checkout wrote, so the config that lands after the tree is in place covers all of them.
+	private readonly written: Repo[] = [];
+	// Commands that write one repository's config are serialized, because git gives up on a held lock instead of waiting.
 	private readonly configLocks = new Map<string, Promise<void>>();
 
 	constructor(private readonly opts: Options) {}
@@ -74,13 +75,8 @@ export class Checkout {
 			label: this.opts.url,
 		};
 		const commit = await this.take(root, this.opts.rootTree);
-		await Promise.all(
-			this.dirs.map(async dir => {
-				for (const [key, value] of this.opts.config) {
-					await this.opts.git.must(['config', '--local', key, value], dir);
-				}
-			}),
-		);
+		// The per-repo config lands once the tree is in place, one writer at a time per repository.
+		await Promise.all(this.written.map(repo => this.configure(repo, this.opts.config)));
 		return {commit, repos: this.repos};
 	}
 
@@ -135,14 +131,16 @@ export class Checkout {
 			initArgs.push(`--separate-git-dir=${repo.gitdir}`);
 		}
 		await git.must([...initArgs, repo.dir]);
+		const settings: Array<[string, string]> = [['gc.auto', '0']];
 		if (nested) {
 			// The same relative links git's own submodule plumbing writes, so the tree still works if the workspace moves.
 			await fsp.writeFile(path.join(repo.dir, '.git'), `gitdir: ${path.relative(repo.dir, repo.gitdir)}\n`);
-			await git.must(['config', '--local', 'core.worktree', path.relative(repo.gitdir, repo.dir)], repo.dir);
+			settings.unshift(['core.worktree', path.relative(repo.gitdir, repo.dir)]);
 		}
-		await git.must(['config', '--local', 'gc.auto', '0'], repo.dir);
-		this.dirs.push(repo.dir);
-		await git.must(['remote', 'add', 'origin', repo.url], repo.dir);
+		await this.configure(repo, settings);
+		this.written.push(repo);
+		// `remote add` writes this repository's config too, so it queues behind the same per-repository chain.
+		await this.serial(repo, ['remote', 'add', 'origin', repo.url]);
 	}
 
 	private async writeTree(repo: Repo, started: number): Promise<void> {
@@ -246,6 +244,18 @@ export class Checkout {
 			for (const [key, value] of settings) {
 				await this.opts.git.must(['config', '--local', key, value], repo.dir);
 			}
+		});
+		this.configLocks.set(repo.gitdir, next);
+		return next;
+	}
+
+	// serial runs a command. That writes one repository's config, queued behind
+	// the same per-repository chain the `git config` calls use, since `git remote
+	// add` writes that file too.
+	private serial(repo: Repo, args: string[]): Promise<void> {
+		const previous = this.configLocks.get(repo.gitdir) ?? Promise.resolve();
+		const next = previous.then(async () => {
+			await this.opts.git.must(args, repo.dir);
 		});
 		this.configLocks.set(repo.gitdir, next);
 		return next;
