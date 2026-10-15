@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { MAIN_FN, transformScript, TransformedScript } from './transform';
+import { MAIN_FN, transformScript, TransformedScript } from '../src/transform';
 
 const WRAPPER_OPEN = `export async function ${MAIN_FN}() {`;
 

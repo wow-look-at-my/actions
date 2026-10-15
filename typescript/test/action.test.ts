@@ -275,7 +275,7 @@ describe('typescript action', () => {
 
 	it('resolves a file input relative imports from its own directory, outside the workspace', async () => {
 		const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-action-ws-'));
-		const entry = path.join(__dirname, '..', 'test', 'imports', 'entry.ts');
+		const entry = path.join(__dirname, 'fixtures', 'imports', 'entry.ts');
 		try {
 			const { exitCode, stdout, outputs } = await runActionWithOutputs('', {
 				INPUT_FILE: entry,

@@ -27,10 +27,8 @@ module.exports = [
     ],
   },
   {
-    // Lint only files that are part of the action's tsconfig program.
+    // The action's sources; tests live under test/.
     files: ['src/**/*.ts', 'globals.d.ts'],
-    // Test sources are excluded from tsconfig's program.
-    ignores: ['src/**/*.test.ts', 'src/run-action.ts', 'src/suite-*.ts'],
     languageOptions: {
       parser: tsParser,
       parserOptions: {

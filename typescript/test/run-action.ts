@@ -1,5 +1,4 @@
-import { before } from 'node:test';
-import { execFile, execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -7,11 +6,6 @@ import * as fs from 'node:fs';
 
 export const execFileAsync = promisify(execFile);
 export const DIST = path.join(__dirname, '..', 'dist', 'index.js');
-
-// These tests run the shipped action, so they build it first. `ts0 test` runs before `ts0 build`.
-before(() => {
-	execFileSync('just', ['build'], { cwd: path.join(__dirname, '..'), stdio: 'inherit' });
-});
 
 export interface RunResult {
 	/** Process stdout with the echoed script source removed. */
