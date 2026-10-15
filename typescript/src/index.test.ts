@@ -282,6 +282,21 @@ describe('typescript action', () => {
 		assert.ok(!stdout.includes('asserted'), `the false branch must not run:\n${stdout}`);
 	});
 
+	it('injects the inputs input as the inputs global', async () => {
+		const { stdout, exitCode } = await runAction(
+			'const project = inputs.project; if (typeof project !== "string") throw new Error(typeof project); core.info("project=" + project + " flag=" + String(inputs.flag));',
+			{ INPUT_INPUTS: '{"project":"demo","flag":true}' }
+		);
+		assert.equal(exitCode, 0, stdout);
+		assert.ok(stdout.includes('project=demo flag=true'), stdout);
+	});
+
+	it('defaults the inputs global to an empty object', async () => {
+		const { stdout, exitCode } = await runAction('core.info("keys=" + Object.keys(inputs).length);');
+		assert.equal(exitCode, 0, stdout);
+		assert.ok(stdout.includes('keys=0'), stdout);
+	});
+
 	it('fails on two consecutive `//` comment lines, but lets the step run to completion first', async () => {
 		const { stdout, exitCode } = await runAction(
 			'core.info("line one");\n// first\n// second\ncore.info("ran");'
