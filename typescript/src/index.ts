@@ -411,7 +411,8 @@ function isScriptSource(sf: ts.SourceFile): boolean {
 }
 
 function typeCheck(source: string, entryFile: string): readonly ts.Diagnostic[] {
-	const opts: ts.CompilerOptions = { ...baseCompilerOptions(), noEmit: true };
+	// Node runs a .ts module only by its full name, so a script and the modules it imports name each other with the extension.
+	const opts: ts.CompilerOptions = { ...baseCompilerOptions(), noEmit: true, allowImportingTsExtensions: true };
 
 	const sources = new Map<string, string>([
 		[entryFile, source],
