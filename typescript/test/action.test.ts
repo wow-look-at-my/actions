@@ -319,6 +319,41 @@ describe('typescript action', () => {
 		}
 	});
 
+	it('resolves a relative import of an inline script from the calling action\'s directory', async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-action-inline-'));
+		fs.mkdirSync(path.join(dir, 'lib'));
+		fs.mkdirSync(path.join(dir, 'buildhost-get'));
+		fs.writeFileSync(path.join(dir, 'lib', 'resources.ts'), 'export function greeting(): string { return "hi"; }\n');
+		try {
+			const { exitCode, stdout } = await runAction(
+				'import { greeting } from "../lib/resources";\ncore.info("inline:" + greeting());',
+				{ GITHUB_ACTION_PATH: path.join(dir, 'buildhost-get') },
+			);
+			assert.equal(exitCode, 0, stdout);
+			assert.ok(stdout.includes('inline:hi'), stdout);
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it('type-checks the module an inline script imports', async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-action-inline-bad-'));
+		fs.mkdirSync(path.join(dir, 'lib'));
+		fs.mkdirSync(path.join(dir, 'buildhost-get'));
+		fs.writeFileSync(path.join(dir, 'lib', 'resources.ts'), 'export const n: number = "not a number";\n');
+		try {
+			const { exitCode, stdout } = await runAction(
+				'import { n } from "../lib/resources";\ncore.info("ran " + n);',
+				{ GITHUB_ACTION_PATH: path.join(dir, 'buildhost-get') },
+			);
+			assert.notEqual(exitCode, 0);
+			assert.ok(stdout.includes('resources.ts:1:14: error TS2322'), stdout);
+			assert.ok(!stdout.includes('ran '), `a type error in an import must block execution:\n${stdout}`);
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
 	it('accepts single comment lines and trailing comments', async () => {
 		const { stdout, exitCode } = await runAction(
 			'// a lone comment\nconst a = 1; // trailing\nconst b = 2; // trailing\ncore.info("sum:" + (a + b));'
