@@ -182,31 +182,37 @@ test('a recursive checkout lands every level at the commit its parent pins', asy
 	assert.strictEqual(log.filter(line => line.includes('fetched')).length, 4);
 });
 
-// git checkout fails when a submodule directory appears inside a worktree it is still writing.
-test('a submodule starts only after its parent worktree is written', async () => {
+test('a second checkout takes every commit from the store and fetches nothing', async () => {
 	const fx = fixture();
-	const {checkout, log} = take(fx, path.join(fx.root, 'work'), 'recursive');
-	// A slow parent checkout opens the window a large tree opens in CI.
-	const git = (checkout as unknown as {opts: {git: Git}}).opts.git;
-	const must = git.must.bind(git);
-	git.must = async (args: string[], cwd?: string) => {
-		if (args.includes('checkout')) {
-			await new Promise(resolve => setTimeout(resolve, 300));
-		}
-		return must(args, cwd);
+	const store = path.join(fx.root, 'store');
+	const run = async (into: string) => {
+		const log: string[] = [];
+		const checkout = new Checkout({
+			git: new Git(new Pool(8), ['-c', 'protocol.file.allow=always']),
+			dir: path.join(fx.root, into),
+			url: fx.top,
+			plan: planRef('refs/heads/main', head(fx.top)),
+			depth: 1,
+			submodules: 'recursive',
+			workers: 2,
+			config: [],
+			store,
+			log: message => log.push(message),
+		});
+		await checkout.run();
+		return log;
 	};
-	await checkout.run();
+	const first = await run('one');
+	assert.strictEqual(first.filter(line => line.includes('into the store')).length, 4, first.join('\n'));
+	const second = await run('two');
+	assert.strictEqual(second.filter(line => line.includes('from the store')).length, 4, second.join('\n'));
+	assert.ok(!second.some(line => line.includes('store failed')), second.join('\n'));
 
-	const at = (line: string) => {
-		const n = log.indexOf(line);
-		assert.ok(n >= 0, `no log line ${line}\n${log.join('\n')}`);
-		return n;
-	};
-	const written = (label: string) => at(log.find(line => line.startsWith(`${label}: worktree written`)) ?? `${label}: worktree written`);
-	const fetched = (label: string) => at(log.find(line => line.startsWith(`${label}: fetched`)) ?? `${label}: fetched`);
-	for (const [parent, child] of [[fx.top, 'vendor/mid'], [fx.top, 'vendor/plain'], ['vendor/mid', 'vendor/mid/deps/leaf']]) {
-		assert.ok(written(parent) < fetched(child), `${child} fetched before ${parent} was written\n${log.join('\n')}`);
-	}
+	const dir = path.join(fx.root, 'two');
+	assert.strictEqual(sh(['status', '--porcelain'], dir), '');
+	assert.match(sh(['submodule', 'status', '--recursive'], dir), new RegExp(`^ ${head(fx.leaf)} vendor/mid/deps/leaf`, 'm'));
+	assert.strictEqual(sh(['rev-list', '--count', 'HEAD'], path.join(dir, 'vendor/mid')).trim(), '1');
+	assert.strictEqual(sh(['rev-parse', 'refs/remotes/origin/main'], dir).trim(), head(fx.top));
 });
 
 test('one level of submodules stops at the first level', async () => {
@@ -269,11 +275,12 @@ test('an early reader that answers nothing falls back to the fetched commit', as
 	assert.strictEqual(sh(['status', '--porcelain'], dir), '');
 });
 
-// SlowRootCheckout holds the superproject's worktree write open and records what
-// sits under the submodule paths while it runs. This is when git's checkout
-// workers are creating those directories.
+// SlowRootCheckout records which submodule directories exist when the
+// superproject's checkout starts, then holds that checkout open. git dies when
+// a directory it saw as missing appears while it writes.
 class SlowRootCheckout extends Git {
-	readonly seen: string[] = [];
+	readonly missing: string[] = [];
+	finished = false;
 
 	constructor(private readonly dir: string, private readonly paths: string[]) {
 		super(new Pool(8), ['-c', 'protocol.file.allow=always']);
@@ -283,22 +290,24 @@ class SlowRootCheckout extends Git {
 		if (cwd !== this.dir || !args.includes('checkout')) {
 			return super.must(args, cwd);
 		}
-		// Long enough for every submodule's fetch to land if nothing holds it back.
-		await new Promise(resolve => setTimeout(resolve, 1500));
 		for (const at of this.paths) {
-			const full = path.join(this.dir, at);
-			if (fs.existsSync(full)) {
-				this.seen.push(`${at}: ${fs.readdirSync(full).join(',')}`);
+			if (!fs.statSync(path.join(this.dir, at), {throwIfNoEntry: false})?.isDirectory()) {
+				this.missing.push(at);
 			}
 		}
-		return super.must(args, cwd);
+		// Long enough for every submodule to write its worktree if nothing holds it back.
+		await new Promise(resolve => setTimeout(resolve, 1500));
+		const out = await super.must(args, cwd);
+		this.finished = true;
+		return out;
 	}
 }
 
-test('no submodule writes into the superproject worktree before its checkout finishes', async () => {
+test('every submodule directory exists before the superproject checkout, and the submodules write while it runs', async () => {
 	const fx = fixture();
 	const dir = path.join(fx.root, 'work');
 	const git = new SlowRootCheckout(dir, ['vendor/mid', 'vendor/plain']);
+	const early: string[] = [];
 	const checkout = new Checkout({
 		git,
 		dir,
@@ -308,12 +317,18 @@ test('no submodule writes into the superproject worktree before its checkout fin
 		submodules: 'recursive',
 		workers: 2,
 		config: [],
-		log: () => undefined,
+		log: message => {
+			if (!git.finished && /^vendor\/.*: worktree written/.test(message)) {
+				early.push(message.split(':')[0]);
+			}
+		},
 	});
 	const result = await checkout.run();
-	assert.deepStrictEqual(git.seen, []);
+	assert.deepStrictEqual(git.missing, []);
+	assert.deepStrictEqual(early.sort(), ['vendor/mid', 'vendor/mid/deps/leaf', 'vendor/plain']);
 	assert.strictEqual(result.repos, 4);
 	assert.strictEqual(sh(['status', '--porcelain'], dir), '');
+	assert.doesNotMatch(sh(['submodule', 'status', '--recursive'], dir), /^[^ ]/m);
 });
 
 test('a submodule whose fetch fails takes the whole checkout down with its name', async () => {

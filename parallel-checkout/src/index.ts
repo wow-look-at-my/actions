@@ -152,10 +152,22 @@ async function run(): Promise<void> {
 		lockHead = (submoduleUrl, followBranch, head) => lock(lockName(submoduleUrl, followBranch), head);
 		core.info(`followed heads are locked for this run attempt in ${store}`);
 	}
-	const {commit, repos} = await new Checkout({git, dir, url, plan, depth, submodules, workers, config, rootTree, follow, lockHead, log: core.info}).run();
+	const toolCache = process.env.RUNNER_TOOL_CACHE || '';
+	const objects = core.getInput('store').trim() || (toolCache === '' ? '' : path.join(toolCache, 'parallel-checkout'));
+	if (objects === '') {
+		core.warning('no object store: the store input and RUNNER_TOOL_CACHE are both empty, so every repository is fetched in full');
+	}
+	const checkout = new Checkout({git, dir, url, plan, depth, submodules, workers, config, rootTree, follow, lockHead, store: objects, log: core.info});
+	const {commit, repos} = await checkout.run();
 	core.setOutput('commit', commit);
 	core.setOutput('ref', ref);
 	core.info(`${repos} repositor${repos === 1 ? 'y' : 'ies'} checked out in ${Date.now() - started}ms`);
+	const compacting = Date.now();
+	const compacted = await checkout.compact();
+	core.setOutput('store-fetched', String(compacted));
+	if (compacted > 0) {
+		core.info(`${compacted} store repositor${compacted === 1 ? 'y' : 'ies'} repacked for the next checkout in ${Date.now() - compacting}ms`);
+	}
 }
 
 run().catch((error: unknown) => {
