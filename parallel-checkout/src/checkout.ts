@@ -91,9 +91,10 @@ export class Checkout {
 		return {commit, repos: this.repos};
 	}
 
-	// compact rewrites every store repository this run fetched into as one pack of whole, uncompressed objects.
-	// A warm checkout then copies each file instead of inflating it and applying deltas, which on a large tree is most of its CPU.
-	// It runs after the checkout, so only a run that fetched pays for it.
+	// compact rewrites every store repository this run fetched into as one pack
+	// of whole, uncompressed objects. A warm checkout then copies each file
+	// instead of inflating it and applying deltas, which on a large tree is most
+	// of its CPU.
 	async compact(): Promise<number> {
 		const stores = [...this.fetchedStores];
 		await Promise.all(stores.map(store => this.opts.git.must(['-c', 'pack.compression=0', 'repack', '-a', '-d', '-F', '--window=0', '-q'], store)));
@@ -119,8 +120,7 @@ export class Checkout {
 			const local = fetching.then(commit => this.treeOf(repo, commit));
 			tree = Promise.race([early().then(found => found ?? local), local]);
 		}
-		// git checkout dies when a directory it saw as missing appears while it writes. Every submodule directory therefore exists
-		// before this checkout starts, and each submodule writes only inside its own, so all the checkouts run at once.
+		// git checkout dies when a directory it saw as missing appears while it writes.
 		const ready = tree.then(found => this.makeSubmoduleDirs(repo, found));
 		const written = Promise.all([fetching, ready, parentReady]).then(() => this.writeTree(repo, started));
 		await Promise.all([written, tree.then(found => this.children(repo, found, ready))]);
@@ -310,7 +310,7 @@ export class Checkout {
 			const follow = repo.dir === this.opts.dir && this.opts.follow !== undefined && followed(url, this.opts.follow.scope) ? this.opts.follow : undefined;
 			const registered = this.register(repo, module.name, url);
 			if (follow === undefined) {
-				// The checkout reads nothing the registration writes, so the two overlap.
+				// The checkout reads nothing the registration writes, so both overlap.
 				tasks.push(Promise.all([registered, this.take(child, undefined, ready)]).then(([, commit]) => commit));
 				continue;
 			}
