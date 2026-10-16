@@ -50,10 +50,10 @@ export function ms(since: number): string {
 	return `${Date.now() - since}ms`;
 }
 
-// Checkout walks a repository and its submodule tree. Every repository is
-// fetched as soon as its commit is known, which for a submodule is the moment
-// its parent's fetch lands. Every worktree is written as soon as its own
-// fetch lands. Nothing waits on a sibling.
+// Checkout walks a repository and its submodule tree. A submodule starts once
+// its parent's worktree is written, because it lives inside that worktree.
+// Every worktree is written as soon as its own fetch lands. Nothing waits on
+// a sibling.
 export class Checkout {
 	private repos = 0;
 	// Every repository this checkout wrote, so the config that lands after the tree is in place covers all of them.
@@ -80,8 +80,10 @@ export class Checkout {
 		return {commit, repos: this.repos};
 	}
 
-	private async take(repo: Repo, early?: () => Promise<Tree | undefined>): Promise<string> {
+	private async take(repo: Repo, early?: () => Promise<Tree | undefined>, parentWritten?: Promise<void>): Promise<string> {
 		this.repos += 1;
+		// A submodule directory sits inside its parent's worktree. git checkout fails when that path appears while the parent checkout writes it.
+		await parentWritten;
 		const started = Date.now();
 		await this.init(repo);
 		const fetching = this.fetch(repo, started);
@@ -97,7 +99,7 @@ export class Checkout {
 		}
 		// Children write their worktrees inside this one, so they start once this checkout has written its own.
 		const written = fetching.then(() => this.writeTree(repo, started));
-		await Promise.all([written, tree.then(found => written.then(() => this.children(repo, found)))]);
+		await Promise.all([written, tree.then(found => this.children(repo, found, written))]);
 		return fetching;
 	}
 
@@ -164,7 +166,7 @@ export class Checkout {
 	}
 
 	// children starts every submodule a tree names.
-	private async children(repo: Repo, tree: Tree | undefined): Promise<void> {
+	private async children(repo: Repo, tree: Tree | undefined, written: Promise<void>): Promise<void> {
 		if (tree === undefined) {
 			return;
 		}
@@ -206,7 +208,7 @@ export class Checkout {
 						await this.configure(repo, [[`submodule.${module.name}.branch`, head.branch]]);
 						this.opts.log(`${child.label}: follows ${head.branch} at ${head.sha}, not the gitlink ${sha}`);
 					}
-					return this.take(child);
+					return this.take(child, undefined, written);
 				}),
 			);
 		}
