@@ -63,6 +63,7 @@ jobs:
 
   # The checkout this action replaces was timed on a macOS runner, so it is measured there too.
   parallel-checkout-macos:
+    if: github.event.repository.visibility == 'public'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -73,6 +74,7 @@ jobs:
 
   # The shared cache-xfer tests on NT: its tar and path handling, and that a unix-origin hand-off runs there.
   cache-xfer-windows:
+    if: github.event.repository.visibility == 'public'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
