@@ -182,6 +182,33 @@ test('a recursive checkout lands every level at the commit its parent pins', asy
 	assert.strictEqual(log.filter(line => line.includes('fetched')).length, 4);
 });
 
+// git checkout fails when a submodule directory appears inside a worktree it is still writing.
+test('a submodule starts only after its parent worktree is written', async () => {
+	const fx = fixture();
+	const {checkout, log} = take(fx, path.join(fx.root, 'work'), 'recursive');
+	// A slow parent checkout opens the window a large tree opens in CI.
+	const git = (checkout as unknown as {opts: {git: Git}}).opts.git;
+	const must = git.must.bind(git);
+	git.must = async (args: string[], cwd?: string) => {
+		if (args.includes('checkout')) {
+			await new Promise(resolve => setTimeout(resolve, 300));
+		}
+		return must(args, cwd);
+	};
+	await checkout.run();
+
+	const at = (line: string) => {
+		const n = log.indexOf(line);
+		assert.ok(n >= 0, `no log line ${line}\n${log.join('\n')}`);
+		return n;
+	};
+	const written = (label: string) => at(log.find(line => line.startsWith(`${label}: worktree written`)) ?? `${label}: worktree written`);
+	const fetched = (label: string) => at(log.find(line => line.startsWith(`${label}: fetched`)) ?? `${label}: fetched`);
+	for (const [parent, child] of [[fx.top, 'vendor/mid'], [fx.top, 'vendor/plain'], ['vendor/mid', 'vendor/mid/deps/leaf']]) {
+		assert.ok(written(parent) < fetched(child), `${child} fetched before ${parent} was written\n${log.join('\n')}`);
+	}
+});
+
 test('one level of submodules stops at the first level', async () => {
 	const fx = fixture();
 	const dir = path.join(fx.root, 'work');
