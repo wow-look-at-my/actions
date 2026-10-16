@@ -97,6 +97,7 @@ export class Checkout {
 		} else {
 			tree = early().then(found => found ?? fetching.then(commit => this.treeOf(repo, commit)));
 		}
+		// Children write their worktrees inside this one, so they start once this checkout has written its own.
 		const written = fetching.then(() => this.writeTree(repo, started));
 		await Promise.all([written, tree.then(found => this.children(repo, found, written))]);
 		return fetching;

@@ -269,6 +269,53 @@ test('an early reader that answers nothing falls back to the fetched commit', as
 	assert.strictEqual(sh(['status', '--porcelain'], dir), '');
 });
 
+// SlowRootCheckout holds the superproject's worktree write open and records what
+// sits under the submodule paths while it runs. This is when git's checkout
+// workers are creating those directories.
+class SlowRootCheckout extends Git {
+	readonly seen: string[] = [];
+
+	constructor(private readonly dir: string, private readonly paths: string[]) {
+		super(new Pool(8), ['-c', 'protocol.file.allow=always']);
+	}
+
+	async must(args: string[], cwd?: string): Promise<string> {
+		if (cwd !== this.dir || !args.includes('checkout')) {
+			return super.must(args, cwd);
+		}
+		// Long enough for every submodule's fetch to land if nothing holds it back.
+		await new Promise(resolve => setTimeout(resolve, 1500));
+		for (const at of this.paths) {
+			const full = path.join(this.dir, at);
+			if (fs.existsSync(full)) {
+				this.seen.push(`${at}: ${fs.readdirSync(full).join(',')}`);
+			}
+		}
+		return super.must(args, cwd);
+	}
+}
+
+test('no submodule writes into the superproject worktree before its checkout finishes', async () => {
+	const fx = fixture();
+	const dir = path.join(fx.root, 'work');
+	const git = new SlowRootCheckout(dir, ['vendor/mid', 'vendor/plain']);
+	const checkout = new Checkout({
+		git,
+		dir,
+		url: fx.top,
+		plan: planRef('refs/heads/main', head(fx.top)),
+		depth: 1,
+		submodules: 'recursive',
+		workers: 2,
+		config: [],
+		log: () => undefined,
+	});
+	const result = await checkout.run();
+	assert.deepStrictEqual(git.seen, []);
+	assert.strictEqual(result.repos, 4);
+	assert.strictEqual(sh(['status', '--porcelain'], dir), '');
+});
+
 test('a submodule whose fetch fails takes the whole checkout down with its name', async () => {
 	const fx = fixture();
 	// The tree still pins leaf, but the repository behind it is gone.
