@@ -229,8 +229,6 @@ const TYPES_DIR = path.join(DIST_DIR, 'types');
 // A host path from ${{ github.action_path }} resolves to the `_actions` tree this action runs from.
 const ACTIONS_ROOT = actionsRoot(DIST_DIR);
 const toContainer = (p: string): string => containerPath(p, ACTIONS_ROOT, fs.existsSync);
-// Virtual file for type-checking.
-const VIRTUAL_FILE = path.join(TYPES_DIR, '__user-script.ts');
 // The ambient declarations for the injected helpers are served to tsc as their own in-memory global script file.
 const GLOBALS_VIRTUAL_FILE = path.join(TYPES_DIR, '__globals.d.ts');
 
@@ -588,7 +586,7 @@ async function execute(transpiledJs: string, ctx: WorkflowContexts, scriptFilena
 	}
 }
 
-// `entry` is the path the script is checked and run as: a `file:` script's own path, so its relative imports resolve from its directory.
+// `entry` is the path the script is checked and run as. Its relative imports resolve from that path's directory: a `file:` script's own path, an inline script beside the calling action's files.
 function readUserScript(): { script: string; label: string; entry: string; inline: boolean } {
 	const inline = core.getInput('script');
 	const file = core.getInput('file');
@@ -609,8 +607,12 @@ function readUserScript(): { script: string; label: string; entry: string; inlin
 		return { script: fs.readFileSync(resolved, 'utf-8'), label: file, entry: resolved, inline: false };
 	}
 
-	const workspace = process.env.GITHUB_WORKSPACE ?? process.cwd();
-	return { script: inline, label: 'script', entry: path.join(workspace, `.user-script-${process.pid}-${Date.now()}.js`), inline: true };
+	// An inline script is checked and run at a synthetic path in the calling
+	// action's directory, which the runner names in GITHUB_ACTION_PATH.
+	const base = process.env.GITHUB_ACTION_PATH
+		? toContainer(process.env.GITHUB_ACTION_PATH)
+		: process.env.GITHUB_WORKSPACE ?? process.cwd();
+	return { script: inline, label: 'script', entry: path.join(base, `.user-script-${process.pid}-${Date.now()}.ts`), inline: true };
 }
 
 // Reads the running workflow to find this step and check it carries a `name:`.
@@ -633,7 +635,7 @@ async function unnamedStepPositions(): Promise<{workflow: string; job: string; p
 
 async function run(): Promise<void> {
 	const { script: userScript, label, entry, inline } = readUserScript();
-	const checkedFile = inline ? VIRTUAL_FILE : entry;
+	const checkedFile = entry;
 
 	// Everything up to execution shares one group: the source echo plus a line each from the type-check and the transpile.
 	core.startGroup('Compiling script');
