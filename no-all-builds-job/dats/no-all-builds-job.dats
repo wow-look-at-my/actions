@@ -1,6 +1,6 @@
-# The guard has three layers, and each one has to be driven separately: the
-# file scan, the API layers, and the run-once sentinel that skips all of them.
-# release.yml used to spell these out as six bash steps.
+# The guard has several layers, and each one must be driven separately.
+# They are the file scan, the API layers, and the run-once sentinel.
+# release.yml used to spell these out as separate bash steps.
 
 sandbox:
 	network: false

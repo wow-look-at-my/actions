@@ -1,6 +1,6 @@
 # Both directions of the limit: a wall of comment lines fails, and a block
 # sitting exactly at the maximum passes. release.yml used to spell these out
-# as three bash steps.
+# as separate bash steps.
 
 sandbox:
 	network: false
