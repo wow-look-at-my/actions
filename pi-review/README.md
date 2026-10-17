@@ -2,7 +2,7 @@
 
 Review a pull request using the [pi coding agent](https://github.com/earendil-works/pi-mono) with a local LLM. Defaults to Gemma 4 26B served by `llama.pazer.ai`. The API key is fetched at runtime via the `secret-server` action over OIDC.
 
-The model gets read-only file access (read, grep, find, ls) plus three extension tools for GitHub PR reviews. Bash, edit, and write are denied.
+The model gets read-only file access (read, grep, find, ls) plus extension tools for GitHub PR reviews. Bash, edit, and write are denied.
 
 ## Usage
 
@@ -55,11 +55,11 @@ Zero required inputs - the defaults match the configured setup.
 2. `actions/setup-node` installs Node.js.
 3. `@earendil-works/pi-coding-agent` is installed globally via npm.
 4. `models.json` is written to `~/.pi/agent/` with provider config.
-5. `pi --print` runs the review with built-in tools restricted to read-only. The extension (`extension.ts`) registers three tools: `get_pr_diff`, `add_review_comment`, `submit_review`.
+5. `pi --print` runs the review with built-in tools restricted to read-only. The extension (`extension.ts`) registers multiple tools: `get_pr_diff`, `add_review_comment`, `submit_review`.
 
 ## Extension Tools
 
-The pi extension (`extension.ts`) registers exactly three tools:
+The pi extension (`extension.ts`) registers tools:
 
 | Tool | Description |
 |------|-------------|
