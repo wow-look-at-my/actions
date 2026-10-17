@@ -87,6 +87,59 @@ tests:
 			- "REPORTED_STATUS=yes"
 			- "REPORTED_BODY=yes"
 
+	# That is an outage, so the fetch asks again and gets the secrets.
+	- desc: a Cloudflare error page from the secret server is retried
+	  exit: 0
+	  inputs:
+		files:
+			fakecurl: |
+				#!/usr/bin/env bash
+				seen=$(cat "$FAKE_CURL_COUNT" 2>/dev/null || echo 0)
+				echo $((seen + 1)) > "$FAKE_CURL_COUNT"
+				if [ "$seen" -eq 0 ]; then
+					printf 'error code: 1001\n409\n'
+				else
+					printf '{"KEY":"value"}\n200\n'
+				fi
+			run.sh: |
+				set -uo pipefail
+				work="$(mktemp -d)"
+				mkdir -p "$work/fakebin"
+				cp {inputs.fakecurl} "$work/fakebin/curl"
+				chmod +x "$work/fakebin/curl"
+				export PATH="$work/fakebin:$PATH"
+				export FAKE_CURL_COUNT="$work/count"
+				export SECRET_SERVER_URL='https://secrets.example.invalid' OIDC_TOKEN='tok'
+				echo "SECRETS=$(bash "$SCRIPT" 2>"$work/err")"
+				grep -q 'error code: 1001' "$work/err" && echo "REPORTED=yes" || echo "REPORTED=no"
+	  cmd: env SCRIPT="$PWD/secret-server/fetch-secrets.sh" bash {inputs.run.sh}
+	  outputs:
+		stdout:
+			- 'SECRETS={"KEY":"value"}'
+			- "REPORTED=yes"
+
+	# A refusal is the server's verdict on this caller. Asking again changes nothing.
+	- desc: a refusal from the secret server fails at once
+	  exit: 1
+	  inputs:
+		files:
+			fakecurl: |
+				#!/usr/bin/env bash
+				printf '{"error":"not entitled"}\n403\n'
+			run.sh: |
+				set -uo pipefail
+				work="$(mktemp -d)"
+				mkdir -p "$work/fakebin"
+				cp {inputs.fakecurl} "$work/fakebin/curl"
+				chmod +x "$work/fakebin/curl"
+				export PATH="$work/fakebin:$PATH"
+				export SECRET_SERVER_URL='https://secrets.example.invalid' OIDC_TOKEN='tok'
+				bash "$SCRIPT"
+	  cmd: env SCRIPT="$PWD/secret-server/fetch-secrets.sh" bash {inputs.run.sh}
+	  outputs:
+		stderr:
+			- "HTTP 403"
+
 	# A missing id-token permission is the caller's own mistake. No retry
 	# reaches it, so it fails at once and names the permission.
 	- desc: a missing id-token permission fails at once
