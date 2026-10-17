@@ -606,6 +606,14 @@ export function detachedRefill(workers: number, refills: Refill[]): void {
 		env: {...process.env, [refillVariable]: '1'},
 	});
 	child.unref();
+	// The refill gives way to whatever the job runs next, a checkout included.
+	if (child.pid !== undefined) {
+		try {
+			os.setPriority(child.pid, 19);
+		} catch {
+			// A runner that refuses the change still refills, at the same priority.
+		}
+	}
 }
 
 // copyTree copies a directory tree, every directory's entries at once. It
