@@ -5,6 +5,14 @@ description: Check real repositories out with parallel-checkout and let git judg
 runs:
   using: composite
   steps:
+    # A hosted runner starts with an empty tool cache, so the store comes back from the last run that filled it.
+    - name: Restore the object store
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ runner.tool_cache }}/parallel-checkout
+        key: parallel-checkout-store-${{ runner.os }}-${{ github.run_id }}
+        restore-keys: parallel-checkout-store-${{ runner.os }}-
+
     # The superproject of the log this action was written against: 26 submodules, one of them nested, 15k files.
     - name: Check gosmopolitan out at a pinned commit
       id: gosmo
@@ -55,6 +63,7 @@ runs:
 
     # The same superproject with its org submodules following master, as gosmopolitan's own submodulebranch.bash puts them.
     - name: Check gosmopolitan out with org submodules on master
+      id: follow
       uses: ./parallel-checkout
       with:
         repository: wow-look-at-my/gosmopolitan
@@ -136,6 +145,14 @@ runs:
           fail=1
         fi
         exit "$fail"
+
+    # Saved only when a checkout added something the restored store lacked.
+    - name: Save the object store
+      if: steps.gosmo.outputs.store-added != '0' || steps.follow.outputs.store-added != '0'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.tool_cache }}/parallel-checkout
+        key: parallel-checkout-store-${{ runner.os }}-${{ github.run_id }}
 
     - name: Clean up
       if: always()
