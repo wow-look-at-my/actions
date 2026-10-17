@@ -231,7 +231,7 @@ test('a checkout of a stored commit moves the stored worktree in, and git finds 
 			workers: 2,
 			config: [],
 			store,
-			// The detached process, run in this one so the test can wait for it.
+			// The detached process, run in this so the test can wait for it.
 			refill: (workers, jobs) => {
 				refills.push(jobs.map(job => job.commit));
 				refillNow(workers, jobs);
@@ -242,7 +242,7 @@ test('a checkout of a stored commit moves the stored worktree in, and git finds 
 		return {log, added: await checkout.compact()};
 	};
 	const first = await run('one');
-	// Four stores, and two copies of each of the four worktrees: one per path and a spare.
+	// Stores, and copies of each of the worktrees: one per path and a spare.
 	assert.strictEqual(first.added, 12, first.log.join('\n'));
 	assert.strictEqual(first.log.filter(line => line.includes('worktree written')).length, 4, first.log.join('\n'));
 	assert.strictEqual(refills.length, 0);
@@ -251,7 +251,7 @@ test('a checkout of a stored commit moves the stored worktree in, and git finds 
 	assert.strictEqual(second.log.filter(line => line.includes('worktree taken from the store')).length, 4, second.log.join('\n'));
 	// Each taken copy is refilled out of the store's objects, and none of them is new to it.
 	assert.strictEqual(second.added, 0, second.log.join('\n'));
-	// One refill process covers all four worktrees.
+	// One refill process covers all worktrees.
 	assert.deepStrictEqual(refills.map(commits => commits.length), [4], second.log.join('\n'));
 	const third = await run('three');
 	assert.strictEqual(third.log.filter(line => line.includes('worktree taken from the store')).length, 4, third.log.join('\n'));

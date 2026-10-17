@@ -176,7 +176,7 @@ export class Checkout {
 	}
 
 	// keep refills the stored worktrees of one commit. A commit the store had
-	// is refilled by a detached process from the store's objects, so the step
+	// is refilled by a detached process from the store's objects. The step
 	// ends with the checkout and a later edit to the worktree cannot reach the
 	// store. A commit new to the store is copied from the worktree before the
 	// step ends, so a cache saved after this step holds it.
@@ -574,7 +574,7 @@ export class Checkout {
 // The variable that makes the action's own entry point run a refill instead of a checkout.
 export const refillVariable = 'PARALLEL_CHECKOUT_REFILL';
 
-// refillNow writes each target worktree out of the store: it reads the commit
+// refillNow writes each target worktree out of the store. It reads the commit
 // into a scratch index, writes the files, then renames the result into place.
 // A target that fails leaves nothing behind, and the next checkout writes it.
 export function refillNow(workers: number, refills: Refill[]): void {
