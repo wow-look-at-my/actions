@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {test} from 'node:test';
-import {Checkout, Tree} from './checkout';
+import {Checkout, Tree, refillNow} from './checkout';
 import {Git, Pool} from './git';
 import {planRef} from './plan';
 
@@ -218,6 +218,7 @@ test('a second checkout takes every commit from the store and fetches nothing', 
 test('a checkout of a stored commit moves the stored worktree in, and git finds it clean', async () => {
 	const fx = fixture();
 	const store = path.join(fx.root, 'store');
+	const refills: string[][] = [];
 	const run = async (into: string) => {
 		const log: string[] = [];
 		const checkout = new Checkout({
@@ -230,20 +231,31 @@ test('a checkout of a stored commit moves the stored worktree in, and git finds 
 			workers: 2,
 			config: [],
 			store,
+			// The detached process, run in this one so the test can wait for it.
+			refill: (workers, jobs) => {
+				refills.push(jobs.map(job => job.commit));
+				refillNow(workers, jobs);
+			},
 			log: message => log.push(message),
 		});
 		await checkout.run();
 		return {log, added: await checkout.compact()};
 	};
 	const first = await run('one');
-	assert.strictEqual(first.added, 8, first.log.join('\n'));
+	// Four stores, and two copies of each of the four worktrees: one per path and a spare.
+	assert.strictEqual(first.added, 12, first.log.join('\n'));
 	assert.strictEqual(first.log.filter(line => line.includes('worktree written')).length, 4, first.log.join('\n'));
+	assert.strictEqual(refills.length, 0);
 	// A path whose parent does not exist yet, as in a fresh workspace.
 	const second = await run('new/two');
 	assert.strictEqual(second.log.filter(line => line.includes('worktree taken from the store')).length, 4, second.log.join('\n'));
-	// Each worktree went back into the store, and none of them is new to it.
+	// Each taken copy is refilled out of the store's objects, and none of them is new to it.
 	assert.strictEqual(second.added, 0, second.log.join('\n'));
-	assert.strictEqual(second.log.filter(line => line.includes('worktree stored')).length, 4, second.log.join('\n'));
+	// One refill process covers all four worktrees.
+	assert.deepStrictEqual(refills.map(commits => commits.length), [4], second.log.join('\n'));
+	const third = await run('three');
+	assert.strictEqual(third.log.filter(line => line.includes('worktree taken from the store')).length, 4, third.log.join('\n'));
+	assert.strictEqual(sh(['status', '--porcelain'], path.join(fx.root, 'three')), '');
 
 	const dir = path.join(fx.root, 'new/two');
 	assert.strictEqual(fs.readFileSync(path.join(dir, 'vendor/mid/deps/leaf/leaf.txt'), 'utf8'), 'leaf\n');

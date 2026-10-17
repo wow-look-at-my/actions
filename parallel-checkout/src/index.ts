@@ -3,7 +3,7 @@ import * as fsp from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 import {headLister, readTree} from './api';
-import {Checkout, Submodules} from './checkout';
+import {Checkout, Refill, Submodules, refillNow, refillVariable} from './checkout';
 import {Git, Pool} from './git';
 import {basicAuth, pickRef, planRef} from './plan';
 import {lockName, runLock} from './runlock';
@@ -174,6 +174,10 @@ async function run(): Promise<void> {
 	core.info(`the store gained ${added} entr${added === 1 ? 'y' : 'ies'}, and is ready for the next checkout ${Date.now() - compacting}ms later`);
 }
 
-run().catch((error: unknown) => {
-	core.setFailed(error instanceof Error ? error.message : String(error));
-});
+if (process.env[refillVariable] === '1') {
+	refillNow(Number(process.argv[2]), JSON.parse(process.argv[3]) as Refill[]);
+} else {
+	run().catch((error: unknown) => {
+		core.setFailed(error instanceof Error ? error.message : String(error));
+	});
+}

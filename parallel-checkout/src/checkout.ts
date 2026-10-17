@@ -1,3 +1,4 @@
+import {execFileSync, spawn} from 'child_process';
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as os from 'os';
@@ -32,6 +33,8 @@ export type Options = {
 	listHeads?: (url: string, refs: string[]) => Promise<string | undefined>;
 	// A directory of bare repositories, one per url. Every fetch lands there, and a commit already there needs no fetch.
 	store?: string;
+	// refill writes stored worktrees out of a store repository without the caller waiting. The default is a detached process.
+	refill?: (workers: number, refills: Refill[]) => void;
 	log: (message: string) => void;
 };
 
@@ -79,8 +82,6 @@ export class Checkout {
 	private templated?: Promise<{config: string; head: string}>;
 	// The store repositories this run fetched into, which compact rewrites.
 	private readonly fetchedStores = new Set<string>();
-	// How many copies of one commit's worktree this run has stored so far.
-	private readonly copies = new Map<string, number>();
 
 	constructor(private readonly opts: Options) {}
 
@@ -99,21 +100,6 @@ export class Checkout {
 		// The per-repo config lands once the tree is in place, one writer at a time per repository.
 		await Promise.all(this.written.map(repo => (repo.fresh ? this.append(repo, this.opts.config) : this.configure(repo, this.opts.config))));
 		return {commit, repos: this.repos};
-	}
-
-	// compact rewrites every store repository this run fetched into as one pack
-	// of whole, uncompressed objects. A warm checkout then copies each file
-	// instead of inflating it and applying deltas, which on a large tree is most
-	// of its CPU.
-	// It also stores a copy of every worktree the store lacks. The result counts
-	// what this run added, so a worktree this run took and put back is not counted.
-	async compact(): Promise<number> {
-		const stores = [...this.fetchedStores];
-		const [, kept] = await Promise.all([
-			Promise.all(stores.map(store => this.opts.git.must(['-c', 'pack.compression=0', 'repack', '-a', '-d', '-F', '--window=0', '-q'], store))),
-			Promise.all(this.written.map(repo => this.keep(repo))),
-		]);
-		return stores.length + kept.filter(added => added).length;
 	}
 
 	// treesOf is the store directory of one url's worktrees, and the commit they are named by.
@@ -159,38 +145,81 @@ export class Checkout {
 		}
 	}
 
-	// keep copies a finished worktree into the store, without its git link and
-	// without the contents of its submodules. It gives back whether the store
-	// gained a worktree it did not have at the start of this run.
-	private async keep(repo: Repo): Promise<boolean> {
-		const trees = this.treesOf(repo);
-		if (trees === undefined) {
-			return false;
+	// compact rewrites every store repository this run fetched into as one pack
+	// of whole, uncompressed objects. A warm checkout then copies each file
+	// instead of inflating it and applying deltas, which on a large tree is most
+	// of its CPU.
+	// It also refills the stored worktrees, one per path plus a spare, so a
+	// second checkout of the commit in the same job finds one. The result counts
+	// what this run added, so a refill of a worktree the store had is not counted.
+	async compact(): Promise<number> {
+		const stores = [...this.fetchedStores];
+		const groups = new Map<string, Repo[]>();
+		for (const repo of this.written) {
+			const trees = this.treesOf(repo);
+			if (trees !== undefined) {
+				const key = path.join(trees.dir, trees.commit);
+				groups.set(key, [...(groups.get(key) ?? []), repo]);
+			}
 		}
-		const key = path.join(trees.dir, trees.commit);
-		const copy = this.copies.get(key) ?? 0;
-		this.copies.set(key, copy + 1);
-		const tree = copy === 0 ? key : `${key}~${copy}`;
-		if (fs.existsSync(tree)) {
-			return false;
+		const refills: Refill[] = [];
+		const [, kept] = await Promise.all([
+			Promise.all(stores.map(store => this.opts.git.must(['-c', 'pack.compression=0', 'repack', '-a', '-d', '-F', '--window=0', '-q'], store))),
+			Promise.all([...groups.values()].map(repos => this.keep(repos, refills))),
+		]);
+		if (refills.length > 0) {
+			// One process for every refill, because a process per repository costs more than the rest of this step.
+			(this.opts.refill ?? detachedRefill)(this.opts.workers, refills);
+			this.opts.log(`${refills.length} stored worktree(s) refill in the background`);
 		}
+		return stores.length + kept.reduce((sum, added) => sum + added, 0);
+	}
+
+	// keep refills the stored worktrees of one commit. A commit the store had
+	// is refilled by a detached process from the store's objects, so the step
+	// ends with the checkout and a later edit to the worktree cannot reach the
+	// store. A commit new to the store is copied from the worktree before the
+	// step ends, so a cache saved after this step holds it.
+	private async keep(repos: Repo[], refills: Refill[]): Promise<number> {
+		const repo = repos[0];
+		const trees = this.treesOf(repo)!;
+		await fsp.mkdir(trees.dir, {recursive: true});
+		const names = new Set((await fsp.readdir(trees.dir)).filter(name => name.split('~')[0] === trees.commit && !name.includes('.')));
+		const free: string[] = [];
+		for (let copy = 0; free.length + names.size < repos.length + 1; copy++) {
+			const name = copy === 0 ? trees.commit : `${trees.commit}~${copy}`;
+			if (!names.has(name)) {
+				free.push(path.join(trees.dir, name));
+			}
+		}
+		if (free.length === 0) {
+			return 0;
+		}
+		const known = names.size > 0 || repos.some(each => each.placed);
+		if (known && repo.objects !== undefined) {
+			refills.push({store: repo.objects, commit: trees.commit, targets: free});
+			return 0;
+		}
+		// Only a commit new to the store can push an older one out.
+		await this.evict(trees.dir, trees.commit);
 		const own = path.join(repo.dir, '.git');
 		const links = new Set((repo.links ?? []).map(at => path.join(repo.dir, at)));
-		const staging = `${tree}.${process.pid}`;
-		await fsp.rm(staging, {recursive: true, force: true});
-		await fsp.mkdir(trees.dir, {recursive: true});
-		await copyTree(repo.dir, staging, source => source !== own && !links.has(path.dirname(source)));
-		await this.evict(trees.dir, trees.commit);
-		try {
-			await fsp.rename(staging, tree);
-		} catch (error) {
-			// Another job stored the same commit first.
+		let added = 0;
+		for (const tree of free) {
+			const staging = `${tree}.${process.pid}`;
 			await fsp.rm(staging, {recursive: true, force: true});
-			this.opts.log(`${repo.label}: the store already holds this worktree (${(error as {code?: string}).code})`);
-			return false;
+			await copyTree(repo.dir, staging, source => source !== own && !links.has(path.dirname(source)));
+			try {
+				await fsp.rename(staging, tree);
+				added += 1;
+			} catch (error) {
+				// Another job stored the same copy first.
+				await fsp.rm(staging, {recursive: true, force: true});
+				this.opts.log(`${repo.label}: the store already holds ${path.basename(tree)} (${(error as {code?: string}).code})`);
+			}
 		}
-		this.opts.log(`${repo.label}: worktree stored for the next checkout`);
-		return !repo.placed;
+		this.opts.log(`${repo.label}: ${added} worktree(s) stored for the next checkout`);
+		return added;
 	}
 
 	// evict keeps the newest worktrees of one url, so a store on a runner that
@@ -540,6 +569,43 @@ export class Checkout {
 		this.configLocks.set(repo.gitdir, next);
 		return next;
 	}
+}
+
+// The variable that makes the action's own entry point run a refill instead of a checkout.
+export const refillVariable = 'PARALLEL_CHECKOUT_REFILL';
+
+// refillNow writes each target worktree out of the store: it reads the commit
+// into a scratch index, writes the files, then renames the result into place.
+// A target that fails leaves nothing behind, and the next checkout writes it.
+export function refillNow(workers: number, refills: Refill[]): void {
+	for (const {store, commit, targets} of refills) {
+		for (const target of targets) {
+			const staging = `${target}.${process.pid}`;
+			const env = {...process.env, GIT_DIR: store, GIT_INDEX_FILE: `${staging}.index`};
+			try {
+				fs.mkdirSync(staging);
+				execFileSync('git', ['read-tree', commit], {env, stdio: 'ignore'});
+				execFileSync('git', ['-c', `checkout.workers=${workers}`, '--work-tree', staging, 'checkout-index', '-a', '-f'], {env, stdio: 'ignore'});
+				fs.renameSync(staging, target);
+			} catch {
+				fs.rmSync(staging, {recursive: true, force: true});
+			}
+			fs.rmSync(`${staging}.index`, {force: true});
+		}
+	}
+}
+
+// A stored worktree to write: the store repository that holds the commit, and the paths its copies go to.
+export type Refill = {store: string; commit: string; targets: string[]};
+
+// detachedRefill runs refillNow in a detached copy of this script and does not wait for it.
+export function detachedRefill(workers: number, refills: Refill[]): void {
+	const child = spawn(process.execPath, [process.argv[1], String(workers), JSON.stringify(refills)], {
+		detached: true,
+		stdio: 'ignore',
+		env: {...process.env, [refillVariable]: '1'},
+	});
+	child.unref();
 }
 
 // copyTree copies a directory tree, every directory's entries at once. It
