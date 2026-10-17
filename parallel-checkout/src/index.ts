@@ -2,7 +2,7 @@ import * as core from '@actions/core';
 import * as fsp from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
-import {readTree} from './api';
+import {headLister, readTree} from './api';
 import {Checkout, Submodules} from './checkout';
 import {Git, Pool} from './git';
 import {basicAuth, pickRef, planRef} from './plan';
@@ -157,7 +157,13 @@ async function run(): Promise<void> {
 	if (objects === '') {
 		core.warning('no object store: the store input and RUNNER_TOOL_CACHE are both empty, so every repository is fetched in full');
 	}
-	const checkout = new Checkout({git, dir, url, plan, depth, submodules, workers, config, rootTree, follow, lockHead, store: objects, log: core.info});
+	let listHeads: ((url: string, refs: string[]) => Promise<string | undefined>) | undefined;
+	if (follow !== undefined && token !== '') {
+		listHeads = headLister({apiUrl, server, token, log: core.info});
+		// The head lookup comes after the tree is read, by then over a connection this opened.
+		fetch(apiUrl, {method: 'HEAD'}).catch(() => undefined);
+	}
+	const checkout = new Checkout({git, dir, url, plan, depth, submodules, workers, config, rootTree, follow, lockHead, listHeads, store: objects, log: core.info});
 	const {commit, repos} = await checkout.run();
 	core.setOutput('commit', commit);
 	core.setOutput('ref', ref);

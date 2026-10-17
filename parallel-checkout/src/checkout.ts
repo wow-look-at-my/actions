@@ -28,6 +28,8 @@ export type Options = {
 	follow?: {branch: string; scope: string[]};
 	// lockHead gives back the commit this run locked for a followed submodule, and locks head when the run has none.
 	lockHead?: (url: string, branch: string, head: string) => Promise<string>;
+	// listHeads answers as `git ls-remote --symref URL HEAD REFS...` would, or undefined, and git then lists the remote.
+	listHeads?: (url: string, refs: string[]) => Promise<string | undefined>;
 	// A directory of bare repositories, one per url. Every fetch lands there, and a commit already there needs no fetch.
 	store?: string;
 	log: (message: string) => void;
@@ -452,9 +454,10 @@ export class Checkout {
 				tasks.push(Promise.all([registered, this.take(child, undefined, ready)]).then(([, commit]) => commit));
 				continue;
 			}
+			// Every followed head is asked for in this loop, so one request can answer them all.
+			const heading = this.headOf(child, follow.branch, module.branch);
 			tasks.push(
-				registered.then(async () => {
-					const head = await this.headOf(child, follow.branch, module.branch);
+				Promise.all([registered, heading]).then(async ([, head]) => {
 					if (this.opts.lockHead !== undefined) {
 						const locked = await this.opts.lockHead(url, head.branch, head.sha);
 						if (locked !== head.sha) {
@@ -482,8 +485,9 @@ export class Checkout {
 		if (configured !== '' && configured !== '.' && configured !== here) {
 			refs.push(`refs/heads/${configured}`);
 		}
+		const listed = this.opts.listHeads === undefined ? undefined : await this.opts.listHeads(child.url, refs.filter(ref => ref !== 'HEAD'));
 		// Run inside the superproject, whose config.
-		const listing = await this.opts.git.must(['ls-remote', '--symref', child.url, ...refs], this.opts.dir);
+		const listing = listed ?? (await this.opts.git.must(['ls-remote', '--symref', child.url, ...refs], this.opts.dir));
 		try {
 			return pickHead(here, configured, listing);
 		} catch (error) {
