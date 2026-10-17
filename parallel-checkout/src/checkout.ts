@@ -52,6 +52,8 @@ type Repo = {
 	links?: string[];
 	// True when a stored worktree moved into place, so git writes no files here.
 	placed?: boolean;
+	// True when this run wrote the git directory, so its config holds nothing it did not write.
+	fresh?: boolean;
 	// A label for the log.
 	label: string;
 };
@@ -93,7 +95,7 @@ export class Checkout {
 		};
 		const commit = await this.take(root, this.opts.rootTree);
 		// The per-repo config lands once the tree is in place, one writer at a time per repository.
-		await Promise.all(this.written.map(repo => this.configure(repo, this.opts.config)));
+		await Promise.all(this.written.map(repo => (repo.fresh ? this.append(repo, this.opts.config) : this.configure(repo, this.opts.config))));
 		return {commit, repos: this.repos};
 	}
 
@@ -316,11 +318,11 @@ export class Checkout {
 		const git = this.opts.git;
 		const where = repo.objects ?? repo.gitdir;
 		// Only the paths .gitmodules names are listed, which on a large tree is a small part of it.
-		const top = await git.must(['ls-tree', commit, '--', '.gitmodules'], where);
-		if (!/^100644 blob [0-9a-f]+\t\.gitmodules$/m.test(top)) {
+		const shown = await git.run(['show', `${commit}:.gitmodules`], where);
+		if (shown.code !== 0) {
 			return undefined;
 		}
-		const gitmodules = await git.must(['show', `${commit}:.gitmodules`], where);
+		const gitmodules = shown.stdout;
 		const paths = parseGitmodules(gitmodules).map(module => module.path);
 		const listing = paths.length === 0 ? '' : await git.must(['ls-tree', '-r', commit, '--', ...paths], where);
 		return {gitmodules, links: gitlinks(listing)};
@@ -351,6 +353,7 @@ export class Checkout {
 		}
 		await fsp.writeFile(path.join(repo.gitdir, 'HEAD'), template.head);
 		await fsp.writeFile(path.join(repo.gitdir, 'config'), config);
+		repo.fresh = true;
 	}
 
 	// template runs `git init` once, so every repository gets the core settings git probes from this file system.
@@ -395,15 +398,17 @@ export class Checkout {
 	// over files already in place. The index then holds no file stats, so the
 	// first git status reads each file once and finds it clean.
 	private async indexTree(repo: Repo): Promise<void> {
-		const git = this.opts.git;
+		// The refs are files, as init writes them, so only the index needs a git process.
 		const commit = wanted(repo)!;
 		if (repo.branch === undefined) {
-			await git.must(['update-ref', '--no-deref', 'HEAD', commit], repo.dir);
+			await fsp.writeFile(path.join(repo.gitdir, 'HEAD'), `${commit}\n`);
 		} else {
-			await git.must(['update-ref', `refs/heads/${repo.branch}`, commit], repo.dir);
-			await git.must(['symbolic-ref', 'HEAD', `refs/heads/${repo.branch}`], repo.dir);
+			const ref = path.join(repo.gitdir, 'refs', 'heads', repo.branch);
+			await fsp.mkdir(path.dirname(ref), {recursive: true});
+			await fsp.writeFile(ref, `${commit}\n`);
+			await fsp.writeFile(path.join(repo.gitdir, 'HEAD'), `ref: refs/heads/${repo.branch}\n`);
 		}
-		await git.must(['read-tree', commit], repo.dir);
+		await this.opts.git.must(['read-tree', commit], repo.dir);
 	}
 
 	// makeSubmoduleDirs creates the directory of every submodule the tree pins.
@@ -495,6 +500,27 @@ export class Checkout {
 		const previous = this.configLocks.get(parent.gitdir) ?? Promise.resolve();
 		const next = previous.then(() => fsp.appendFile(path.join(parent.gitdir, 'config'), section));
 		this.configLocks.set(parent.gitdir, next);
+		return next;
+	}
+
+	// append adds settings to the config of a repository this run created, as
+	// one write. A key given twice keeps both values, as `git config --add` does.
+	private append(repo: Repo, settings: Array<[string, string]>): Promise<void> {
+		if (settings.length === 0) {
+			return Promise.resolve();
+		}
+		const quote = (text: string) => `"${text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+		const text = settings
+			.map(([key, value]) => {
+				const first = key.indexOf('.');
+				const last = key.lastIndexOf('.');
+				const section = first === last ? `[${key.slice(0, first)}]` : `[${key.slice(0, first)} ${quote(key.slice(first + 1, last))}]`;
+				return `${section}\n\t${key.slice(last + 1)} = ${quote(value)}\n`;
+			})
+			.join('');
+		const previous = this.configLocks.get(repo.gitdir) ?? Promise.resolve();
+		const next = previous.then(() => fsp.appendFile(path.join(repo.gitdir, 'config'), text));
+		this.configLocks.set(repo.gitdir, next);
 		return next;
 	}
 
