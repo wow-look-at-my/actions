@@ -156,7 +156,7 @@ export type RefPlan = {
 	target: string;
 };
 
-const SHA = /^[0-9a-f]{40}$|^[0-9a-f]{64}$/;
+export const SHA = /^[0-9a-f]{40}$|^[0-9a-f]{64}$/;
 
 // planRef decides how a ref string reaches the worktree. A branch gets a local
 // branch tracking origin; a tag, a pull ref or a bare commit checks out detached.
