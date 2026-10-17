@@ -19,6 +19,7 @@ jobs:
       contents: write # tag-cleanup deletes orphaned release tags
       actions: write # cache-cleanup deletes entries; the all-builds guard lists jobs
       checks: read # the guard's check-runs layer must be able to run
+      id-token: write # ts0 downloads from buildhost through the secret server
     steps:
       - uses: actions/checkout@v4
       - uses: ./cache-rg/test
@@ -65,6 +66,9 @@ jobs:
   parallel-checkout-macos:
     if: github.event.repository.visibility == 'public'
     runs-on: macos-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-and-build
@@ -76,6 +80,9 @@ jobs:
   cache-xfer-windows:
     if: github.event.repository.visibility == 'public'
     runs-on: windows-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -149,6 +156,7 @@ jobs:
     runs-on: ${{ github.event.repository.visibility == 'public' && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     permissions:
       contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -211,6 +219,7 @@ jobs:
     runs-on: ${{ github.event.repository.visibility == 'public' && 'ubuntu-latest' || vars.CI_RUNNER || 'ubuntu-latest' }}
     permissions:
       contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 

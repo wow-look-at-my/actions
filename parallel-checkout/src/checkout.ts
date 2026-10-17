@@ -1,7 +1,10 @@
+import {execFileSync, spawn} from 'child_process';
+import * as fs from 'fs';
 import * as fsp from 'fs/promises';
+import * as os from 'os';
 import * as path from 'path';
 import {Git} from './git';
-import {Head, RefPlan, followed, gitdirFor, gitlinks, parseGitmodules, pickHead, resolveUrl} from './plan';
+import {Head, RefPlan, SHA, followed, gitdirFor, gitlinks, parseGitmodules, pickHead, resolveUrl} from './plan';
 
 export type Submodules = 'false' | 'true' | 'recursive';
 
@@ -26,6 +29,12 @@ export type Options = {
 	follow?: {branch: string; scope: string[]};
 	// lockHead gives back the commit this run locked for a followed submodule, and locks head when the run has none.
 	lockHead?: (url: string, branch: string, head: string) => Promise<string>;
+	// listHeads answers as `git ls-remote --symref URL HEAD REFS...` would, or undefined, and git then lists the remote.
+	listHeads?: (url: string, refs: string[]) => Promise<string | undefined>;
+	// A directory of bare repositories, one per url. Every fetch lands there, and a commit already there needs no fetch.
+	store?: string;
+	// refill writes stored worktrees out of a store repository without the caller waiting. The default is a detached process.
+	refill?: (workers: number, refills: Refill[]) => void;
 	log: (message: string) => void;
 };
 
@@ -42,6 +51,14 @@ type Repo = {
 	branch?: string;
 	// How far below this repo submodules are still taken.
 	submodules: Submodules;
+	// The store repository that holds this repository's objects, once the store answered.
+	objects?: string;
+	// The submodule paths of this repository's tree, once the tree is read.
+	links?: string[];
+	// True when a stored worktree moved into place, so git writes no files here.
+	placed?: boolean;
+	// True when this run wrote the git directory, so its config holds nothing it did not write.
+	fresh?: boolean;
 	// A label for the log.
 	label: string;
 };
@@ -50,16 +67,21 @@ export function ms(since: number): string {
 	return `${Date.now() - since}ms`;
 }
 
-// Checkout walks a repository and its submodule tree. A submodule starts once
-// its parent's worktree is written, because it lives inside that worktree.
-// Every worktree is written as soon as its own fetch lands. Nothing waits on
-// a sibling.
+// Checkout walks a repository and its submodule tree. Every repository is
+// fetched as soon as its commit is known. Every worktree is written as soon as
+// its fetch lands and its submodule directories exist. Nothing waits on a
+// sibling or on a parent's worktree.
 export class Checkout {
 	private repos = 0;
 	// Every repository this checkout wrote, so the config that lands after the tree is in place covers all of them.
 	private readonly written: Repo[] = [];
 	// Commands that write one repository's config are serialized, because git gives up on a held lock instead of waiting.
 	private readonly configLocks = new Map<string, Promise<void>>();
+	// Fetches into one store repository run one at a time, because a shallow fetch holds a lock git does not wait on.
+	private readonly storeLocks = new Map<string, Promise<unknown>>();
+	private templated?: Promise<{config: string; head: string}>;
+	// The store repositories this run fetched into, which compact rewrites.
+	private readonly fetchedStores = new Set<string>();
 
 	constructor(private readonly opts: Options) {}
 
@@ -76,15 +98,154 @@ export class Checkout {
 		};
 		const commit = await this.take(root, this.opts.rootTree);
 		// The per-repo config lands once the tree is in place, one writer at a time per repository.
-		await Promise.all(this.written.map(repo => this.configure(repo, this.opts.config)));
+		await Promise.all(this.written.map(repo => (repo.fresh ? this.append(repo, this.opts.config) : this.configure(repo, this.opts.config))));
 		return {commit, repos: this.repos};
 	}
 
-	private async take(repo: Repo, early?: () => Promise<Tree | undefined>, parentWritten?: Promise<void>): Promise<string> {
+	// treesOf is the store directory of one url's worktrees, and the commit they are named by.
+	private treesOf(repo: Repo): {dir: string; commit: string} | undefined {
+		const commit = wanted(repo);
+		if (this.opts.store === undefined || this.opts.store === '' || commit === undefined) {
+			return undefined;
+		}
+		return {dir: path.join(this.opts.store, 'trees', storeKey(repo.url)), commit};
+	}
+
+	// place moves a stored worktree of the commit into the repository's
+	// directory. A rename costs the same for any number of files. A tree that
+	// pins one commit at several paths keeps one copy per path, named commit~N.
+	private async place(repo: Repo): Promise<void> {
+		const trees = this.treesOf(repo);
+		if (trees === undefined) {
+			return;
+		}
+		let names: string[];
+		try {
+			names = (await fsp.readdir(trees.dir)).filter(name => name.split('~')[0] === trees.commit && !name.includes('.')).sort();
+		} catch {
+			return;
+		}
+		if (names.length > 0) {
+			// A rename needs the parent directory, which a first checkout into a new path lacks.
+			await fsp.mkdir(path.dirname(repo.dir), {recursive: true});
+		}
+		for (const name of names) {
+			try {
+				await fsp.rename(path.join(trees.dir, name), repo.dir);
+				repo.placed = true;
+				return;
+			} catch (error) {
+				const code = (error as {code?: string}).code;
+				// Another path of this run took that copy first.
+				if (code !== 'ENOENT') {
+					this.opts.log(`${repo.label}: the stored worktree did not move into place (${code}), so git writes it`);
+					return;
+				}
+			}
+		}
+	}
+
+	// compact rewrites every store repository this run fetched into as one pack
+	// of whole, uncompressed objects. A warm checkout then copies each file
+	// instead of inflating it and applying deltas, which on a large tree is most
+	// of its CPU.
+	// It also refills the stored worktrees, one per path plus a spare, so a
+	// second checkout of the commit in the same job finds one. The result counts
+	// what this run added, so a refill of a worktree the store had is not counted.
+	async compact(): Promise<number> {
+		const stores = [...this.fetchedStores];
+		const groups = new Map<string, Repo[]>();
+		for (const repo of this.written) {
+			const trees = this.treesOf(repo);
+			if (trees !== undefined) {
+				const key = path.join(trees.dir, trees.commit);
+				groups.set(key, [...(groups.get(key) ?? []), repo]);
+			}
+		}
+		const refills: Refill[] = [];
+		const [, kept] = await Promise.all([
+			Promise.all(stores.map(store => this.opts.git.must(['-c', 'pack.compression=0', 'repack', '-a', '-d', '-F', '--window=0', '-q'], store))),
+			Promise.all([...groups.values()].map(repos => this.keep(repos, refills))),
+		]);
+		if (refills.length > 0) {
+			// One process for every refill, because a process per repository costs more than the rest of this step.
+			(this.opts.refill ?? detachedRefill)(this.opts.workers, refills);
+			this.opts.log(`${refills.length} stored worktree(s) refill in the background`);
+		}
+		return stores.length + kept.reduce((sum, added) => sum + added, 0);
+	}
+
+	// keep refills the stored worktrees of one commit. A commit the store had
+	// is refilled by a detached process from the store's objects. The step
+	// ends with the checkout and a later edit to the worktree cannot reach the
+	// store. A commit new to the store is copied from the worktree before the
+	// step ends, so a cache saved after this step holds it.
+	private async keep(repos: Repo[], refills: Refill[]): Promise<number> {
+		const repo = repos[0];
+		const trees = this.treesOf(repo)!;
+		await fsp.mkdir(trees.dir, {recursive: true});
+		const names = new Set((await fsp.readdir(trees.dir)).filter(name => name.split('~')[0] === trees.commit && !name.includes('.')));
+		const free: string[] = [];
+		for (let copy = 0; free.length + names.size < repos.length + 1; copy++) {
+			const name = copy === 0 ? trees.commit : `${trees.commit}~${copy}`;
+			if (!names.has(name)) {
+				free.push(path.join(trees.dir, name));
+			}
+		}
+		if (free.length === 0) {
+			return 0;
+		}
+		const known = names.size > 0 || repos.some(each => each.placed);
+		if (known && repo.objects !== undefined) {
+			refills.push({store: repo.objects, commit: trees.commit, targets: free});
+			return 0;
+		}
+		// Only a commit new to the store can push an older one out.
+		await this.evict(trees.dir, trees.commit);
+		const own = path.join(repo.dir, '.git');
+		const links = new Set((repo.links ?? []).map(at => path.join(repo.dir, at)));
+		let added = 0;
+		for (const tree of free) {
+			const staging = `${tree}.${process.pid}`;
+			await fsp.rm(staging, {recursive: true, force: true});
+			await copyTree(repo.dir, staging, source => source !== own && !links.has(path.dirname(source)));
+			try {
+				await fsp.rename(staging, tree);
+				added += 1;
+			} catch (error) {
+				// Another job stored the same copy first.
+				await fsp.rm(staging, {recursive: true, force: true});
+				this.opts.log(`${repo.label}: the store already holds ${path.basename(tree)} (${(error as {code?: string}).code})`);
+			}
+		}
+		this.opts.log(`${repo.label}: ${added} worktree(s) stored for the next checkout`);
+		return added;
+	}
+
+	// evict keeps the newest worktrees of one url, so a store on a runner that
+	// keeps its tool cache does not grow with every commit.
+	private async evict(dir: string, keep: string): Promise<void> {
+		const entries = await fsp.readdir(dir, {withFileTypes: true});
+		const newest = new Map<string, number>();
+		for (const entry of entries) {
+			const commit = entry.name.split('~')[0];
+			if (!entry.isDirectory() || entry.name.includes('.') || !SHA.test(commit) || commit === keep) {
+				continue;
+			}
+			const mtime = (await fsp.stat(path.join(dir, entry.name))).mtimeMs;
+			newest.set(commit, Math.max(newest.get(commit) ?? 0, mtime));
+		}
+		const stale = new Set([...newest.entries()].sort((a, b) => b[1] - a[1]).slice(keptTrees - 1).map(([commit]) => commit));
+		await Promise.all(entries.filter(entry => stale.has(entry.name.split('~')[0])).map(entry => fsp.rm(path.join(dir, entry.name), {recursive: true, force: true})));
+	}
+
+	private async take(repo: Repo, early?: () => Promise<Tree | undefined>, parentReady?: Promise<void>): Promise<string> {
 		this.repos += 1;
-		// A submodule directory sits inside its parent's worktree. git checkout fails when that path appears while the parent checkout writes it.
-		await parentWritten;
 		const started = Date.now();
+		// The parent made this directory before its own checkout, so the git directory can link to it at once.
+		await parentReady;
+		// The stored worktree moves in before the git directory exists, because a rename needs an empty target.
+		await this.place(repo);
 		await this.init(repo);
 		const fetching = this.fetch(repo, started);
 
@@ -95,66 +256,165 @@ export class Checkout {
 		} else if (early === undefined) {
 			tree = fetching.then(commit => this.treeOf(repo, commit));
 		} else {
-			tree = early().then(found => found ?? fetching.then(commit => this.treeOf(repo, commit)));
+			// Whichever answers first wins: a store hit reads the tree locally before the API round trip lands.
+			const local = fetching.then(commit => this.treeOf(repo, commit));
+			tree = Promise.race([early().then(found => found ?? local), local]);
 		}
-		// Children write their worktrees inside this one, so they start once this checkout has written its own.
-		const written = fetching.then(() => this.writeTree(repo, started));
-		await Promise.all([written, tree.then(found => this.children(repo, found, written))]);
+		// git checkout dies when a directory it saw as missing appears while it writes.
+		const ready = tree.then(found => {
+			repo.links = found === undefined ? [] : [...found.links.keys()];
+			return this.makeSubmoduleDirs(repo, found);
+		});
+		const written = Promise.all([fetching, ready, parentReady]).then(() => this.writeTree(repo, started));
+		await Promise.all([written, tree.then(found => this.children(repo, found, ready))]);
 		return fetching;
 	}
 
 	private async fetch(repo: Repo, started: number): Promise<string> {
+		if (this.opts.store !== undefined && this.opts.store !== '') {
+			try {
+				const {commit, hit} = await this.fromStore(repo, this.opts.store);
+				this.opts.log(`${repo.label}: ${hit ? 'took' : 'fetched'} ${commit} ${hit ? 'from the store' : 'into the store'} in ${ms(started)}`);
+				return commit;
+			} catch (e) {
+				this.opts.log(`${repo.label}: the store failed, so it fetches directly: ${e instanceof Error ? e.message : String(e)}`);
+			}
+		}
 		const fetchArgs = ['fetch', '--no-tags', '--quiet'];
 		if (this.opts.depth > 0) {
 			fetchArgs.push(`--depth=${this.opts.depth}`);
 		}
-		await this.opts.git.must([...fetchArgs, 'origin', repo.refspec], repo.dir);
-		const commit = (await this.opts.git.must(['rev-parse', '--verify', `${repo.target}^{commit}`], repo.dir)).trim();
+		await this.opts.git.must([...fetchArgs, 'origin', repo.refspec], repo.gitdir);
+		const commit = (await this.opts.git.must(['rev-parse', '--verify', `${repo.target}^{commit}`], repo.gitdir)).trim();
 		this.opts.log(`${repo.label}: fetched ${commit} in ${ms(started)}`);
 		return commit;
+	}
+
+	// fromStore puts the target commit in this url's store repository, fetching
+	// only when the store lacks it, and points the repository at the store.
+	private async fromStore(repo: Repo, root: string): Promise<{commit: string; hit: boolean}> {
+		const git = this.opts.git;
+		const store = path.join(root, `${storeKey(repo.url)}.git`);
+		const spec = repo.refspec.replace(/^\+/, '');
+		const sep = spec.indexOf(':');
+		const want = sep < 0 ? spec : spec.slice(0, sep);
+		const local = sep < 0 ? '' : spec.slice(sep + 1);
+		const previous = this.storeLocks.get(store) ?? Promise.resolve();
+		const found = previous.catch(() => undefined).then(async () => {
+			if (!fs.existsSync(path.join(store, 'HEAD'))) {
+				await fsp.mkdir(store, {recursive: true});
+				await git.must(['init', '--quiet', '--bare', store]);
+				await git.must(['config', 'gc.auto', '0'], store);
+			}
+			// The ref this store keeps for every commit it fetched answers without a process. cat-file covers a commit fetched another way.
+			if (SHA.test(want) && (fs.existsSync(path.join(store, 'refs', 'parallel-checkout', want)) || (await git.run(['cat-file', '-e', `${want}^{commit}`], store)).code === 0)) {
+				return {commit: want, hit: true};
+			}
+			const keep = SHA.test(want) ? `refs/parallel-checkout/${want}` : `refs/parallel-checkout/fetch-${process.pid}`;
+			const fetchArgs = ['fetch', '--no-tags', '--quiet'];
+			if (this.opts.depth > 0) {
+				fetchArgs.push(`--depth=${this.opts.depth}`);
+			}
+			await git.must([...fetchArgs, repo.url, `+${want}:${keep}`], store);
+			this.fetchedStores.add(store);
+			const commit = (await git.must(['rev-parse', '--verify', `${keep}^{commit}`], store)).trim();
+			if (!SHA.test(want)) {
+				await git.must(['update-ref', `refs/parallel-checkout/${commit}`, commit], store);
+				await git.must(['update-ref', '-d', keep], store);
+			}
+			return {commit, hit: false};
+		});
+		this.storeLocks.set(store, found);
+		const {commit, hit} = await found;
+
+		await fsp.mkdir(path.join(repo.gitdir, 'objects', 'info'), {recursive: true});
+		await fsp.writeFile(path.join(repo.gitdir, 'objects', 'info', 'alternates'), `${path.join(store, 'objects')}\n`);
+		// Without the store's shallow list, git walks past a depth-limited commit into parents nobody fetched.
+		const shallow = path.join(store, 'shallow');
+		if (fs.existsSync(shallow)) {
+			await fsp.copyFile(shallow, path.join(repo.gitdir, 'shallow'));
+		}
+		// The target is the commit itself or the ref this writes, so it needs no rev-parse.
+		if (local !== '') {
+			await fsp.mkdir(path.dirname(path.join(repo.gitdir, local)), {recursive: true});
+			await fsp.writeFile(path.join(repo.gitdir, local), `${commit}\n`);
+		}
+		repo.objects = store;
+		return {commit, hit};
 	}
 
 	// treeOf reads a fetched commit's submodule facts out of the object store,
 	// so it runs while the worktree is still being written.
 	private async treeOf(repo: Repo, commit: string): Promise<Tree | undefined> {
 		const git = this.opts.git;
-		const listing = await git.must(['ls-tree', '-r', commit], repo.dir);
-		if (!/^100644 blob [0-9a-f]+\t\.gitmodules$/m.test(listing)) {
+		const where = repo.objects ?? repo.gitdir;
+		// Only the paths .gitmodules names are listed, which on a large tree is a small part of it.
+		const shown = await git.run(['show', `${commit}:.gitmodules`], where);
+		if (shown.code !== 0) {
 			return undefined;
 		}
-		return {gitmodules: await git.must(['show', `${commit}:.gitmodules`], repo.dir), links: gitlinks(listing)};
+		const gitmodules = shown.stdout;
+		const paths = parseGitmodules(gitmodules).map(module => module.path);
+		const listing = paths.length === 0 ? '' : await git.must(['ls-tree', '-r', commit, '--', ...paths], where);
+		return {gitmodules, links: gitlinks(listing)};
 	}
 
+	// init writes the git directory from the template one real `git init` made, so a tree of many repositories spawns no git per repository here.
 	private async init(repo: Repo): Promise<void> {
-		const git = this.opts.git;
-		await fsp.mkdir(repo.dir, {recursive: true});
-		const initArgs = ['init', '--quiet'];
-		const nested = repo.gitdir !== path.join(repo.dir, '.git');
-		if (nested) {
-			await fsp.mkdir(path.dirname(repo.gitdir), {recursive: true});
-			initArgs.push(`--separate-git-dir=${repo.gitdir}`);
-		}
-		await git.must([...initArgs, repo.dir]);
-		const settings: Array<[string, string]> = [['gc.auto', '0']];
-		if (nested) {
-			// The same relative links git's own submodule plumbing writes, so the tree still works if the workspace moves.
-			await fsp.writeFile(path.join(repo.dir, '.git'), `gitdir: ${path.relative(repo.dir, repo.gitdir)}\n`);
-			settings.unshift(['core.worktree', path.relative(repo.gitdir, repo.dir)]);
-		}
-		await this.configure(repo, settings);
 		this.written.push(repo);
-		// `remote add` writes this repository's config too, so it queues behind the same per-repository chain.
-		await this.serial(repo, ['remote', 'add', 'origin', repo.url]);
+		const settings: Array<[string, string]> = [
+			['gc.auto', '0'],
+			['remote.origin.url', repo.url],
+			['remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*'],
+		];
+		if (fs.existsSync(path.join(repo.gitdir, 'HEAD'))) {
+			// A repository already here keeps its own config, and gets only what the checkout reads.
+			await this.configure(repo, settings);
+			return;
+		}
+		const template = await this.template();
+		await fsp.mkdir(repo.dir, {recursive: true});
+		await Promise.all(['objects/info', 'objects/pack', 'refs/heads', 'refs/tags'].map(at => fsp.mkdir(path.join(repo.gitdir, at), {recursive: true})));
+		const quote = (text: string) => `"${text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+		let config = `${template.config}[gc]\n\tauto = 0\n[remote "origin"]\n\turl = ${quote(repo.url)}\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n`;
+		if (nested(repo)) {
+			// The same relative links git's own submodule plumbing writes, so the tree still works if the workspace moves.
+			config += `[core]\n\tworktree = ${quote(path.relative(repo.gitdir, repo.dir))}\n`;
+			await fsp.writeFile(path.join(repo.dir, '.git'), `gitdir: ${path.relative(repo.dir, repo.gitdir)}\n`);
+		}
+		await fsp.writeFile(path.join(repo.gitdir, 'HEAD'), template.head);
+		await fsp.writeFile(path.join(repo.gitdir, 'config'), config);
+		repo.fresh = true;
+	}
+
+	// template runs `git init` once, so every repository gets the core settings git probes from this file system.
+	private template(): Promise<{config: string; head: string}> {
+		this.templated ??= (async () => {
+			const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'parallel-checkout-template-'));
+			try {
+				await this.opts.git.must(['init', '--quiet', dir]);
+				const config = await fsp.readFile(path.join(dir, '.git', 'config'), 'utf8');
+				const head = await fsp.readFile(path.join(dir, '.git', 'HEAD'), 'utf8');
+				return {config: config.endsWith('\n') ? config : `${config}\n`, head};
+			} finally {
+				await fsp.rm(dir, {recursive: true, force: true});
+			}
+		})();
+		return this.templated;
 	}
 
 	private async writeTree(repo: Repo, started: number): Promise<void> {
-		const args = ['-c', `checkout.workers=${this.opts.workers}`, '-c', 'advice.detachedHead=false', 'checkout', '--quiet', '--force'];
-		if (repo.branch !== undefined) {
-			// --no-track keeps checkout out of .git/config, which the submodule registrations are writing at the same time.
-			args.push('--no-track', '-B', repo.branch);
+		if (repo.placed) {
+			await this.indexTree(repo);
+		} else {
+			const args = ['-c', `checkout.workers=${this.opts.workers}`, '-c', 'advice.detachedHead=false', 'checkout', '--quiet', '--force'];
+			if (repo.branch !== undefined) {
+				// --no-track keeps checkout out of .git/config, which the submodule registrations are writing at the same time.
+				args.push('--no-track', '-B', repo.branch);
+			}
+			args.push(repo.target);
+			await this.opts.git.must(args, repo.dir);
 		}
-		args.push(repo.target);
-		await this.opts.git.must(args, repo.dir);
 		if (repo.branch !== undefined) {
 			const branch = repo.branch;
 			await this.configure(repo, [
@@ -162,11 +422,36 @@ export class Checkout {
 				[`branch.${branch}.merge`, `refs/heads/${branch}`],
 			]);
 		}
-		this.opts.log(`${repo.label}: worktree written in ${ms(started)}`);
+		this.opts.log(`${repo.label}: worktree ${repo.placed ? 'taken from the store' : 'written'} in ${ms(started)}`);
+	}
+
+	// indexTree points HEAD at the commit and reads its tree into the index,
+	// over files already in place. The index then holds no file stats, so the
+	// first git status reads each file once and finds it clean.
+	private async indexTree(repo: Repo): Promise<void> {
+		// The refs are files, as init writes them, so only the index needs a git process.
+		const commit = wanted(repo)!;
+		if (repo.branch === undefined) {
+			await fsp.writeFile(path.join(repo.gitdir, 'HEAD'), `${commit}\n`);
+		} else {
+			const ref = path.join(repo.gitdir, 'refs', 'heads', repo.branch);
+			await fsp.mkdir(path.dirname(ref), {recursive: true});
+			await fsp.writeFile(ref, `${commit}\n`);
+			await fsp.writeFile(path.join(repo.gitdir, 'HEAD'), `ref: refs/heads/${repo.branch}\n`);
+		}
+		await this.opts.git.must(['read-tree', commit], repo.dir);
+	}
+
+	// makeSubmoduleDirs creates the directory of every submodule the tree pins.
+	private async makeSubmoduleDirs(repo: Repo, tree: Tree | undefined): Promise<void> {
+		if (tree === undefined) {
+			return;
+		}
+		await Promise.all([...tree.links.keys()].map(at => fsp.mkdir(path.join(repo.dir, at), {recursive: true})));
 	}
 
 	// children starts every submodule a tree names.
-	private async children(repo: Repo, tree: Tree | undefined, written: Promise<void>): Promise<void> {
+	private async children(repo: Repo, tree: Tree | undefined, ready: Promise<void>): Promise<void> {
 		if (tree === undefined) {
 			return;
 		}
@@ -192,23 +477,30 @@ export class Checkout {
 			};
 			// Only the superproject's direct submodules follow a branch; a dependency's own submodules sit at the commits it names.
 			const follow = repo.dir === this.opts.dir && this.opts.follow !== undefined && followed(url, this.opts.follow.scope) ? this.opts.follow : undefined;
+			const registered = this.register(repo, module.name, url);
+			if (follow === undefined) {
+				// The checkout reads nothing the registration writes, so both overlap.
+				tasks.push(Promise.all([registered, this.take(child, undefined, ready)]).then(([, commit]) => commit));
+				continue;
+			}
+			// Every followed head is asked for in this loop, so one request can answer them all.
+			const heading = this.headOf(child, follow.branch, module.branch);
 			tasks.push(
-				this.register(repo, module.name, url).then(async () => {
-					if (follow !== undefined) {
-						const head = await this.headOf(child, follow.branch, module.branch);
-						if (this.opts.lockHead !== undefined) {
-							const locked = await this.opts.lockHead(url, head.branch, head.sha);
-							if (locked !== head.sha) {
-								this.opts.log(`${child.label}: takes ${locked}, the commit this run locked on ${head.branch}, not the current head ${head.sha}`);
-							}
-							head.sha = locked;
+				Promise.all([registered, heading]).then(async ([, head]) => {
+					if (this.opts.lockHead !== undefined) {
+						const locked = await this.opts.lockHead(url, head.branch, head.sha);
+						if (locked !== head.sha) {
+							this.opts.log(`${child.label}: takes ${locked}, the commit this run locked on ${head.branch}, not the current head ${head.sha}`);
 						}
-						child.refspec = `+${head.sha}:refs/remotes/origin/${head.branch}`;
-						child.target = head.sha;
-						await this.configure(repo, [[`submodule.${module.name}.branch`, head.branch]]);
-						this.opts.log(`${child.label}: follows ${head.branch} at ${head.sha}, not the gitlink ${sha}`);
+						head.sha = locked;
 					}
-					return this.take(child, undefined, written);
+					child.refspec = `+${head.sha}:refs/remotes/origin/${head.branch}`;
+					child.target = head.sha;
+					// The checkout reads nothing this setting writes, so both overlap.
+					const recorded = this.configure(repo, [[`submodule.${module.name}.branch`, head.branch]]);
+					this.opts.log(`${child.label}: follows ${head.branch} at ${head.sha}, not the gitlink ${sha}`);
+					const [commit] = await Promise.all([this.take(child, undefined, ready), recorded]);
+					return commit;
 				}),
 			);
 		}
@@ -222,8 +514,9 @@ export class Checkout {
 		if (configured !== '' && configured !== '.' && configured !== here) {
 			refs.push(`refs/heads/${configured}`);
 		}
+		const listed = this.opts.listHeads === undefined ? undefined : await this.opts.listHeads(child.url, refs.filter(ref => ref !== 'HEAD'));
 		// Run inside the superproject, whose config.
-		const listing = await this.opts.git.must(['ls-remote', '--symref', child.url, ...refs], this.opts.dir);
+		const listing = listed ?? (await this.opts.git.must(['ls-remote', '--symref', child.url, ...refs], this.opts.dir));
 		try {
 			return pickHead(here, configured, listing);
 		} catch (error) {
@@ -233,11 +526,35 @@ export class Checkout {
 
 	// register records the submodule in its parent's config, which is what
 	// `git submodule status` and later submodule commands read.
+	// It appends one new section rather than spawning a git config per key, because every submodule of a parent queues on that parent's config.
 	private register(parent: Repo, name: string, url: string): Promise<void> {
-		return this.configure(parent, [
-			[`submodule.${name}.url`, url],
-			[`submodule.${name}.active`, 'true'],
-		]);
+		const quote = (text: string) => `"${text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+		const section = `[submodule ${quote(name)}]\n\turl = ${quote(url)}\n\tactive = true\n`;
+		const previous = this.configLocks.get(parent.gitdir) ?? Promise.resolve();
+		const next = previous.then(() => fsp.appendFile(path.join(parent.gitdir, 'config'), section));
+		this.configLocks.set(parent.gitdir, next);
+		return next;
+	}
+
+	// append adds settings to the config of a repository this run created, as
+	// one write. A key given twice keeps both values, as `git config --add` does.
+	private append(repo: Repo, settings: Array<[string, string]>): Promise<void> {
+		if (settings.length === 0) {
+			return Promise.resolve();
+		}
+		const quote = (text: string) => `"${text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+		const text = settings
+			.map(([key, value]) => {
+				const first = key.indexOf('.');
+				const last = key.lastIndexOf('.');
+				const section = first === last ? `[${key.slice(0, first)}]` : `[${key.slice(0, first)} ${quote(key.slice(first + 1, last))}]`;
+				return `${section}\n\t${key.slice(last + 1)} = ${quote(value)}\n`;
+			})
+			.join('');
+		const previous = this.configLocks.get(repo.gitdir) ?? Promise.resolve();
+		const next = previous.then(() => fsp.appendFile(path.join(repo.gitdir, 'config'), text));
+		this.configLocks.set(repo.gitdir, next);
+		return next;
 	}
 
 	// configure writes into one repository's config, one writer at a time per
@@ -246,22 +563,96 @@ export class Checkout {
 		const previous = this.configLocks.get(repo.gitdir) ?? Promise.resolve();
 		const next = previous.then(async () => {
 			for (const [key, value] of settings) {
-				await this.opts.git.must(['config', '--local', key, value], repo.dir);
+				await this.opts.git.must(['config', '--local', key, value], repo.gitdir);
 			}
 		});
 		this.configLocks.set(repo.gitdir, next);
 		return next;
 	}
+}
 
-	// serial runs a command. That writes one repository's config, queued behind
-	// the same per-repository chain the `git config` calls use, since `git remote
-	// add` writes that file too.
-	private serial(repo: Repo, args: string[]): Promise<void> {
-		const previous = this.configLocks.get(repo.gitdir) ?? Promise.resolve();
-		const next = previous.then(async () => {
-			await this.opts.git.must(args, repo.dir);
-		});
-		this.configLocks.set(repo.gitdir, next);
-		return next;
+// The variable that makes the action's own entry point run a refill instead of a checkout.
+export const refillVariable = 'PARALLEL_CHECKOUT_REFILL';
+
+// refillNow writes each target worktree out of the store. It reads the commit
+// into a scratch index, writes the files, then renames the result into place.
+// A target that fails leaves nothing behind, and the next checkout writes it.
+export function refillNow(workers: number, refills: Refill[]): void {
+	for (const {store, commit, targets} of refills) {
+		for (const target of targets) {
+			const staging = `${target}.${process.pid}`;
+			const env = {...process.env, GIT_DIR: store, GIT_INDEX_FILE: `${staging}.index`};
+			try {
+				fs.mkdirSync(staging);
+				execFileSync('git', ['read-tree', commit], {env, stdio: 'ignore'});
+				execFileSync('git', ['-c', `checkout.workers=${workers}`, '--work-tree', staging, 'checkout-index', '-a', '-f'], {env, stdio: 'ignore'});
+				fs.renameSync(staging, target);
+			} catch {
+				fs.rmSync(staging, {recursive: true, force: true});
+			}
+			fs.rmSync(`${staging}.index`, {force: true});
+		}
 	}
+}
+
+// A stored worktree to write: the store repository that holds the commit, and the paths its copies go to.
+export type Refill = {store: string; commit: string; targets: string[]};
+
+// detachedRefill runs refillNow in a detached copy of this script and does not wait for it.
+export function detachedRefill(workers: number, refills: Refill[]): void {
+	const child = spawn(process.execPath, [process.argv[1], String(workers), JSON.stringify(refills)], {
+		detached: true,
+		stdio: 'ignore',
+		env: {...process.env, [refillVariable]: '1'},
+	});
+	child.unref();
+	// The refill gives way to whatever the job runs next, a checkout included.
+	if (child.pid !== undefined) {
+		try {
+			os.setPriority(child.pid, 19);
+		} catch {
+		}
+	}
+}
+
+// copyTree copies a directory tree, every directory's entries at once. It
+// clones a file where the file system can, keeps each file's mode, and keeps
+// each symbolic link as written. It skips an entry the filter refuses.
+async function copyTree(from: string, to: string, take: (source: string) => boolean): Promise<void> {
+	await fsp.mkdir(to);
+	const entries = await fsp.readdir(from, {withFileTypes: true});
+	await Promise.all(
+		entries.map(async entry => {
+			const source = path.join(from, entry.name);
+			if (!take(source)) {
+				return;
+			}
+			const target = path.join(to, entry.name);
+			if (entry.isDirectory()) {
+				await copyTree(source, target, take);
+			} else if (entry.isSymbolicLink()) {
+				await fsp.symlink(await fsp.readlink(source), target);
+			} else {
+				await fsp.copyFile(source, target, fs.constants.COPYFILE_FICLONE);
+			}
+		}),
+	);
+}
+
+// How many worktrees of one url the store keeps.
+const keptTrees = 4;
+
+function storeKey(url: string): string {
+	return url.replace(/^[a-z]+:\/\//, '').replace(/[^A-Za-z0-9._-]+/g, '_');
+}
+
+// wanted is the commit a repository's fetch asks for, when the fetch names one.
+function wanted(repo: Repo): string | undefined {
+	const want = repo.refspec.replace(/^\+/, '').split(':')[0];
+	return SHA.test(want) ? want : undefined;
+}
+
+// nested says whether a repository's git directory lives apart from its worktree, as a submodule's does.
+function nested(repo: Repo): boolean {
+	return repo.gitdir !== path.join(repo.dir, '.git');
 }
