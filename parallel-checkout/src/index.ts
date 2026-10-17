@@ -172,6 +172,8 @@ async function run(): Promise<void> {
 	const added = await checkout.compact();
 	core.setOutput('store-added', String(added));
 	core.info(`the store gained ${added} entr${added === 1 ? 'y' : 'ies'}, and is ready for the next checkout ${Date.now() - compacting}ms later`);
+	// From the start of the node process, so the figure covers the whole step but the runner's own setup.
+	core.info(`the action ran for ${Math.round(performance.now())}ms`);
 }
 
 if (process.env[refillVariable] === '1') {
