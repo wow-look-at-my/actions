@@ -40,7 +40,7 @@ inputs:
     required: false
     default: ''
   store:
-    description: 'A directory of bare repositories, one per url, that every fetch fills. A commit already there is not fetched again. Defaults to parallel-checkout under RUNNER_TOOL_CACHE.'
+    description: 'A directory of bare repositories, one per url, that every fetch fills, and of the worktrees of recent commits. A commit already there is not fetched again, and its stored worktree moves into place instead of being written. Defaults to parallel-checkout under RUNNER_TOOL_CACHE.'
     required: false
     default: ''
   jobs:
@@ -61,8 +61,8 @@ outputs:
     description: 'The commit the worktree is at.'
   ref:
     description: 'The full ref that was checked out, or the commit when a bare commit was asked for.'
-  store-fetched:
-    description: 'How many store repositories this run fetched into. Zero means the store already held every commit, so a cache of the store need not be saved again.'
+  store-added:
+    description: 'How many repositories and worktrees this run added to the store. Zero means the store already held everything, so a cache of the store need not be saved again.'
 
 runs:
   using: node24

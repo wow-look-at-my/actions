@@ -48,6 +48,10 @@ type Repo = {
 	submodules: Submodules;
 	// The store repository that holds this repository's objects, once the store answered.
 	objects?: string;
+	// The submodule paths of this repository's tree, once the tree is read.
+	links?: string[];
+	// True when a stored worktree moved into place, so git writes no files here.
+	placed?: boolean;
 	// A label for the log.
 	label: string;
 };
@@ -95,10 +99,84 @@ export class Checkout {
 	// of whole, uncompressed objects. A warm checkout then copies each file
 	// instead of inflating it and applying deltas, which on a large tree is most
 	// of its CPU.
+	// It also stores a copy of every worktree the store lacks. The result counts
+	// what this run added, so a worktree this run took and put back is not counted.
 	async compact(): Promise<number> {
 		const stores = [...this.fetchedStores];
-		await Promise.all(stores.map(store => this.opts.git.must(['-c', 'pack.compression=0', 'repack', '-a', '-d', '-F', '--window=0', '-q'], store)));
-		return stores.length;
+		const [, kept] = await Promise.all([
+			Promise.all(stores.map(store => this.opts.git.must(['-c', 'pack.compression=0', 'repack', '-a', '-d', '-F', '--window=0', '-q'], store))),
+			Promise.all(this.written.map(repo => this.keep(repo))),
+		]);
+		return stores.length + kept.filter(added => added).length;
+	}
+
+	// treePath is where the store keeps the worktree of one commit of one url.
+	private treePath(repo: Repo): string | undefined {
+		const commit = wanted(repo);
+		if (this.opts.store === undefined || this.opts.store === '' || commit === undefined) {
+			return undefined;
+		}
+		return path.join(this.opts.store, 'trees', storeKey(repo.url), commit);
+	}
+
+	// place moves the stored worktree of the commit into the repository's
+	// directory. A rename costs the same for any number of files.
+	private async place(repo: Repo): Promise<void> {
+		const tree = this.treePath(repo);
+		if (tree === undefined) {
+			return;
+		}
+		try {
+			await fsp.rename(tree, repo.dir);
+		} catch (error) {
+			const code = (error as {code?: string}).code;
+			if (code !== 'ENOENT') {
+				this.opts.log(`${repo.label}: the stored worktree did not move into place (${code}), so git writes it`);
+			}
+			return;
+		}
+		repo.placed = true;
+	}
+
+	// keep copies a finished worktree into the store, without its git link and
+	// without the contents of its submodules. It gives back whether the store
+	// gained a worktree it did not have at the start of this run.
+	private async keep(repo: Repo): Promise<boolean> {
+		const tree = this.treePath(repo);
+		if (tree === undefined || fs.existsSync(tree)) {
+			return false;
+		}
+		const own = path.join(repo.dir, '.git');
+		const links = new Set((repo.links ?? []).map(at => path.join(repo.dir, at)));
+		const staging = `${tree}.${process.pid}`;
+		await fsp.rm(staging, {recursive: true, force: true});
+		await fsp.cp(repo.dir, staging, {
+			recursive: true,
+			verbatimSymlinks: true,
+			mode: fs.constants.COPYFILE_FICLONE,
+			filter: source => source !== own && !links.has(path.dirname(source)),
+		});
+		await this.evict(path.dirname(tree));
+		try {
+			await fsp.rename(staging, tree);
+		} catch (error) {
+			// Another job stored the same commit first.
+			await fsp.rm(staging, {recursive: true, force: true});
+			this.opts.log(`${repo.label}: the store already holds this worktree (${(error as {code?: string}).code})`);
+			return false;
+		}
+		this.opts.log(`${repo.label}: worktree stored for the next checkout`);
+		return !repo.placed;
+	}
+
+	// evict keeps the newest worktrees of one url, so a store on a runner that
+	// keeps its tool cache does not grow with every commit.
+	private async evict(dir: string): Promise<void> {
+		const entries = await fsp.readdir(dir, {withFileTypes: true});
+		const trees = entries.filter(entry => entry.isDirectory() && SHA.test(entry.name));
+		const stamped = await Promise.all(trees.map(async entry => ({at: path.join(dir, entry.name), mtime: (await fsp.stat(path.join(dir, entry.name))).mtimeMs})));
+		stamped.sort((a, b) => b.mtime - a.mtime);
+		await Promise.all(stamped.slice(keptTrees - 1).map(entry => fsp.rm(entry.at, {recursive: true, force: true})));
 	}
 
 	private async take(repo: Repo, early?: () => Promise<Tree | undefined>, parentReady?: Promise<void>): Promise<string> {
@@ -106,6 +184,8 @@ export class Checkout {
 		const started = Date.now();
 		// The parent made this directory before its own checkout, so the git directory can link to it at once.
 		await parentReady;
+		// The stored worktree moves in before the git directory exists, because a rename needs an empty target.
+		await this.place(repo);
 		await this.init(repo);
 		const fetching = this.fetch(repo, started);
 
@@ -121,7 +201,10 @@ export class Checkout {
 			tree = Promise.race([early().then(found => found ?? local), local]);
 		}
 		// git checkout dies when a directory it saw as missing appears while it writes.
-		const ready = tree.then(found => this.makeSubmoduleDirs(repo, found));
+		const ready = tree.then(found => {
+			repo.links = found === undefined ? [] : [...found.links.keys()];
+			return this.makeSubmoduleDirs(repo, found);
+		});
 		const written = Promise.all([fetching, ready, parentReady]).then(() => this.writeTree(repo, started));
 		await Promise.all([written, tree.then(found => this.children(repo, found, ready))]);
 		return fetching;
@@ -151,7 +234,7 @@ export class Checkout {
 	// only when the store lacks it, and points the repository at the store.
 	private async fromStore(repo: Repo, root: string): Promise<{commit: string; hit: boolean}> {
 		const git = this.opts.git;
-		const store = path.join(root, `${repo.url.replace(/^[a-z]+:\/\//, '').replace(/[^A-Za-z0-9._-]+/g, '_')}.git`);
+		const store = path.join(root, `${storeKey(repo.url)}.git`);
 		const spec = repo.refspec.replace(/^\+/, '');
 		const sep = spec.indexOf(':');
 		const want = sep < 0 ? spec : spec.slice(0, sep);
@@ -256,13 +339,17 @@ export class Checkout {
 	}
 
 	private async writeTree(repo: Repo, started: number): Promise<void> {
-		const args = ['-c', `checkout.workers=${this.opts.workers}`, '-c', 'advice.detachedHead=false', 'checkout', '--quiet', '--force'];
-		if (repo.branch !== undefined) {
-			// --no-track keeps checkout out of .git/config, which the submodule registrations are writing at the same time.
-			args.push('--no-track', '-B', repo.branch);
+		if (repo.placed) {
+			await this.indexTree(repo);
+		} else {
+			const args = ['-c', `checkout.workers=${this.opts.workers}`, '-c', 'advice.detachedHead=false', 'checkout', '--quiet', '--force'];
+			if (repo.branch !== undefined) {
+				// --no-track keeps checkout out of .git/config, which the submodule registrations are writing at the same time.
+				args.push('--no-track', '-B', repo.branch);
+			}
+			args.push(repo.target);
+			await this.opts.git.must(args, repo.dir);
 		}
-		args.push(repo.target);
-		await this.opts.git.must(args, repo.dir);
 		if (repo.branch !== undefined) {
 			const branch = repo.branch;
 			await this.configure(repo, [
@@ -270,7 +357,22 @@ export class Checkout {
 				[`branch.${branch}.merge`, `refs/heads/${branch}`],
 			]);
 		}
-		this.opts.log(`${repo.label}: worktree written in ${ms(started)}`);
+		this.opts.log(`${repo.label}: worktree ${repo.placed ? 'taken from the store' : 'written'} in ${ms(started)}`);
+	}
+
+	// indexTree points HEAD at the commit and reads its tree into the index,
+	// over files already in place. The index then holds no file stats, so the
+	// first git status reads each file once and finds it clean.
+	private async indexTree(repo: Repo): Promise<void> {
+		const git = this.opts.git;
+		const commit = wanted(repo)!;
+		if (repo.branch === undefined) {
+			await git.must(['update-ref', '--no-deref', 'HEAD', commit], repo.dir);
+		} else {
+			await git.must(['update-ref', `refs/heads/${repo.branch}`, commit], repo.dir);
+			await git.must(['symbolic-ref', 'HEAD', `refs/heads/${repo.branch}`], repo.dir);
+		}
+		await git.must(['read-tree', commit], repo.dir);
 	}
 
 	// makeSubmoduleDirs creates the directory of every submodule the tree pins.
@@ -375,6 +477,19 @@ export class Checkout {
 		this.configLocks.set(repo.gitdir, next);
 		return next;
 	}
+}
+
+// How many worktrees of one url the store keeps.
+const keptTrees = 4;
+
+function storeKey(url: string): string {
+	return url.replace(/^[a-z]+:\/\//, '').replace(/[^A-Za-z0-9._-]+/g, '_');
+}
+
+// wanted is the commit a repository's fetch asks for, when the fetch names one.
+function wanted(repo: Repo): string | undefined {
+	const want = repo.refspec.replace(/^\+/, '').split(':')[0];
+	return SHA.test(want) ? want : undefined;
 }
 
 // nested says whether a repository's git directory lives apart from its worktree, as a submodule's does.

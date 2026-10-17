@@ -163,11 +163,9 @@ async function run(): Promise<void> {
 	core.setOutput('ref', ref);
 	core.info(`${repos} repositor${repos === 1 ? 'y' : 'ies'} checked out in ${Date.now() - started}ms`);
 	const compacting = Date.now();
-	const compacted = await checkout.compact();
-	core.setOutput('store-fetched', String(compacted));
-	if (compacted > 0) {
-		core.info(`${compacted} store repositor${compacted === 1 ? 'y' : 'ies'} repacked for the next checkout in ${Date.now() - compacting}ms`);
-	}
+	const added = await checkout.compact();
+	core.setOutput('store-added', String(added));
+	core.info(`the store gained ${added} entr${added === 1 ? 'y' : 'ies'}, and is ready for the next checkout ${Date.now() - compacting}ms later`);
 }
 
 run().catch((error: unknown) => {

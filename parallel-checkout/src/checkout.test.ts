@@ -215,6 +215,49 @@ test('a second checkout takes every commit from the store and fetches nothing', 
 	assert.strictEqual(sh(['rev-parse', 'refs/remotes/origin/main'], dir).trim(), head(fx.top));
 });
 
+test('a checkout of a stored commit moves the stored worktree in, and git finds it clean', async () => {
+	const fx = fixture();
+	const store = path.join(fx.root, 'store');
+	const run = async (into: string) => {
+		const log: string[] = [];
+		const checkout = new Checkout({
+			git: new Git(new Pool(8), ['-c', 'protocol.file.allow=always']),
+			dir: path.join(fx.root, into),
+			url: fx.top,
+			plan: planRef('refs/heads/main', head(fx.top)),
+			depth: 1,
+			submodules: 'recursive',
+			workers: 2,
+			config: [],
+			store,
+			log: message => log.push(message),
+		});
+		await checkout.run();
+		return {log, added: await checkout.compact()};
+	};
+	const first = await run('one');
+	assert.strictEqual(first.added, 8, first.log.join('\n'));
+	assert.strictEqual(first.log.filter(line => line.includes('worktree written')).length, 4, first.log.join('\n'));
+	const second = await run('two');
+	assert.strictEqual(second.log.filter(line => line.includes('worktree taken from the store')).length, 4, second.log.join('\n'));
+	// Each worktree went back into the store, and none of them is new to it.
+	assert.strictEqual(second.added, 0, second.log.join('\n'));
+	assert.strictEqual(second.log.filter(line => line.includes('worktree stored')).length, 4, second.log.join('\n'));
+
+	const dir = path.join(fx.root, 'two');
+	assert.strictEqual(fs.readFileSync(path.join(dir, 'vendor/mid/deps/leaf/leaf.txt'), 'utf8'), 'leaf\n');
+	assert.strictEqual(sh(['status', '--porcelain'], dir), '');
+	assert.strictEqual(sh(['rev-parse', '--abbrev-ref', 'HEAD'], dir).trim(), 'main');
+	const status = sh(['submodule', 'status', '--recursive'], dir);
+	assert.match(status, new RegExp(`^ ${head(fx.mid)} vendor/mid`, 'm'));
+	assert.match(status, new RegExp(`^ ${head(fx.leaf)} vendor/mid/deps/leaf`, 'm'));
+	// A stored worktree carries no git link and no submodule contents.
+	const kept = path.join(store, 'trees');
+	const topTree = path.join(kept, fs.readdirSync(kept).find(name => name.endsWith('top'))!, head(fx.top));
+	assert.ok(!fs.existsSync(path.join(topTree, '.git')));
+	assert.deepStrictEqual(fs.readdirSync(path.join(topTree, 'vendor/mid')), []);
+});
+
 test('one level of submodules stops at the first level', async () => {
 	const fx = fixture();
 	const dir = path.join(fx.root, 'work');

@@ -146,9 +146,9 @@ runs:
         fi
         exit "$fail"
 
-    # Saved only when a checkout fetched something the restored store lacked.
+    # Saved only when a checkout added something the restored store lacked.
     - name: Save the object store
-      if: steps.gosmo.outputs.store-fetched != '0' || steps.follow.outputs.store-fetched != '0'
+      if: steps.gosmo.outputs.store-added != '0' || steps.follow.outputs.store-added != '0'
       uses: actions/cache/save@v4
       with:
         path: ${{ runner.tool_cache }}/parallel-checkout
