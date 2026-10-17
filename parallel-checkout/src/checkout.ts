@@ -75,6 +75,8 @@ export class Checkout {
 	private templated?: Promise<{config: string; head: string}>;
 	// The store repositories this run fetched into, which compact rewrites.
 	private readonly fetchedStores = new Set<string>();
+	// How many copies of one commit's worktree this run has stored so far.
+	private readonly copies = new Map<string, number>();
 
 	constructor(private readonly opts: Options) {}
 
@@ -110,53 +112,67 @@ export class Checkout {
 		return stores.length + kept.filter(added => added).length;
 	}
 
-	// treePath is where the store keeps the worktree of one commit of one url.
-	private treePath(repo: Repo): string | undefined {
+	// treesOf is the store directory of one url's worktrees, and the commit they are named by.
+	private treesOf(repo: Repo): {dir: string; commit: string} | undefined {
 		const commit = wanted(repo);
 		if (this.opts.store === undefined || this.opts.store === '' || commit === undefined) {
 			return undefined;
 		}
-		return path.join(this.opts.store, 'trees', storeKey(repo.url), commit);
+		return {dir: path.join(this.opts.store, 'trees', storeKey(repo.url)), commit};
 	}
 
-	// place moves the stored worktree of the commit into the repository's
-	// directory. A rename costs the same for any number of files.
+	// place moves a stored worktree of the commit into the repository's
+	// directory. A rename costs the same for any number of files. A tree that
+	// pins one commit at several paths keeps one copy per path, named commit~N.
 	private async place(repo: Repo): Promise<void> {
-		const tree = this.treePath(repo);
-		if (tree === undefined) {
+		const trees = this.treesOf(repo);
+		if (trees === undefined) {
 			return;
 		}
+		let names: string[];
 		try {
-			await fsp.rename(tree, repo.dir);
-		} catch (error) {
-			const code = (error as {code?: string}).code;
-			if (code !== 'ENOENT') {
-				this.opts.log(`${repo.label}: the stored worktree did not move into place (${code}), so git writes it`);
-			}
+			names = (await fsp.readdir(trees.dir)).filter(name => name.split('~')[0] === trees.commit && !name.includes('.')).sort();
+		} catch {
 			return;
 		}
-		repo.placed = true;
+		for (const name of names) {
+			try {
+				await fsp.rename(path.join(trees.dir, name), repo.dir);
+				repo.placed = true;
+				return;
+			} catch (error) {
+				const code = (error as {code?: string}).code;
+				// Another path of this run took that copy first.
+				if (code !== 'ENOENT') {
+					this.opts.log(`${repo.label}: the stored worktree did not move into place (${code}), so git writes it`);
+					return;
+				}
+			}
+		}
 	}
 
 	// keep copies a finished worktree into the store, without its git link and
 	// without the contents of its submodules. It gives back whether the store
 	// gained a worktree it did not have at the start of this run.
 	private async keep(repo: Repo): Promise<boolean> {
-		const tree = this.treePath(repo);
-		if (tree === undefined || fs.existsSync(tree)) {
+		const trees = this.treesOf(repo);
+		if (trees === undefined) {
+			return false;
+		}
+		const key = path.join(trees.dir, trees.commit);
+		const copy = this.copies.get(key) ?? 0;
+		this.copies.set(key, copy + 1);
+		const tree = copy === 0 ? key : `${key}~${copy}`;
+		if (fs.existsSync(tree)) {
 			return false;
 		}
 		const own = path.join(repo.dir, '.git');
 		const links = new Set((repo.links ?? []).map(at => path.join(repo.dir, at)));
 		const staging = `${tree}.${process.pid}`;
 		await fsp.rm(staging, {recursive: true, force: true});
-		await fsp.cp(repo.dir, staging, {
-			recursive: true,
-			verbatimSymlinks: true,
-			mode: fs.constants.COPYFILE_FICLONE,
-			filter: source => source !== own && !links.has(path.dirname(source)),
-		});
-		await this.evict(path.dirname(tree));
+		await fsp.mkdir(trees.dir, {recursive: true});
+		await copyTree(repo.dir, staging, source => source !== own && !links.has(path.dirname(source)));
+		await this.evict(trees.dir, trees.commit);
 		try {
 			await fsp.rename(staging, tree);
 		} catch (error) {
@@ -171,12 +187,19 @@ export class Checkout {
 
 	// evict keeps the newest worktrees of one url, so a store on a runner that
 	// keeps its tool cache does not grow with every commit.
-	private async evict(dir: string): Promise<void> {
+	private async evict(dir: string, keep: string): Promise<void> {
 		const entries = await fsp.readdir(dir, {withFileTypes: true});
-		const trees = entries.filter(entry => entry.isDirectory() && SHA.test(entry.name));
-		const stamped = await Promise.all(trees.map(async entry => ({at: path.join(dir, entry.name), mtime: (await fsp.stat(path.join(dir, entry.name))).mtimeMs})));
-		stamped.sort((a, b) => b.mtime - a.mtime);
-		await Promise.all(stamped.slice(keptTrees - 1).map(entry => fsp.rm(entry.at, {recursive: true, force: true})));
+		const newest = new Map<string, number>();
+		for (const entry of entries) {
+			const commit = entry.name.split('~')[0];
+			if (!entry.isDirectory() || entry.name.includes('.') || !SHA.test(commit) || commit === keep) {
+				continue;
+			}
+			const mtime = (await fsp.stat(path.join(dir, entry.name))).mtimeMs;
+			newest.set(commit, Math.max(newest.get(commit) ?? 0, mtime));
+		}
+		const stale = new Set([...newest.entries()].sort((a, b) => b[1] - a[1]).slice(keptTrees - 1).map(([commit]) => commit));
+		await Promise.all(entries.filter(entry => stale.has(entry.name.split('~')[0])).map(entry => fsp.rm(path.join(dir, entry.name), {recursive: true, force: true})));
 	}
 
 	private async take(repo: Repo, early?: () => Promise<Tree | undefined>, parentReady?: Promise<void>): Promise<string> {
@@ -477,6 +500,30 @@ export class Checkout {
 		this.configLocks.set(repo.gitdir, next);
 		return next;
 	}
+}
+
+// copyTree copies a directory tree, every directory's entries at once. It
+// clones a file where the file system can, keeps each file's mode, and keeps
+// each symbolic link as written. It skips an entry the filter refuses.
+async function copyTree(from: string, to: string, take: (source: string) => boolean): Promise<void> {
+	await fsp.mkdir(to);
+	const entries = await fsp.readdir(from, {withFileTypes: true});
+	await Promise.all(
+		entries.map(async entry => {
+			const source = path.join(from, entry.name);
+			if (!take(source)) {
+				return;
+			}
+			const target = path.join(to, entry.name);
+			if (entry.isDirectory()) {
+				await copyTree(source, target, take);
+			} else if (entry.isSymbolicLink()) {
+				await fsp.symlink(await fsp.readlink(source), target);
+			} else {
+				await fsp.copyFile(source, target, fs.constants.COPYFILE_FICLONE);
+			}
+		}),
+	);
 }
 
 // How many worktrees of one url the store keeps.
