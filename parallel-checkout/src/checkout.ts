@@ -315,11 +315,15 @@ export class Checkout {
 	private async treeOf(repo: Repo, commit: string): Promise<Tree | undefined> {
 		const git = this.opts.git;
 		const where = repo.objects ?? repo.gitdir;
-		const listing = await git.must(['ls-tree', '-r', commit], where);
-		if (!/^100644 blob [0-9a-f]+\t\.gitmodules$/m.test(listing)) {
+		// Only the paths .gitmodules names are listed, which on a large tree is a small part of it.
+		const top = await git.must(['ls-tree', commit, '--', '.gitmodules'], where);
+		if (!/^100644 blob [0-9a-f]+\t\.gitmodules$/m.test(top)) {
 			return undefined;
 		}
-		return {gitmodules: await git.must(['show', `${commit}:.gitmodules`], where), links: gitlinks(listing)};
+		const gitmodules = await git.must(['show', `${commit}:.gitmodules`], where);
+		const paths = parseGitmodules(gitmodules).map(module => module.path);
+		const listing = paths.length === 0 ? '' : await git.must(['ls-tree', '-r', commit, '--', ...paths], where);
+		return {gitmodules, links: gitlinks(listing)};
 	}
 
 	// init writes the git directory from the template one real `git init` made, so a tree of many repositories spawns no git per repository here.
@@ -455,9 +459,11 @@ export class Checkout {
 					}
 					child.refspec = `+${head.sha}:refs/remotes/origin/${head.branch}`;
 					child.target = head.sha;
-					await this.configure(repo, [[`submodule.${module.name}.branch`, head.branch]]);
+					// The checkout reads nothing this setting writes, so both overlap.
+					const recorded = this.configure(repo, [[`submodule.${module.name}.branch`, head.branch]]);
 					this.opts.log(`${child.label}: follows ${head.branch} at ${head.sha}, not the gitlink ${sha}`);
-					return this.take(child, undefined, ready);
+					const [commit] = await Promise.all([this.take(child, undefined, ready), recorded]);
+					return commit;
 				}),
 			);
 		}
