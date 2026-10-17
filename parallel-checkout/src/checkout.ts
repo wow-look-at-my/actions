@@ -611,7 +611,6 @@ export function detachedRefill(workers: number, refills: Refill[]): void {
 		try {
 			os.setPriority(child.pid, 19);
 		} catch {
-			// A runner that refuses the change still refills, at the same priority.
 		}
 	}
 }
