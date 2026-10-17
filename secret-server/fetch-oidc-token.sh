@@ -1,34 +1,20 @@
 # !/usr/bin/env bash Prints the OIDC token GitHub issues for $AUDIENCE, read from the runner's token endpoint.
 set -uo pipefail
 
-readonly RETRY_DELAY_SECONDS=5
+source "$(dirname "${BASH_SOURCE[0]}")/retry.sh"
 
 if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
 	echo "::error::OIDC token not available. Add 'permissions: { id-token: write }' to your workflow." >&2
 	exit 1
 fi
 
-attempt=0
-while true; do
-	attempt=$((attempt + 1))
+# Every answer but a token is asked again.
+judge_token() {
+	[ "${status}" = "200" ] || return 1
+	local token
+	token=$(echo "${body}" | jq -r '.value // empty' 2>/dev/null)
+	[ -n "${token}" ] || return 1
+	printf '%s\n' "${token}"
+}
 
-	response=$(curl -sS -w '\n%{http_code}' \
-		-H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
-		"${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${AUDIENCE}")
-	status=$(echo "${response}" | tail -1)
-	body=$(echo "${response}" | grep -v '^[0-9][0-9][0-9]$' || true)
-
-	if [ "${status}" = "200" ]; then
-		token=$(echo "${body}" | jq -r '.value // empty' 2>/dev/null)
-		if [ -n "${token}" ]; then
-			printf '%s\n' "${token}"
-			exit 0
-		fi
-		# Say what it was.
-		echo "::warning::attempt ${attempt}: the OIDC endpoint returned 200 with no .value: ${body}" >&2
-	else
-		echo "::warning::attempt ${attempt}: the OIDC endpoint returned HTTP ${status}: ${body}" >&2
-	fi
-
-	sleep "${RETRY_DELAY_SECONDS}"
-done
+retry_get "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${AUDIENCE}" "${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" judge_token

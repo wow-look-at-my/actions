@@ -30,17 +30,8 @@ runs:
 
         OIDC_TOKEN=$(bash "$GITHUB_ACTION_PATH/fetch-oidc-token.sh") || exit 1
 
-        # Fetch secrets from the server
-        HTTP_RESPONSE=$(curl -s -w "\n%{http_code}" -H "Authorization: Bearer ${OIDC_TOKEN}" \
-          "${{ inputs.url }}/github/v1/secrets")
-
-        HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tail -1)
-        SECRETS=$(echo "$HTTP_RESPONSE" | sed '$d')
-
-        if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
-          echo "::error::Secret server returned HTTP ${HTTP_STATUS}: ${SECRETS}"
-          exit 1
-        fi
+        export OIDC_TOKEN SECRET_SERVER_URL="${{ inputs.url }}"
+        SECRETS=$(bash "$GITHUB_ACTION_PATH/fetch-secrets.sh") || exit 1
 
         # Set output using delimiter format (safe for multiline values)
         delimiter="ghadelimiter_$(openssl rand -hex 8)"
