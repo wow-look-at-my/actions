@@ -135,6 +135,10 @@ export class Checkout {
 		} catch {
 			return;
 		}
+		if (names.length > 0) {
+			// A rename needs the parent directory, which a first checkout into a new path lacks.
+			await fsp.mkdir(path.dirname(repo.dir), {recursive: true});
+		}
 		for (const name of names) {
 			try {
 				await fsp.rename(path.join(trees.dir, name), repo.dir);

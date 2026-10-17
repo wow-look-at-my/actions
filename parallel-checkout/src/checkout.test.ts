@@ -238,13 +238,14 @@ test('a checkout of a stored commit moves the stored worktree in, and git finds 
 	const first = await run('one');
 	assert.strictEqual(first.added, 8, first.log.join('\n'));
 	assert.strictEqual(first.log.filter(line => line.includes('worktree written')).length, 4, first.log.join('\n'));
-	const second = await run('two');
+	// A path whose parent does not exist yet, as in a fresh workspace.
+	const second = await run('new/two');
 	assert.strictEqual(second.log.filter(line => line.includes('worktree taken from the store')).length, 4, second.log.join('\n'));
 	// Each worktree went back into the store, and none of them is new to it.
 	assert.strictEqual(second.added, 0, second.log.join('\n'));
 	assert.strictEqual(second.log.filter(line => line.includes('worktree stored')).length, 4, second.log.join('\n'));
 
-	const dir = path.join(fx.root, 'two');
+	const dir = path.join(fx.root, 'new/two');
 	assert.strictEqual(fs.readFileSync(path.join(dir, 'vendor/mid/deps/leaf/leaf.txt'), 'utf8'), 'leaf\n');
 	assert.strictEqual(sh(['status', '--porcelain'], dir), '');
 	assert.strictEqual(sh(['rev-parse', '--abbrev-ref', 'HEAD'], dir).trim(), 'main');
