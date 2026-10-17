@@ -2,8 +2,8 @@ import * as core from '@actions/core';
 import * as fsp from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
-import {readTree} from './api';
-import {Checkout, Submodules} from './checkout';
+import {headLister, readTree} from './api';
+import {Checkout, Refill, Submodules, refillNow, refillVariable} from './checkout';
 import {Git, Pool} from './git';
 import {basicAuth, pickRef, planRef} from './plan';
 import {lockName, runLock} from './runlock';
@@ -152,12 +152,34 @@ async function run(): Promise<void> {
 		lockHead = (submoduleUrl, followBranch, head) => lock(lockName(submoduleUrl, followBranch), head);
 		core.info(`followed heads are locked for this run attempt in ${store}`);
 	}
-	const {commit, repos} = await new Checkout({git, dir, url, plan, depth, submodules, workers, config, rootTree, follow, lockHead, log: core.info}).run();
+	const toolCache = process.env.RUNNER_TOOL_CACHE || '';
+	const objects = core.getInput('store').trim() || (toolCache === '' ? '' : path.join(toolCache, 'parallel-checkout'));
+	if (objects === '') {
+		core.warning('no object store: the store input and RUNNER_TOOL_CACHE are both empty, so every repository is fetched in full');
+	}
+	let listHeads: ((url: string, refs: string[]) => Promise<string | undefined>) | undefined;
+	if (follow !== undefined && token !== '') {
+		listHeads = headLister({apiUrl, server, token, log: core.info});
+		// The head lookup comes after the tree is read, by then over a connection this opened.
+		fetch(apiUrl, {method: 'HEAD'}).catch(() => undefined);
+	}
+	const checkout = new Checkout({git, dir, url, plan, depth, submodules, workers, config, rootTree, follow, lockHead, listHeads, store: objects, log: core.info});
+	const {commit, repos} = await checkout.run();
 	core.setOutput('commit', commit);
 	core.setOutput('ref', ref);
 	core.info(`${repos} repositor${repos === 1 ? 'y' : 'ies'} checked out in ${Date.now() - started}ms`);
+	const compacting = Date.now();
+	const added = await checkout.compact();
+	core.setOutput('store-added', String(added));
+	core.info(`the store gained ${added} entr${added === 1 ? 'y' : 'ies'}, and is ready for the next checkout ${Date.now() - compacting}ms later`);
+	// From the start of the node process, so the figure covers the whole step but the runner's own setup.
+	core.info(`the action ran for ${Math.round(performance.now())}ms`);
 }
 
-run().catch((error: unknown) => {
-	core.setFailed(error instanceof Error ? error.message : String(error));
-});
+if (process.env[refillVariable] === '1') {
+	refillNow(Number(process.argv[2]), JSON.parse(process.argv[3]) as Refill[]);
+} else {
+	run().catch((error: unknown) => {
+		core.setFailed(error instanceof Error ? error.message : String(error));
+	});
+}

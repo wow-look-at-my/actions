@@ -86,3 +86,79 @@ export async function readTree(opts: ApiOptions): Promise<Tree | undefined> {
 		return undefined;
 	}
 }
+
+export type HeadOptions = {
+	apiUrl: string;
+	server: string;
+	token: string;
+	log: (message: string) => void;
+};
+
+type Ask = {owner: string; name: string; refs: string[]; done: (listing: string | undefined) => void};
+
+// headLister answers what `git ls-remote --symref URL HEAD REFS...` answers,
+// for every repository on the server, in one GraphQL request per batch. The
+// calls made in one turn of the event loop share the batch. A repository the
+// API does not answer gets undefined, and the caller asks git instead.
+export function headLister(opts: HeadOptions): (url: string, refs: string[]) => Promise<string | undefined> {
+	let batch: Ask[] = [];
+	const flush = async () => {
+		const asks = batch;
+		batch = [];
+		const t0 = Date.now();
+		const fields = asks.map((ask, i) => {
+			const refs = ask.refs.map((ref, j) => `h${j}: ref(qualifiedName: ${JSON.stringify(ref)}) { target { oid } }`).join(' ');
+			return `r${i}: repository(owner: ${JSON.stringify(ask.owner)}, name: ${JSON.stringify(ask.name)}) { defaultBranchRef { name target { oid } } ${refs} }`;
+		});
+		type Ref = {target: {oid: string}} | null;
+		type Answer = {data?: Record<string, ({defaultBranchRef: {name: string; target: {oid: string}} | null} & Record<string, Ref>) | null>};
+		let answer: Answer;
+		try {
+			const res = await fetch(`${opts.apiUrl}/graphql`, {
+				method: 'POST',
+				headers: {Authorization: `Bearer ${opts.token}`, 'Content-Type': 'application/json'},
+				body: JSON.stringify({query: `query { ${fields.join(' ')} }`}),
+			});
+			if (!res.ok) {
+				throw new Error(`the GraphQL API answered ${res.status}`);
+			}
+			answer = (await res.json()) as Answer;
+		} catch (error) {
+			opts.log(`api: the branch heads of ${asks.length} repositor${asks.length === 1 ? 'y' : 'ies'} were not read, so git lists them: ${error instanceof Error ? error.message : String(error)}`);
+			asks.forEach(ask => ask.done(undefined));
+			return;
+		}
+		asks.forEach((ask, i) => {
+			const repo = answer.data?.[`r${i}`];
+			if (repo === null || repo === undefined) {
+				ask.done(undefined);
+				return;
+			}
+			const lines: string[] = [];
+			if (repo.defaultBranchRef !== null) {
+				lines.push(`ref: refs/heads/${repo.defaultBranchRef.name}\tHEAD`, `${repo.defaultBranchRef.target.oid}\tHEAD`);
+			}
+			ask.refs.forEach((ref, j) => {
+				const found = repo[`h${j}`] as Ref;
+				if (found !== null && found !== undefined) {
+					lines.push(`${found.target.oid}\t${ref}`);
+				}
+			});
+			ask.done(`${lines.join('\n')}\n`);
+		});
+		opts.log(`api: the branch heads of ${asks.length} repositor${asks.length === 1 ? 'y' : 'ies'} read in ${ms(t0)}`);
+	};
+	return (url, refs) => {
+		const prefix = `${opts.server}/`;
+		const match = url.startsWith(prefix) ? /^([^/]+)\/([^/]+?)(?:\.git)?\/?$/.exec(url.slice(prefix.length)) : null;
+		if (opts.token === '' || match === null) {
+			return Promise.resolve(undefined);
+		}
+		return new Promise(done => {
+			if (batch.length === 0) {
+				setImmediate(() => void flush());
+			}
+			batch.push({owner: match[1], name: match[2], refs, done});
+		});
+	};
+}
