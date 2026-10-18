@@ -1,11 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Writes ~/.pi/agent/models.json and ~/.pi/agent/settings.json so pi on the
-# runner mirrors the local pi config. The literal API key from local
-# ~/.pi/agent/models.json is replaced with the env var name passed via
-# API_KEY - pi resolves env var names at request time, so the actual
-# secret value never lands on disk.
+# Mirror the local pi config into ~/.pi/agent. The apiKey stays an env var name, so no secret lands on disk.
 
 mkdir -p "$HOME/.pi/agent"
 

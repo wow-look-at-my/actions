@@ -7,15 +7,15 @@ Composite GitHub Action that:
 1. Writes `~/.pi/agent/models.json` and `~/.pi/agent/settings.json` to mirror the local pi setup.
 2. Hands off to [`shaftoe/pi-coding-agent-action@v2`](https://github.com/shaftoe/pi-coding-agent-action), which uses the pi SDK programmatically.
 
-Defaults: provider `llama-server` at `https://llama.pazer.ai/v1`, model `ggml-org/gemma-4-26B-A4B-it-GGUF:Q8_0` (Gemma 4 26B), reasoning enabled, thinking level `high`, context window `262144`, max tokens `16384`, compat flags `supportsDeveloperRole: false` and `supportsReasoningEffort: false` for the OpenAI-compatible llama-server endpoint.
+Defaults: provider `llama-server`, endpoint `https://llama.pazer.ai/v1`, model `ggml-org/gemma-4-26B-A4B-it-GGUF:Q8_0` (Gemma 4 26B). Reasoning is on, thinking level `high`, context window `262144`, max tokens `16384`. The compat flags `supportsDeveloperRole: false` and `supportsReasoningEffort: false` suit the OpenAI-compatible llama-server endpoint.
 
 The API key in the local `models.json` is a literal value. The action replaces it with an env var reference (default `LLAMA_API_KEY`) populated by `secret-server` over OIDC, so the literal key never lands in the repo.
 
 ## Why wrap shaftoe's action
 
-Earlier iterations of this action invoked `pi -p` from a shell script. That approach was silent in CI because Node.js block-buffers `process.stdout` when it is not a TTY; pi's writes queued in the OS buffer until pi exited or the workflow was cancelled, so the action looked dead. Switching to `pi --mode json | jq` did not fix it - the buffering happens before the pipe.
+Earlier iterations ran `pi -p` from a shell script. That approach was silent in CI, because Node.js block-buffers `process.stdout` when it is not a TTY. Pi's writes queued in the OS buffer until pi exited or the workflow was cancelled, so the action looked dead. Switching to `pi --mode json | jq` did not fix it. The buffering happens before the pipe.
 
-`shaftoe/pi-coding-agent-action` uses the pi SDK directly (`createAgentSession` + `session.subscribe`), the same way opencode does. Thinking deltas are written to stdout as they arrive (visible in the CI log), text deltas are accumulated, and the response is posted as a PR comment via shaftoe's built-in GitHub extensions. Re-implementing that machinery in-tree would be hundreds of lines of TypeScript with its own bundle/build pipeline; delegating to a maintained external action is much cheaper.
+`shaftoe/pi-coding-agent-action` uses the pi SDK directly, as opencode does. Thinking deltas reach stdout as they arrive, and the CI log shows them. Text deltas are accumulated, and the response is posted as a PR comment. Re-implementing that machinery in-tree takes hundreds of lines of TypeScript and its own build pipeline. Delegating to a maintained external action is much cheaper.
 
 ## Structure
 
@@ -34,12 +34,12 @@ Earlier iterations of this action invoked `pi -p` from a shell script. That appr
 ## Things this action does NOT do
 
 - Pin the pi version. shaftoe's action bundles its own pi and tracks it via their release process.
-- Pass `token` to shaftoe's action. The pi SDK reads `apiKey` from `models.json`, which is the env var name; pi resolves it from `process.env` at request time. Passing `token` explicitly would override that lookup with a literal.
+- Pass `token` to shaftoe's action. The pi SDK reads `apiKey` from `models.json`, which holds the env var name. Pi resolves that name from `process.env` at request time. A literal `token` overrides that lookup.
 - Restrict the tool allowlist. shaftoe's action does not expose `--tools` filtering. We instruct the model to stay read-only in the prompt.
 
 ## Development
 
-Composite action with one shell script - no build step. Edit `action.yml`, `configure.sh`, or `review-prompt.md` directly. Ensure shell scripts have the executable bit set (`chmod +x *.sh`); git preserves it.
+Composite action with one shell script - no build step. Edit `action.yml`, `configure.sh`, or `review-prompt.md` directly. Keep the executable bit on shell scripts (`chmod +x *.sh`), which git preserves.
 
 ### Testing
 

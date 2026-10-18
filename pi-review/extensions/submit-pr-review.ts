@@ -1,29 +1,8 @@
 /**
- * pi extension that registers two tools for incremental PR review.
- *
- * Intentionally avoids importing from `@earendil-works/pi-coding-agent`,
- * `@earendil-works/pi-ai`, or `typebox`. shaftoe's bundled action embeds
- * those packages in a single file, so the names are not resolvable as
- * normal node modules from an external `.ts` extension. Using a plain
- * object factory and JSON Schema for `parameters` sidesteps that.
- *
- * Tools registered:
- *
- *   add_pr_comment(path, line, body, side?, start_line?, start_side?)
- *     Posts a single inline review comment immediately via
- *     POST /repos/{owner}/{repo}/pulls/{N}/comments. The agent calls this
- *     AS SOON AS each finding is identified, so it doesn't have to
- *     remember every finding to write a single big review at the end.
- *
- *   finish_review(event, body)
- *     Submits the final PR review with APPROVE / REQUEST_CHANGES /
- *     COMMENT and a short overall summary via POST /pulls/{N}/reviews.
- *     terminate: true so the agent stops cleanly after this call.
- *
- * Required env (set by the GitHub Actions runner):
- *   GITHUB_TOKEN       - workflow token with pull-requests: write
- *   GITHUB_REPOSITORY  - "owner/name"
- *   GITHUB_EVENT_PATH  - path to event payload JSON
+ * pi extension registering the review tools, add_pr_comment and finish_review.
+ * It does not import the pi packages, because shaftoe's bundled action embeds
+ * them and an external extension cannot resolve those names. Required env from
+ * the runner: GITHUB_TOKEN, GITHUB_REPOSITORY and GITHUB_EVENT_PATH.
  */
 
 import * as fs from "node:fs";

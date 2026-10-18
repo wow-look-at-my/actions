@@ -2,7 +2,7 @@
 
 Review a pull request using the [pi coding agent](https://pi.dev). Defaults mirror the local `~/.pi/agent/` config: Gemma 4 26B served by `llama.pazer.ai` with thinking level `high`. The API key is fetched at runtime via the `secret-server` action over OIDC, so it never lands in the repo.
 
-This action is a thin composite wrapper around [`shaftoe/pi-coding-agent-action`](https://github.com/shaftoe/pi-coding-agent-action). The wrapper writes a `~/.pi/agent/models.json` matching the configured local pi setup, then hands off to shaftoe's action, which runs pi via the SDK (not the CLI) so streaming output works correctly in CI. shaftoe's action also handles posting the response as a PR comment automatically.
+This action is a thin composite wrapper around [`shaftoe/pi-coding-agent-action`](https://github.com/shaftoe/pi-coding-agent-action). The wrapper writes a `~/.pi/agent/models.json` matching the configured local pi setup. It then hands off to shaftoe's action, which runs pi via the SDK rather than the CLI, so streaming output works correctly in CI. That action also posts the response as a PR comment.
 
 ## Usage
 
@@ -38,7 +38,7 @@ Zero required inputs - the defaults match the configured pi setup. Pass override
 | `model` | `ggml-org/gemma-4-26B-A4B-it-GGUF:Q8_0` | Model ID at the configured endpoint. |
 | `model-name` | `Gemma 4 26B` | Human-readable model name registered in `models.json`. |
 | `endpoint` | `https://llama.pazer.ai/v1` | OpenAI-compatible base URL (include `/v1`). Passed to shaftoe's action as `base_url`. |
-| `api-key-env` | `LLAMA_API_KEY` | Name of the env var holding the API key; the models.json `apiKey` field references this name and pi resolves it at request time. |
+| `api-key-env` | `LLAMA_API_KEY` | Name of the env var holding the API key. The models.json `apiKey` field references this name, and pi resolves it at request time. |
 | `provider` | `llama-server` | Provider name registered in pi's `models.json`. |
 | `thinking` | `high` | Thinking level (off, minimal, low, medium, high, xhigh). |
 | `reasoning` | `true` | Whether the model supports extended thinking. |
@@ -63,7 +63,7 @@ Forwarded from shaftoe's action:
 | `output-tokens` | Output tokens generated. |
 | `duration-seconds` | Wall-clock duration of pi execution. |
 
-shaftoe's action posts the response as a PR comment automatically when running on a `pull_request` event; the output is also available for downstream steps.
+shaftoe's action posts the response as a PR comment automatically on a `pull_request` event. It also exposes the output for downstream steps.
 
 ## Bringing your own endpoint
 
@@ -92,4 +92,4 @@ Override any default to point at a different OpenAI-compatible server:
 
 ## Why this wraps shaftoe's action
 
-Earlier iterations of this action invoked `pi -p` directly via the CLI from a shell script. That approach was silent in CI because Node.js block-buffers stdout when it is not a TTY; pi's text output sat in the OS buffer until pi exited or the job was cancelled, leaving the action looking dead. Shaftoe's action uses the pi SDK programmatically (`createAgentSession`, `session.subscribe(event => ...)`) and streams text/thinking deltas to the log as they arrive, the same way opencode does. Rather than re-implement that machinery, this action mirrors the local pi config into `~/.pi/agent/` and delegates the heavy lifting.
+Earlier iterations ran `pi -p` directly via the CLI from a shell script. That approach was silent in CI, because Node.js block-buffers stdout when it is not a TTY. Pi's text output sat in the OS buffer until pi exited or the job was cancelled, so the action looked dead. Shaftoe's action uses the pi SDK programmatically and streams text and thinking deltas to the log as they arrive, as opencode does. Rather than re-implement that machinery, this action mirrors the local pi config into `~/.pi/agent/` and delegates the heavy lifting.

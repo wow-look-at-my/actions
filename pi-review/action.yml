@@ -138,7 +138,7 @@ runs:
 
     - name: Run review
       id: review
-      uses: shaftoe/pi-coding-agent-action@v2
+      uses: shaftoe/pi-coding-agent-action@v2.30.0
       with:
         github_token: ${{ inputs.github-token }}
         provider: ${{ inputs.provider }}
