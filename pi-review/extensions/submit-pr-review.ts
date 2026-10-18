@@ -1,9 +1,4 @@
-/**
- * pi extension registering the review tools, add_pr_comment and finish_review.
- * It does not import the pi packages, because shaftoe's bundled action embeds
- * them and an external extension cannot resolve those names. Required env from
- * the runner: GITHUB_TOKEN, GITHUB_REPOSITORY and GITHUB_EVENT_PATH.
- */
+/** Registers add_pr_comment and finish_review. Needs GITHUB_TOKEN, GITHUB_REPOSITORY and GITHUB_EVENT_PATH. */
 
 import * as fs from "node:fs";
 

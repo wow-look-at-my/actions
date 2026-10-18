@@ -86,7 +86,7 @@ Override any default to point at a different OpenAI-compatible server:
 
 1. `secret-server` (optional, default on) fetches secrets via OIDC and exports them to the env. Specifically, the env var named by `api-key-env` is set.
 2. `actions/setup-node@v4` installs Node.js.
-3. `configure.sh` writes `~/.pi/agent/models.json` (mirroring the local pi setup) and `~/.pi/agent/settings.json` (`defaultThinkingLevel`). The `apiKey` field in `models.json` is the env var name, not the literal key - pi resolves it at request time so the key never lands on disk.
+3. `configure.sh` writes `~/.pi/agent/models.json` (mirroring the local pi setup) and `~/.pi/agent/settings.json` (`defaultThinkingLevel`). The `apiKey` field in `models.json` is the env var name, not the literal key. Pi resolves that name at request time, so the key never lands on disk.
 4. A shell step composes the final prompt from `review-prompt.md` plus any `additional-instructions`.
 5. `shaftoe/pi-coding-agent-action@v2` runs pi via the pi SDK. It streams thinking deltas to the runner log, accumulates the assistant response, and posts the response as a PR comment with metadata.
 

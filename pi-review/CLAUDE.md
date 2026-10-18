@@ -15,7 +15,7 @@ The API key in the local `models.json` is a literal value. The action replaces i
 
 Earlier iterations ran `pi -p` from a shell script. That approach was silent in CI, because Node.js block-buffers `process.stdout` when it is not a TTY. Pi's writes queued in the OS buffer until pi exited or the workflow was cancelled, so the action looked dead. Switching to `pi --mode json | jq` did not fix it. The buffering happens before the pipe.
 
-`shaftoe/pi-coding-agent-action` uses the pi SDK directly, as opencode does. Thinking deltas reach stdout as they arrive, and the CI log shows them. Text deltas are accumulated, and the response is posted as a PR comment. Re-implementing that machinery in-tree takes hundreds of lines of TypeScript and its own build pipeline. Delegating to a maintained external action is much cheaper.
+`shaftoe/pi-coding-agent-action` uses the pi SDK directly, as opencode does. Thinking deltas reach stdout as they arrive. The CI log shows them. Text deltas are accumulated, and the response is posted as a PR comment. Re-implementing that machinery in-tree takes hundreds of lines of TypeScript and its own build pipeline. Delegating to a maintained external action is much cheaper.
 
 ## Structure
 
