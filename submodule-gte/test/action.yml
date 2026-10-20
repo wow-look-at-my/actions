@@ -5,6 +5,6 @@ description: Drive the submodule guard against real superprojects whose gitlink 
 runs:
   using: composite
   steps:
-    - uses: wow-look-at-my/dats@master
+    - uses: wow-look-at-my/dats@lkgb
       with:
         tests: submodule-gte/dats

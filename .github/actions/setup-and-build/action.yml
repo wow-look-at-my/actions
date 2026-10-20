@@ -33,6 +33,6 @@ runs:
       working-directory: ${{ inputs.action-dir }}
       shell: bash
       run: pnpm install
-    - uses: wow-look-at-my/ts0@master
+    - uses: wow-look-at-my/ts0@lkgb
       with:
         working-directory: ${{ inputs.action-dir }}
