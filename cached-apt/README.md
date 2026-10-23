@@ -4,6 +4,8 @@ Install apt packages on a Linux runner from a cache of the files they dropped. O
 
 This is the apt-specialized sibling of `cached-run`. That action caches the declared output paths of a command you write. This one discovers the paths itself, from the packages apt installed.
 
+The cache is buildhost's (`buildhost-cache-restore` and `buildhost-cache-save`), not the Actions cache. The job therefore needs `permissions: id-token: write`. A failed save fails the step.
+
 ## Use
 
 ```yaml

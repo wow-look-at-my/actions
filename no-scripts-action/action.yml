@@ -10,4 +10,4 @@ runs:
   using: composite
   steps:
     # Kept as a name every repository already calls. The slopfix action takes no input that narrows the check.
-    - uses: wow-look-at-my/slopfix@master
+    - uses: wow-look-at-my/slopfix@lkgb

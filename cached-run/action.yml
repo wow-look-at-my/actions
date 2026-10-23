@@ -14,7 +14,7 @@ inputs:
     required: false
     default: ''
   restore-keys:
-    description: 'Fallback key prefixes for a partial restore, one per line, passed through to actions/cache/restore.'
+    description: 'Fallback key prefixes for a partial restore, one per line, passed through to buildhost-cache-restore.'
     required: false
     default: ''
   working-directory:
@@ -72,7 +72,7 @@ runs:
 
     - name: Restore the cached output paths
       id: restore
-      uses: actions/cache/restore@v4
+      uses: wow-look-at-my/buildhost/.github/actions/buildhost-cache-restore@lkgb
       with:
         path: ${{ steps.plan.outputs.cache-paths }}
         key: ${{ steps.plan.outputs.key }}
@@ -84,7 +84,6 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        # actions/cache reports a miss as an empty string, so normalize it before a caller compares it.
         if [ "${{ steps.restore.outputs.cache-hit }}" = "true" ]; then
           echo "hit=true" >> "$GITHUB_OUTPUT"
         else
@@ -176,7 +175,7 @@ runs:
     - name: Save the output paths
       id: save
       if: steps.verify.outputs.save == 'true'
-      uses: actions/cache/save@v4
+      uses: wow-look-at-my/buildhost/.github/actions/buildhost-cache-save@lkgb
       with:
         path: ${{ steps.plan.outputs.cache-paths }}
         key: ${{ steps.plan.outputs.key }}

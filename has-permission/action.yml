@@ -15,7 +15,7 @@ runs:
   steps:
     - id: download
       name: Download slopfix
-      uses: wow-look-at-my/buildhost/.github/actions/buildhost-download@master
+      uses: wow-look-at-my/buildhost/.github/actions/buildhost-download@lkgb
       with:
         project: slopfix
 

@@ -2,6 +2,8 @@
 
 Run a script with its output paths restored from cache first and saved after. The cache key is a hash of the script text and the path list. An edit to either gets you a fresh cache in place of a stale one.
 
+The cache is buildhost's (`buildhost-cache-restore` and `buildhost-cache-save`), not the Actions cache. The job therefore needs `permissions: id-token: write`: the job's OIDC token names the repository and ref an entry belongs to.
+
 ```yaml
 - uses: wow-look-at-my/actions@cached-run#latest
   with:
@@ -85,9 +87,9 @@ A fallback reaches only an entry written with the same `key` label and the same 
 
 ## Which refs write
 
-Only the default branch writes an entry. Every ref still RESTORES one, because GitHub already lets a branch read the default branch's cache. So a feature branch keeps every hit it had.
+Only the default branch writes an entry. Every ref still RESTORES one, because a branch reads the default branch's cache. So a feature branch keeps every hit it had.
 
-A branch that writes gets its own cache scope. Only that branch can read what it wrote, and the entry still spends the repository's shared budget. A multi-gigabyte dependency tree saved by each feature branch evicts the default branch's copy, which is the one every branch reads.
+A branch that writes gets its own cache scope. Only that branch can read what it wrote, and the entry still costs buildhost disk. When disk runs low, the least recently used entries go first, and a multi-gigabyte tree saved by each feature branch pushes out entries. Those entries are ones that other runs still read.
 
 ```yaml
 - uses: wow-look-at-my/actions@cached-run#latest
