@@ -1,0 +1,28 @@
+name: Submodule GTE
+description: Fail CI when a branch points a submodule at a commit the base branch has already moved past
+
+inputs:
+  base:
+    description: >-
+      The branch this one is measured against. A pull request supplies it, so
+      leave it empty there. Anything else has to name it: guessing would
+      compare against a ref nobody chose.
+    required: false
+    default: ''
+
+  paths:
+    description: >-
+      Submodule paths to check, newline or comma separated. Leave empty to
+      check every submodule either side holds.
+    required: false
+    default: ''
+
+  exclude:
+    description: >-
+      Submodule paths the check skips, newline or comma separated.
+    required: false
+    default: ''
+
+runs:
+  using: node24
+  main: dist/index.js
