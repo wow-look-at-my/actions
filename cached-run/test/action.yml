@@ -1,6 +1,6 @@
 name: Test cached-run
 version: 1
-description: Dogfood cached-run against the real Actions cache (never released)
+description: Dogfood cached-run against buildhost's real cache (never released)
 
 runs:
   using: composite
