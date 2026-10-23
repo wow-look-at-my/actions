@@ -51,6 +51,7 @@ jobs:
       contents: read # a private caller repo cannot be checked out without it
       packages: write
       actions: read
+      id-token: write # the ghcr step mints an OIDC token when it falls back to secret-server
     steps:
       - uses: actions/checkout@v4
 
