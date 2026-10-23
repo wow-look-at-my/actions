@@ -6,6 +6,6 @@ runs:
   using: composite
   steps:
     - name: Shared cache-key unit tests
-      uses: wow-look-at-my/ts0@master
+      uses: wow-look-at-my/ts0@lkgb
       with:
         working-directory: _shared/cache-key

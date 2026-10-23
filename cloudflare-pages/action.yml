@@ -32,12 +32,13 @@ runs:
     - name: Deploy to Cloudflare Pages
       uses: wow-look-at-my/actions@typescript#latest
       with:
+        inputs: ${{ toJSON(inputs) }}
         script: |
-          const dir = '${{ inputs.directory }}';
-          const project = '${{ inputs.project-name }}';
-          const prodBranch = '${{ inputs.production-branch }}' || 'master';
-          const branch = '${{ inputs.branch }}' || github.ref_name;
-          const onMissing = '${{ inputs.missing-credentials }}' || 'warn';
+          const dir = String(inputs.directory);
+          const project = String(inputs["project-name"]);
+          const prodBranch = String(inputs["production-branch"]) || 'master';
+          const branch = String(inputs.branch) || github.ref_name;
+          const onMissing = String(inputs["missing-credentials"]) || 'warn';
           const token = process.env.CLOUDFLARE_API_TOKEN ?? '';
           const account = process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
           if (!token || !account) {
