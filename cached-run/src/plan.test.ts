@@ -65,8 +65,8 @@ test('the environment a run exports is cached beside the paths it produced', () 
 	assert.deepStrictEqual(result.cachePaths, ['dist/', result.envDir]);
 });
 
-// actions/cache versions an entry by its path list, and restore-keys only
-// matches an entry of the same version.
+// An entry restores to the paths it was saved from, so a restore-keys match
+// is only useful when the path list stays the same.
 test('a changed script keeps the cached path list, so restore-keys can reach the older entry', () => {
 	const before = plan(env({EXTRA_KEY: 'deps'}));
 	const after = plan(env({EXTRA_KEY: 'deps', RUN_SCRIPT: 'make build # new lockfile'}));

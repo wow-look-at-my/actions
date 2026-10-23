@@ -21,11 +21,44 @@ inputs:
 outputs:
   cache-hit:
     description: 'true when the files came from the cache and apt never ran'
+    value: ${{ steps.apply.outputs.cache-hit || steps.plan.outputs.cache-hit }}
   installed-packages:
     description: 'Space-separated packages the cache holds, including pulled-in dependencies'
+    value: ${{ steps.apply.outputs.installed-packages || steps.plan.outputs.installed-packages }}
   skipped:
     description: 'true when the runner is not Linux, so nothing was installed'
+    value: ${{ steps.plan.outputs.skipped }}
 
+# The cache is buildhost's, so the job needs id-token write.
 runs:
-  using: node24
-  main: dist/index.js
+  using: composite
+  steps:
+    - id: plan
+      shell: bash
+      env:
+        INPUT_PACKAGES: ${{ inputs.packages }}
+        INPUT_KEY: ${{ inputs.key }}
+      run: node "$GITHUB_ACTION_PATH/dist/index.js" plan
+
+    - id: restore
+      if: steps.plan.outputs.skipped != 'true'
+      uses: wow-look-at-my/buildhost/.github/actions/buildhost-cache-restore@lkgb
+      with:
+        path: ${{ steps.plan.outputs.work-dir }}
+        key: ${{ steps.plan.outputs.key }}
+
+    - id: apply
+      if: steps.plan.outputs.skipped != 'true'
+      shell: bash
+      env:
+        INPUT_PACKAGES: ${{ inputs.packages }}
+        CACHED_APT_KEY: ${{ steps.plan.outputs.key }}
+        CACHED_APT_WORK_DIR: ${{ steps.plan.outputs.work-dir }}
+        CACHED_APT_HIT: ${{ steps.restore.outputs.cache-hit }}
+      run: node "$GITHUB_ACTION_PATH/dist/index.js" apply
+
+    - if: steps.apply.outputs.save == 'true'
+      uses: wow-look-at-my/buildhost/.github/actions/buildhost-cache-save@lkgb
+      with:
+        path: ${{ steps.plan.outputs.work-dir }}
+        key: ${{ steps.plan.outputs.key }}

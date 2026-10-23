@@ -45,7 +45,7 @@ export function plan(env: PlanEnv, cargoDigest = ''): Plan {
 	// A composite runner does not enforce `required: true`, so an omitted input arrives as an empty string.
 	const script = env.RUN_SCRIPT ?? '';
 	if (script.trim() === '') {
-		throw new Error('the run input is empty. Give it a script, or call actions/cache directly.');
+		throw new Error('the run input is empty. Give it a script, or call buildhost-cache-restore and buildhost-cache-save directly.');
 	}
 	const paths = normalizeList(env.RAW_PATHS ?? '');
 	if (paths.length === 0) {

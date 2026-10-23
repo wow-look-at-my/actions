@@ -57,8 +57,9 @@ runs:
       if: inputs.build == 'true'
       uses: wow-look-at-my/actions@typescript#latest
       with:
+        inputs: ${{ toJSON(inputs) }}
         script: |
-          const buildArgs = '${{ inputs.build_args }}'.split('\n')
+          const buildArgs = String(inputs.build_args).split('\n')
             .filter(Boolean)
             .flatMap((a: string) => ['--build-arg', a]);
           await $`docker buildx build

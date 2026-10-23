@@ -35,7 +35,7 @@ jobs:
               'orphan-release', 'submodule-gte', 'cached-apt', 'cached-run', 'parallel-checkout'];
             await Promise.all(dirs.map(dir => $`just build`.cwd(dir)));
       # The guard suites drive dist/, so they run after the build above.
-      - uses: wow-look-at-my/dats@master
+      - uses: wow-look-at-my/dats@lkgb
         with:
           tests: |
             orphan-release/dats/
