@@ -1,4 +1,3 @@
-import * as cache from '@actions/cache';
 import * as core from '@actions/core';
 import * as exec from '@actions/exec';
 import * as fs from 'fs';
@@ -52,7 +51,10 @@ async function packArchive(archive: string, listFile: string): Promise<void> {
 	await exec.exec('sudo', ['chmod', '0644', archive]);
 }
 
-async function main(): Promise<void> {
+// The composite runs this twice, around buildhost's cache restore and save.
+// `plan` names the key and the directory the cache holds. `apply` restores the
+// files from a hit, or installs with apt and packs the files for the save.
+async function plan(): Promise<void> {
 	// A no-op rather than a failure, so a cross-platform matrix calls this
 	// unconditionally. It is announced, never silent: a caller that needed the
 	// packages finds out here instead of at the compile that misses them.
@@ -65,12 +67,7 @@ async function main(): Promise<void> {
 	}
 	core.setOutput('skipped', 'false');
 
-	const packages = normalizePackages(core.getInput('packages', {required: true}));
-	if (packages.length === 0) {
-		throw new Error('the `packages` input is empty; name at least one apt package');
-	}
-	packages.forEach(validatePackageName);
-
+	const packages = requestedPackages();
 	const extraKey = core.getInput('key');
 	const osRelease = parseOsRelease(fs.readFileSync('/etc/os-release', 'utf8'));
 	const arch = (await capture('dpkg', ['--print-architecture'])).trim();
@@ -85,12 +82,28 @@ async function main(): Promise<void> {
 
 	const workDir = path.join(process.env.RUNNER_TEMP ?? os.tmpdir(), `cached-apt-${digest}`);
 	fs.mkdirSync(workDir, {recursive: true});
+	core.setOutput('key', key);
+	core.setOutput('work-dir', workDir);
+}
+
+function requestedPackages(): string[] {
+	const packages = normalizePackages(core.getInput('packages', {required: true}));
+	if (packages.length === 0) {
+		throw new Error('the `packages` input is empty; name at least one apt package');
+	}
+	packages.forEach(validatePackageName);
+	return packages;
+}
+
+async function apply(): Promise<void> {
+	const packages = requestedPackages();
+	const key = requiredEnv('CACHED_APT_KEY');
+	const workDir = requiredEnv('CACHED_APT_WORK_DIR');
 	const archive = path.join(workDir, 'files.tar');
 	const manifestPath = path.join(workDir, 'manifest.json');
-	const cachePaths = [archive, manifestPath];
+	core.setOutput('save', 'false');
 
-	const hit = await cache.restoreCache(cachePaths, key);
-	if (hit) {
+	if (requiredEnv('CACHED_APT_HIT') === 'true') {
 		await extractArchive(archive);
 		const manifest: Manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 		core.setOutput('cache-hit', 'true');
@@ -144,15 +157,23 @@ async function main(): Promise<void> {
 		fileCount: selection.members.length
 	};
 	fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, '\t')}\n`);
+	core.setOutput('save', 'true');
+	core.info(`Packed ${selection.members.length} files for the save under ${key}`);
+}
 
-	try {
-		await cache.saveCache(cachePaths, key);
-		core.info(`Saved ${selection.members.length} files under ${key}`);
-	} catch (error) {
-		// The packages are installed either way, so a lost save costs speed and not correctness. It still gets reported.
-		const message = error instanceof Error ? error.message : String(error);
-		core.warning(`cached-apt installed the packages but could not save the cache: ${message}`);
+function requiredEnv(name: string): string {
+	const value = process.env[name];
+	if (value === undefined || value === '') {
+		throw new Error(`${name} is not set: the cached-apt composite sets it from its plan and restore steps`);
 	}
+	return value;
+}
+
+async function main(): Promise<void> {
+	const mode = process.argv[2];
+	if (mode === 'plan') return plan();
+	if (mode === 'apply') return apply();
+	throw new Error(`unknown mode '${mode}': want plan or apply`);
 }
 
 main().catch((error: unknown) => {
