@@ -1,0 +1,161 @@
+name: Pi Review
+version: 4
+description: Review a pull request using the pi coding agent with a local LLM. Defaults to Gemma 4 26B via llama.pazer.ai.
+
+inputs:
+  model:
+    description: Model ID at the configured endpoint.
+    required: false
+    default: 'ggml-org/gemma-4-26B-A4B-it-GGUF:Q8_0'
+  model-name:
+    description: Human-readable model name for display.
+    required: false
+    default: 'Gemma 4 26B'
+  endpoint:
+    description: OpenAI-compatible base URL, including the /v1 suffix.
+    required: false
+    default: 'https://llama.pazer.ai/v1'
+  api-key-env:
+    description: Name of the env var holding the API key (populated by secret-server).
+    required: false
+    default: 'LLAMA_API_KEY'
+  provider:
+    description: Provider identifier used in pi's models.json.
+    required: false
+    default: 'llama-server'
+  context-window:
+    description: Model context window size in tokens.
+    required: false
+    default: '262144'
+  max-tokens:
+    description: Max output tokens.
+    required: false
+    default: '16384'
+  thinking:
+    description: Thinking level (off, minimal, low, medium, high, xhigh).
+    required: false
+    default: 'off'
+  prompt:
+    description: Review instructions replacing the default review-prompt.md when provided.
+    required: false
+    default: ''
+  additional-instructions:
+    description: Extra instructions appended to the review prompt.
+    required: false
+    default: ''
+  fetch-secrets:
+    description: Run secret-server first to populate API key env vars via OIDC.
+    required: false
+    default: 'true'
+  node-version:
+    description: Node.js version to use.
+    required: false
+    default: '24'
+  github-token:
+    description: GitHub token for PR access (review comments, diff, approvals).
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: Fetch secrets
+      if: inputs.fetch-secrets == 'true'
+      uses: wow-look-at-my/actions@secret-server#latest
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Install pi
+      shell: bash
+      run: npm install -g @earendil-works/pi-coding-agent
+
+    - name: Configure pi
+      shell: bash
+      env:
+        PROVIDER: ${{ inputs.provider }}
+        ENDPOINT: ${{ inputs.endpoint }}
+        MODEL: ${{ inputs.model }}
+        MODEL_NAME: ${{ inputs.model-name }}
+        API_KEY_ENV: ${{ inputs.api-key-env }}
+        CONTEXT_WINDOW: ${{ inputs.context-window }}
+        MAX_TOKENS: ${{ inputs.max-tokens }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$HOME/.pi/agent"
+        jq -n \
+          --arg provider "$PROVIDER" \
+          --arg url "$ENDPOINT" \
+          --arg key "$API_KEY_ENV" \
+          --arg model "$MODEL" \
+          --arg name "$MODEL_NAME" \
+          --argjson cw "$CONTEXT_WINDOW" \
+          --argjson mt "$MAX_TOKENS" \
+          '{
+            providers: {
+              ($provider): {
+                baseUrl: $url,
+                api: "openai-completions",
+                apiKey: $key,
+                compat: {
+                  supportsDeveloperRole: false,
+                  supportsReasoningEffort: false
+                },
+                models: [
+                  {
+                    id: $model,
+                    name: $name,
+                    input: ["text"],
+                    contextWindow: $cw,
+                    maxTokens: $mt,
+                    cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}
+                  }
+                ]
+              }
+            }
+          }' > "$HOME/.pi/agent/models.json"
+        echo "Wrote models.json:"
+        cat "$HOME/.pi/agent/models.json" | jq .
+
+    - name: Resolve review prompt
+      id: prompt
+      shell: bash
+      env:
+        PROMPT_OVERRIDE: ${{ inputs.prompt }}
+        ADDITIONAL: ${{ inputs.additional-instructions }}
+        PROMPT_PATH: ${{ github.action_path }}/review-prompt.md
+      run: |
+        set -euo pipefail
+        if [ -n "$PROMPT_OVERRIDE" ]; then
+          printf '%s\n' "$PROMPT_OVERRIDE" > /tmp/pi-review-prompt.md
+        else
+          cp "$PROMPT_PATH" /tmp/pi-review-prompt.md
+        fi
+        if [ -n "$ADDITIONAL" ]; then
+          printf '\n\n## Additional Instructions\n\n%s\n' "$ADDITIONAL" >> /tmp/pi-review-prompt.md
+        fi
+
+    - name: Run review
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: |
+        set -euo pipefail
+        pi --print \
+          --verbose \
+          --provider "${{ inputs.provider }}" \
+          --model "${{ inputs.model }}" \
+          --thinking "${{ inputs.thinking }}" \
+          --extension "${{ github.action_path }}/extension.ts" \
+          --tools read,grep,find,ls,get_pr_diff,add_review_comment,submit_review \
+          --no-session \
+          --no-skills \
+          --no-prompt-templates \
+          --no-themes \
+          --append-system-prompt "$(cat /tmp/pi-review-prompt.md)" \
+          "Review this pull request."
