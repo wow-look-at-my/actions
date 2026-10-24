@@ -57,3 +57,37 @@ runs:
           echo "::error::the cache manifest lists '$PKGS' but the install produced '${{ steps.first.outputs.installed-packages }}'"
           exit 1
         fi
+
+    - name: Make the first apt mirror stop answering, as it did on westus3 runners
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo cp /etc/hosts "$RUNNER_TEMP/hosts.orig"
+        sudo cp /etc/apt/apt-mirrors.txt "$RUNNER_TEMP/apt-mirrors.orig"
+        cat /etc/apt/apt-mirrors.txt
+        echo "10.255.255.1 azure.archive.ubuntu.com" | sudo tee -a /etc/hosts
+
+    - name: Install sl while that mirror is unreachable
+      uses: ./cached-apt
+      with:
+        packages: sl
+        key: cached-apt-stalled-mirror-${{ github.run_id }}-${{ github.run_attempt }}
+
+    - name: Verify the install finished without the unreachable mirror
+      shell: bash
+      run: |
+        set -euo pipefail
+        test -x /usr/games/sl
+        cat /etc/apt/apt-mirrors.txt
+        if grep -q azure.archive.ubuntu.com /etc/apt/apt-mirrors.txt; then
+          echo "::error::the unreachable mirror is still in the apt mirror list"
+          exit 1
+        fi
+
+    - name: Put the hosts file and the mirror list back
+      if: always()
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo cp "$RUNNER_TEMP/hosts.orig" /etc/hosts
+        sudo cp "$RUNNER_TEMP/apt-mirrors.orig" /etc/apt/apt-mirrors.txt

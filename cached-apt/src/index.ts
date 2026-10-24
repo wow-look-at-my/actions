@@ -9,7 +9,9 @@ import {
 	computeDigest,
 	diffInstalled,
 	encodeFileList,
+	keepReachableMirrors,
 	Manifest,
+	parseMirrorList,
 	normalizePackages,
 	parseDpkgFileList,
 	parseInstalledSet,
@@ -44,6 +46,40 @@ function lstatOrUndefined(target: string): fs.Stats | undefined {
 async function extractArchive(archive: string): Promise<void> {
 	await exec.exec('sudo', ['tar', '-xf', archive, '-C', '/', '--same-owner', '--same-permissions', '--overwrite']);
 	await exec.exec('sudo', ['ldconfig']);
+}
+
+const MIRROR_LIST = '/etc/apt/apt-mirrors.txt';
+const MIRROR_PROBE_MS = 15000;
+// A healthy `apt-get update` takes seconds; past this it has stalled.
+const APT_UPDATE_SECONDS = 300;
+
+async function answers(url: string): Promise<boolean> {
+	try {
+		await fetch(url, {method: 'HEAD', redirect: 'manual', signal: AbortSignal.timeout(MIRROR_PROBE_MS)});
+		return true;
+	} catch (error) {
+		core.info(`apt mirror ${url} did not answer: ${error instanceof Error ? error.message : String(error)}`);
+		return false;
+	}
+}
+
+// GitHub's Ubuntu images point apt at a `mirror+file:` list. Apt fails over
+// and then never finishes, so a mirror that does not answer an HTTP request
+// is taken out of the list first. Do this when the first mirror stops
+// answering.
+async function dropUnreachableMirrors(): Promise<void> {
+	if (!fs.existsSync(MIRROR_LIST)) {
+		return;
+	}
+	const lines = parseMirrorList(fs.readFileSync(MIRROR_LIST, 'utf8'));
+	const urls = lines.flatMap(line => (line.url === undefined ? [] : [line.url]));
+	const results = await Promise.all(urls.map(async url => [url, await answers(url)] as const));
+	const selection = keepReachableMirrors(lines, new Set(results.filter(([, ok]) => ok).map(([url]) => url)));
+	if (selection.dropped.length === 0) {
+		return;
+	}
+	await exec.exec('sudo', ['tee', MIRROR_LIST], {input: Buffer.from(selection.content, 'utf8'), silent: true});
+	core.warning(`cached-apt removed apt mirrors that did not answer within ${MIRROR_PROBE_MS / 1000}s: ${selection.dropped.join(', ')}. apt now uses ${selection.kept.join(', ')}.`);
 }
 
 async function packArchive(archive: string, listFile: string): Promise<void> {
@@ -119,7 +155,8 @@ async function apply(): Promise<void> {
 	core.info('Cache miss; installing with apt');
 
 	const before = await installedSet();
-	await exec.exec('sudo', ['apt-get', 'update']);
+	await dropUnreachableMirrors();
+	await exec.exec('sudo', ['timeout', '-k', '10', String(APT_UPDATE_SECONDS), 'apt-get', 'update']);
 	await exec.exec('sudo', ['apt-get', 'install', '-y', '--no-install-recommends', ...packages], {
 		env: {...process.env, DEBIAN_FRONTEND: 'noninteractive'}
 	});

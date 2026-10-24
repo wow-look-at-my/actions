@@ -38,6 +38,8 @@ The cache key is `cached-apt-v1-<os id>-<os version>-<arch>[-<key label>]-<sha25
 
 On a miss the action records the installed-package set. It then runs `apt-get update` and `apt-get install`. It records the set again and diffs it. The diff gives the requested packages plus every dependency apt pulled in. For each one `dpkg-query -L` gives the paths. The action keeps the files and the symlinks.
 
+Before `apt-get update`, the action sends one HTTP request to each mirror in `/etc/apt/apt-mirrors.txt`. A mirror that does not answer in time leaves the list. A warning names it. apt fails over from such a mirror and then never finishes. A stalled `apt-get update` is stopped. The step fails.
+
 It drops the directories and the paths the image excluded. It packs the rest into a tarball and saves that to the cache.
 
 The action saves the cache only after `apt-get install` exits 0. There is no post step. A failed install therefore leaves no half-populated tarball behind for later runs.

@@ -131,6 +131,57 @@ export interface Manifest {
 	fileCount: number;
 }
 
+// One line of the list a `mirror+file:` apt source reads: a URL, then
+// optional tab-separated metadata such as `priority:1`.
+export interface MirrorLine {
+	text: string;
+	url: string | undefined;
+}
+
+export function parseMirrorList(content: string): MirrorLine[] {
+	const lines = content.split('\n');
+	if (lines[lines.length - 1] === '') {
+		lines.pop();
+	}
+	return lines.map(text => {
+		const trimmed = text.trim();
+		if (trimmed === '' || trimmed.startsWith('#')) {
+			return {text, url: undefined};
+		}
+		return {text, url: trimmed.split(/\s+/)[0]};
+	});
+}
+
+export interface MirrorSelection {
+	content: string;
+	kept: string[];
+	dropped: string[];
+}
+
+// apt's mirror method stalls for good when it fails over from a mirror that
+// stopped answering, so the list keeps only the mirrors that answered.
+export function keepReachableMirrors(lines: MirrorLine[], reachable: Set<string>): MirrorSelection {
+	const kept: string[] = [];
+	const dropped: string[] = [];
+	const out: string[] = [];
+	for (const line of lines) {
+		if (line.url === undefined) {
+			out.push(line.text);
+			continue;
+		}
+		if (!reachable.has(line.url)) {
+			dropped.push(line.url);
+			continue;
+		}
+		kept.push(line.url);
+		out.push(line.text);
+	}
+	if (kept.length === 0) {
+		throw new Error(`no apt mirror answered: ${dropped.join(', ')}`);
+	}
+	return {content: `${out.join('\n')}\n`, kept, dropped};
+}
+
 export function parseOsRelease(content: string): {id: string; versionId: string} {
 	const fields = new Map<string, string>();
 	for (const line of content.split('\n')) {
