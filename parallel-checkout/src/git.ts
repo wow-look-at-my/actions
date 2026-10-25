@@ -42,8 +42,10 @@ export class Git {
 	) {}
 
 	// run executes git and reports the exit code, so a caller that expects a
-	// failure (a missing .gitmodules) can read it.
-	run(args: string[], cwd?: string): Promise<Run> {
+	// failure (a missing .gitmodules) can read it. Every call writes an LFS
+	// file as its pointer, so a checkout never downloads objects one file at a
+	// time. `env` overrides that and adds variables for one call.
+	run(args: string[], cwd?: string, env?: Record<string, string>): Promise<Run> {
 		return this.pool.run(
 			() =>
 				new Promise<Run>(resolve => {
@@ -53,7 +55,7 @@ export class Git {
 						{
 							cwd: cwd ?? this.home,
 							maxBuffer: 1 << 30,
-							env: {...process.env, GIT_TERMINAL_PROMPT: '0'},
+							env: {...process.env, GIT_TERMINAL_PROMPT: '0', GIT_LFS_SKIP_SMUDGE: '1', ...env},
 						},
 						(error, stdout, stderr) => {
 							const code = error === null ? 0 : typeof (error as {code?: unknown}).code === 'number' ? ((error as {code: number}).code) : 1;
@@ -65,8 +67,8 @@ export class Git {
 	}
 
 	// must executes git and fails loudly, with git's own words, on a nonzero exit.
-	async must(args: string[], cwd?: string): Promise<string> {
-		const result = await this.run(args, cwd);
+	async must(args: string[], cwd?: string, env?: Record<string, string>): Promise<string> {
+		const result = await this.run(args, cwd, env);
 		if (result.code !== 0) {
 			throw new Error(`git ${args.join(' ')}${cwd === undefined ? '' : ` (in ${cwd})`} exited ${result.code}: ${result.stderr.trim()}`);
 		}
