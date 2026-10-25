@@ -67,15 +67,18 @@ export async function takeLfs(repo: LfsRepo): Promise<LfsResult> {
 		return {files: 0, added: false};
 	}
 	const storage = repo.storage ?? path.join(repo.gitdir, 'lfs');
+	// The storage goes in the local config: a `-c` reaches every git-lfs the fetch runs, the one reading a file remote included.
+	const stored = repo.storage;
+	if (stored !== undefined) {
+		await repo.locked(async () => {
+			await git.must(['config', '--local', 'lfs.storage', stored], repo.dir);
+		});
+	}
 	const installed = repo.locked(async () => {
-		if (repo.storage !== undefined) {
-			await git.must(['config', '--local', 'lfs.storage', repo.storage], repo.dir);
-		}
 		await git.must(['lfs', 'install', '--local'], repo.dir);
 	});
 	const missing = files.filter(file => !fs.existsSync(objectPath(storage, file.oid)));
-	const storageArgs = repo.storage === undefined ? [] : ['-c', `lfs.storage=${repo.storage}`];
-	const fetching = missing.length === 0 ? Promise.resolve('') : git.must([...storageArgs, 'lfs', 'fetch', 'origin', repo.commit], repo.dir);
+	const fetching = missing.length === 0 ? Promise.resolve('') : git.must(['lfs', 'fetch', 'origin', repo.commit], repo.dir);
 	await Promise.all([installed, fetching, repo.written]);
 	if (files.length === 0) {
 		return {files: 0, added: false};
