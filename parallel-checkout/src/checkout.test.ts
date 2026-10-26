@@ -1,41 +1,13 @@
 import * as assert from 'assert';
-import {execFileSync} from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {test} from 'node:test';
 import {Checkout, Tree, refillNow} from './checkout';
 import {Git, Pool} from './git';
+import {parseLsFiles} from './lfs';
 import {planRef} from './plan';
-
-function sh(args: string[], cwd: string): string {
-	return execFileSync('git', args, {cwd, encoding: 'utf8', env: {...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t'}});
-}
-
-// A repository on disk that serves single commits by id, as GitHub does.
-function origin(root: string, name: string, files: Record<string, string>): string {
-	const dir = path.join(root, name);
-	fs.mkdirSync(dir, {recursive: true});
-	sh(['init', '--quiet', '--initial-branch=main'], dir);
-	sh(['config', 'uploadpack.allowAnySHA1InWant', 'true'], dir);
-	for (const [file, text] of Object.entries(files)) {
-		fs.mkdirSync(path.dirname(path.join(dir, file)), {recursive: true});
-		fs.writeFileSync(path.join(dir, file), text);
-	}
-	sh(['add', '-A'], dir);
-	sh(['commit', '--quiet', '-m', 'init'], dir);
-	return dir;
-}
-
-// link adds a gitlink at `at` pointing at the head of `child`, under a relative url.
-function link(superDir: string, child: string, at: string, name: string): void {
-	sh(['-c', 'protocol.file.allow=always', 'submodule', '--quiet', 'add', '--name', name, `../${path.basename(child)}`, at], superDir);
-	sh(['commit', '--quiet', '-m', `add ${at}`], superDir);
-}
-
-function head(dir: string): string {
-	return sh(['rev-parse', 'HEAD'], dir).trim();
-}
+import {advance, head, link, origin, sh} from './testrepo';
 
 type Fixture = {root: string; top: string; mid: string; leaf: string; plain: string};
 
@@ -53,15 +25,6 @@ function fixture(): Fixture {
 
 type Early = () => Promise<Tree | undefined>;
 type Follow = {branch: string; scope: string[]};
-
-// advance commits a new file on `branch` of an origin, creating the branch if needed, and returns the new head.
-function advance(dir: string, branch: string, file: string): string {
-	sh(['checkout', '--quiet', '-B', branch], dir);
-	fs.writeFileSync(path.join(dir, file), `${file}\n`);
-	sh(['add', '-A'], dir);
-	sh(['commit', '--quiet', '-m', `advance ${branch}`], dir);
-	return head(dir);
-}
 
 type LockHead = (url: string, branch: string, head: string) => Promise<string>;
 
@@ -157,7 +120,10 @@ test('a recursive checkout lands every level at the commit its parent pins', asy
 	assert.strictEqual(fs.readFileSync(path.join(dir, 'vendor/mid/deps/leaf/leaf.txt'), 'utf8'), 'leaf\n');
 	assert.strictEqual(fs.readFileSync(path.join(dir, 'vendor/plain/plain.txt'), 'utf8'), 'plain\n');
 
-	// The branch exists locally and tracks origin, as actions/checkout leaves it.
+	// The branch exists locally and tracks origin, as actions/checkout leaves it, and HEAD names it rather than a detached commit.
+	assert.strictEqual(sh(['symbolic-ref', 'HEAD'], dir).trim(), 'refs/heads/main');
+	assert.strictEqual(fs.readFileSync(path.join(dir, '.git/HEAD'), 'utf8'), 'ref: refs/heads/main\n');
+	assert.strictEqual(sh(['rev-parse', 'refs/heads/main'], dir).trim(), head(fx.top));
 	assert.strictEqual(sh(['rev-parse', '--abbrev-ref', 'HEAD'], dir).trim(), 'main');
 	assert.strictEqual(sh(['rev-parse', 'refs/remotes/origin/main'], dir).trim(), head(fx.top));
 
@@ -260,7 +226,9 @@ test('a checkout of a stored commit moves the stored worktree in, and git finds 
 	const dir = path.join(fx.root, 'new/two');
 	assert.strictEqual(fs.readFileSync(path.join(dir, 'vendor/mid/deps/leaf/leaf.txt'), 'utf8'), 'leaf\n');
 	assert.strictEqual(sh(['status', '--porcelain'], dir), '');
-	assert.strictEqual(sh(['rev-parse', '--abbrev-ref', 'HEAD'], dir).trim(), 'main');
+	assert.strictEqual(sh(['symbolic-ref', 'HEAD'], dir).trim(), 'refs/heads/main');
+	assert.strictEqual(fs.readFileSync(path.join(dir, '.git/HEAD'), 'utf8'), 'ref: refs/heads/main\n');
+	assert.strictEqual(sh(['rev-parse', 'refs/heads/main'], dir).trim(), head(fx.top));
 	const status = sh(['submodule', 'status', '--recursive'], dir);
 	assert.match(status, new RegExp(`^ ${head(fx.mid)} vendor/mid`, 'm'));
 	assert.match(status, new RegExp(`^ ${head(fx.leaf)} vendor/mid/deps/leaf`, 'm'));
@@ -393,4 +361,125 @@ test('a submodule whose fetch fails takes the whole checkout down with its name'
 	fs.rmSync(fx.leaf, {recursive: true});
 	const dir = path.join(fx.root, 'work');
 	await assert.rejects(take(fx, dir, 'recursive').checkout.run(), /git fetch .*leaf/);
+});
+
+const pointer = /^version https:\/\/git-lfs\.github\.com\/spec\/v1\noid sha256:[0-9a-f]{64}\nsize \d+\n$/;
+const topBlob = 'top binary content\n'.repeat(50);
+const midBlob = 'mid binary content\n'.repeat(70);
+
+// lfsFixture is a superproject and one submodule holding LFS files, and a submodule holding none.
+function lfsFixture(): Fixture {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), 'parallel-checkout-lfs-'));
+	const plain = origin(root, 'plain', {'plain.txt': 'plain\n'});
+	const mid = origin(root, 'mid', {'mid.txt': 'mid\n'}, {'data/mid.bin': midBlob});
+	const top = origin(root, 'top', {'top.txt': 'top\n'}, {'top.bin': topBlob});
+	link(top, mid, 'vendor/mid', 'mid');
+	link(top, plain, 'vendor/plain', 'plain');
+	return {root, top, mid, leaf: '', plain};
+}
+
+function takeLfs(fx: Fixture, into: string, lfs: boolean, store?: string) {
+	const log: string[] = [];
+	const checkout = new Checkout({
+		git: new Git(new Pool(8), ['-c', 'protocol.file.allow=always']),
+		dir: path.join(fx.root, into),
+		url: fx.top,
+		plan: planRef('refs/heads/main', head(fx.top)),
+		depth: 1,
+		submodules: 'recursive',
+		workers: 2,
+		config: [],
+		store,
+		lfs,
+		refill: (workers, jobs) => refillNow(workers, jobs),
+		log: message => log.push(message),
+	});
+	return {checkout, log};
+}
+
+// lfsFiles is what git-lfs reports for a worktree: true for a file holding its content.
+function lfsFiles(dir: string): Map<string, boolean> {
+	return new Map(parseLsFiles(sh(['lfs', 'ls-files', '--long'], dir)).map(file => [file.path, file.present]));
+}
+
+function lfsContent(dir: string, top: string | RegExp, mid: string | RegExp): void {
+	for (const [file, want] of [['top.bin', top], ['vendor/mid/data/mid.bin', mid]] as const) {
+		const text = fs.readFileSync(path.join(dir, file), 'utf8');
+		if (want instanceof RegExp) {
+			assert.match(text, want, file);
+		} else {
+			assert.strictEqual(text, want, file);
+		}
+	}
+	assert.strictEqual(sh(['status', '--porcelain'], dir), '');
+	assert.strictEqual(sh(['status', '--porcelain'], path.join(dir, 'vendor/mid')), '');
+}
+
+test('parseLsFiles reads the object, the content marker and the path', () => {
+	const oid = 'a'.repeat(64);
+	assert.deepStrictEqual(parseLsFiles(`${oid} * dir/a file.bin\n${oid} - b.bin\r\nnot a line\n`), [
+		{oid, present: true, path: 'dir/a file.bin'},
+		{oid, present: false, path: 'b.bin'},
+	]);
+});
+
+test('lfs puts the content of every LFS file at every level, and git finds the tree clean', async () => {
+	const fx = lfsFixture();
+	const {checkout, log} = takeLfs(fx, 'work', true);
+	await checkout.run();
+	const dir = path.join(fx.root, 'work');
+	lfsContent(dir, topBlob, midBlob);
+	assert.deepStrictEqual(lfsFiles(dir), new Map([['top.bin', true]]));
+	assert.deepStrictEqual(lfsFiles(path.join(dir, 'vendor/mid')), new Map([['data/mid.bin', true]]));
+	// git-lfs is installed where there are LFS files and in the superproject, as actions/checkout leaves it.
+	assert.strictEqual(sh(['config', '--local', 'filter.lfs.process'], dir).trim(), 'git-lfs filter-process');
+	assert.strictEqual(sh(['config', '--local', 'filter.lfs.process'], path.join(dir, 'vendor/mid')).trim(), 'git-lfs filter-process');
+	assert.ok(fs.existsSync(path.join(dir, '.git/hooks/pre-push')));
+	assert.throws(() => sh(['config', '--local', 'filter.lfs.process'], path.join(dir, 'vendor/plain')));
+	assert.ok(log.includes('vendor/mid: 1 LFS file(s) checked out, 1 of them fetched'), log.join('\n'));
+});
+
+test('lfs false leaves every LFS file as its pointer', async () => {
+	const fx = lfsFixture();
+	await takeLfs(fx, 'work', false).checkout.run();
+	const dir = path.join(fx.root, 'work');
+	lfsContent(dir, pointer, pointer);
+	assert.deepStrictEqual(lfsFiles(dir), new Map([['top.bin', false]]));
+	assert.throws(() => sh(['config', '--local', 'filter.lfs.process'], dir));
+});
+
+test('a stored worktree keeps its pointers, and a checkout from the store puts the content back without the remote', async () => {
+	const fx = lfsFixture();
+	const store = path.join(fx.root, 'store');
+	const first = takeLfs(fx, 'one', true, store);
+	await first.checkout.run();
+	// Stores, the LFS objects of both repositories, and copies of each worktree: one per path and a spare.
+	assert.strictEqual(await first.checkout.compact(), 3 + 2 + 3 * 2, first.log.join('\n'));
+	const kept = path.join(store, 'trees');
+	const topTree = path.join(kept, fs.readdirSync(kept).find(name => name.endsWith('top'))!, head(fx.top));
+	assert.match(fs.readFileSync(path.join(topTree, 'top.bin'), 'utf8'), pointer);
+
+	// The remotes serve no LFS object now, so every one comes from the store.
+	fs.rmSync(path.join(fx.top, '.git', 'lfs'), {recursive: true});
+	fs.rmSync(path.join(fx.mid, '.git', 'lfs'), {recursive: true});
+	const second = takeLfs(fx, 'two', true, store);
+	await second.checkout.run();
+	assert.strictEqual(second.log.filter(line => line.includes('worktree taken from the store')).length, 3, second.log.join('\n'));
+	assert.ok(second.log.includes('vendor/mid: 1 LFS file(s) checked out, 0 of them fetched'), second.log.join('\n'));
+	assert.strictEqual(await second.checkout.compact(), 0, second.log.join('\n'));
+	const dir = path.join(fx.root, 'two');
+	lfsContent(dir, topBlob, midBlob);
+	assert.strictEqual(sh(['symbolic-ref', 'HEAD'], dir).trim(), 'refs/heads/main');
+
+	// The same stored worktrees serve a checkout that wants the pointers.
+	const third = takeLfs(fx, 'three', false, store);
+	await third.checkout.run();
+	assert.strictEqual(third.log.filter(line => line.includes('worktree taken from the store')).length, 3, third.log.join('\n'));
+	lfsContent(path.join(fx.root, 'three'), pointer, pointer);
+});
+
+test('an LFS object the remote cannot serve fails the checkout', async () => {
+	const fx = lfsFixture();
+	fs.rmSync(path.join(fx.mid, '.git', 'lfs'), {recursive: true});
+	await assert.rejects(takeLfs(fx, 'work', true).checkout.run(), /lfs fetch/);
 });

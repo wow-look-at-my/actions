@@ -4,6 +4,7 @@ import * as fsp from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 import {Git} from './git';
+import {takeLfs, writeStored} from './lfs';
 import {Head, RefPlan, SHA, followed, gitdirFor, gitlinks, parseGitmodules, pickHead, resolveUrl} from './plan';
 
 export type Submodules = 'false' | 'true' | 'recursive';
@@ -35,6 +36,8 @@ export type Options = {
 	store?: string;
 	// refill writes stored worktrees out of a store repository without the caller waiting. The default is a detached process.
 	refill?: (workers: number, refills: Refill[]) => void;
+	// Puts the content of every LFS file into each worktree in place of its pointer.
+	lfs?: boolean;
 	log: (message: string) => void;
 };
 
@@ -59,6 +62,8 @@ type Repo = {
 	placed?: boolean;
 	// True when this run wrote the git directory, so its config holds nothing it did not write.
 	fresh?: boolean;
+	// True when the worktree holds LFS content, which a stored copy must not.
+	lfs?: boolean;
 	// A label for the log.
 	label: string;
 };
@@ -82,6 +87,8 @@ export class Checkout {
 	private templated?: Promise<{config: string; head: string}>;
 	// The store repositories this run fetched into, which compact rewrites.
 	private readonly fetchedStores = new Set<string>();
+	// How many repositories fetched LFS objects into the store.
+	private lfsAdded = 0;
 
 	constructor(private readonly opts: Options) {}
 
@@ -172,7 +179,7 @@ export class Checkout {
 			(this.opts.refill ?? detachedRefill)(this.opts.workers, refills);
 			this.opts.log(`${refills.length} stored worktree(s) refill in the background`);
 		}
-		return stores.length + kept.reduce((sum, added) => sum + added, 0);
+		return stores.length + this.lfsAdded + kept.reduce((sum, added) => sum + added, 0);
 	}
 
 	// keep refills the stored worktrees of one commit. A commit the store had
@@ -200,6 +207,13 @@ export class Checkout {
 			refills.push({store: repo.objects, commit: trees.commit, targets: free});
 			return 0;
 		}
+		// A worktree holding LFS content is written again from the objects, so the store keeps each LFS file as its pointer.
+		const objects = repo.objects;
+		const lfs = repos.some(each => each.lfs);
+		if (lfs && objects === undefined) {
+			this.opts.log(`${repo.label}: the worktree holds LFS content and the store holds none of its objects, so it is not stored`);
+			return 0;
+		}
 		// Only a commit new to the store can push an older one out.
 		await this.evict(trees.dir, trees.commit);
 		const own = path.join(repo.dir, '.git');
@@ -208,7 +222,11 @@ export class Checkout {
 		for (const tree of free) {
 			const staging = `${tree}.${process.pid}`;
 			await fsp.rm(staging, {recursive: true, force: true});
-			await copyTree(repo.dir, staging, source => source !== own && !links.has(path.dirname(source)));
+			if (lfs) {
+				await writeStored(this.opts.git, objects!, trees.commit, staging, this.opts.workers);
+			} else {
+				await copyTree(repo.dir, staging, source => source !== own && !links.has(path.dirname(source)));
+			}
 			try {
 				await fsp.rename(staging, tree);
 				added += 1;
@@ -266,8 +284,34 @@ export class Checkout {
 			return this.makeSubmoduleDirs(repo, found);
 		});
 		const written = Promise.all([fetching, ready, parentReady]).then(() => this.writeTree(repo, started));
-		await Promise.all([written, tree.then(found => this.children(repo, found, ready))]);
+		// The LFS objects download while git writes the worktree.
+		const content = this.opts.lfs ? fetching.then(commit => this.lfs(repo, commit, written)) : written;
+		await Promise.all([written, content, tree.then(found => this.children(repo, found, ready))]);
 		return fetching;
+	}
+
+	private async lfs(repo: Repo, commit: string, written: Promise<void>): Promise<void> {
+		const storage = this.opts.store === undefined || this.opts.store === '' || repo.objects === undefined ? undefined : path.join(this.opts.store, 'lfs', storeKey(repo.url));
+		const result = await takeLfs({
+			git: this.opts.git,
+			dir: repo.dir,
+			gitdir: repo.gitdir,
+			label: repo.label,
+			commit,
+			storage,
+			always: repo.dir === this.opts.dir,
+			written,
+			locked: task => {
+				const next = (this.configLocks.get(repo.gitdir) ?? Promise.resolve()).then(task);
+				this.configLocks.set(repo.gitdir, next);
+				return next;
+			},
+			log: this.opts.log,
+		});
+		repo.lfs = result.files > 0;
+		if (result.added) {
+			this.lfsAdded += 1;
+		}
 	}
 
 	private async fetch(repo: Repo, started: number): Promise<string> {
@@ -581,7 +625,7 @@ export function refillNow(workers: number, refills: Refill[]): void {
 	for (const {store, commit, targets} of refills) {
 		for (const target of targets) {
 			const staging = `${target}.${process.pid}`;
-			const env = {...process.env, GIT_DIR: store, GIT_INDEX_FILE: `${staging}.index`};
+			const env = {...process.env, GIT_DIR: store, GIT_INDEX_FILE: `${staging}.index`, GIT_LFS_SKIP_SMUDGE: '1'};
 			try {
 				fs.mkdirSync(staging);
 				execFileSync('git', ['read-tree', commit], {env, stdio: 'ignore'});
