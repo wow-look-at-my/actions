@@ -5,6 +5,7 @@ import * as path from 'path';
 import {headLister, readTree} from './api';
 import {Checkout, Refill, Submodules, refillNow, refillVariable} from './checkout';
 import {Git, Pool} from './git';
+import {lfsVersion} from './lfs';
 import {basicAuth, pickRef, planRef} from './plan';
 import {lockName, runLock} from './runlock';
 
@@ -87,6 +88,7 @@ async function run(): Promise<void> {
 	const jobs = intInput('jobs', 1);
 	const persist = core.getBooleanInput('persist-credentials');
 	const clean = core.getBooleanInput('clean');
+	const lfs = core.getBooleanInput('lfs');
 	const workers = os.availableParallelism();
 
 	// The credential rides on every call, and into each repo's config only when the caller wants later steps to have it.
@@ -113,6 +115,9 @@ async function run(): Promise<void> {
 	// A directory in no repository, for the calls made before the checkout exists.
 	const home = await fsp.mkdtemp(path.join(process.env.RUNNER_TEMP || os.tmpdir(), 'parallel-checkout-'));
 	const git = new Git(new Pool(jobs), configArgs, home);
+	if (lfs) {
+		core.info(`LFS files are checked out with ${await lfsVersion(git)}`);
+	}
 
 	const {ref, sha} = await resolveRef(git, url, repository);
 	const plan = planRef(ref, sha);
@@ -163,7 +168,7 @@ async function run(): Promise<void> {
 		// The head lookup comes after the tree is read, by then over a connection this opened.
 		fetch(apiUrl, {method: 'HEAD'}).catch(() => undefined);
 	}
-	const checkout = new Checkout({git, dir, url, plan, depth, submodules, workers, config, rootTree, follow, lockHead, listHeads, store: objects, log: core.info});
+	const checkout = new Checkout({git, dir, url, plan, depth, submodules, workers, config, rootTree, follow, lockHead, listHeads, store: objects, lfs, log: core.info});
 	const {commit, repos} = await checkout.run();
 	core.setOutput('commit', commit);
 	core.setOutput('ref', ref);

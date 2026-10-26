@@ -55,6 +55,10 @@ inputs:
     description: 'Delete whatever is in the target directory before the checkout.'
     required: false
     default: 'true'
+  lfs:
+    description: 'Put the content of every Git LFS file into the superproject and every submodule this checks out, in place of its pointer, and install git-lfs into each repository that has LFS files and into the superproject. The objects download with the token the git fetches use, while git writes the worktree, and land in the store, so a later checkout fetches only the objects the store lacks. Needs git-lfs on the runner. A file that still holds its pointer afterwards fails the step. False leaves every LFS file as its pointer.'
+    required: false
+    default: 'false'
 
 outputs:
   commit:

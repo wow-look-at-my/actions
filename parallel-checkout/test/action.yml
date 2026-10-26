@@ -146,9 +146,62 @@ runs:
         fi
         exit "$fail"
 
+    # A commit whose prebuilt syso files and debug testdata live in GitHub LFS.
+    - name: Check gosmopolitan out with LFS content
+      id: lfs
+      uses: ./parallel-checkout
+      with:
+        repository: wow-look-at-my/gosmopolitan
+        ref: 2da3bdd7d8ae66eb1b7f2c298259cb4dcabeb211
+        path: .parallel-checkout-test/lfs
+        submodules: false
+        lfs: true
+
+    # The second checkout of the same commit takes its worktree and every LFS object from the store.
+    - name: Check the same commit out again from the store
+      id: lfs-again
+      uses: ./parallel-checkout
+      with:
+        repository: wow-look-at-my/gosmopolitan
+        ref: 2da3bdd7d8ae66eb1b7f2c298259cb4dcabeb211
+        path: .parallel-checkout-test/lfs-again
+        submodules: false
+        lfs: true
+
+    - name: Every LFS file holds its content and git finds both trees clean
+      shell: bash
+      run: |
+        set -euo pipefail
+        fail=0
+        for dir in .parallel-checkout-test/lfs .parallel-checkout-test/lfs-again; do
+          files=$(git -C "$dir" lfs ls-files --long)
+          if [ -z "$files" ]; then
+            echo "::error::$dir: git lfs lists no LFS file"
+            fail=1
+          fi
+          if grep -v '^[0-9a-f]\{64\} \* ' <<<"$files"; then
+            echo "::error::$dir: the files above still hold their pointers"
+            fail=1
+          fi
+          if head -c 100 "$dir/src/runtime/race/race_linux_arm64.syso" | grep -q 'git-lfs.github.com/spec'; then
+            echo "::error::$dir: race_linux_arm64.syso is a pointer"
+            fail=1
+          fi
+          if [ -n "$(git -C "$dir" status --porcelain)" ]; then
+            echo "::error::$dir: the worktree is not clean:"
+            git -C "$dir" status --porcelain
+            fail=1
+          fi
+        done
+        if [ "${{ steps.lfs-again.outputs.store-added }}" != "0" ]; then
+          echo "::error::the second checkout added ${{ steps.lfs-again.outputs.store-added }} entries to the store, so it fetched again"
+          fail=1
+        fi
+        exit "$fail"
+
     # Saved only when a checkout added something the restored store lacked.
     - name: Save the object store
-      if: steps.gosmo.outputs.store-added != '0' || steps.follow.outputs.store-added != '0'
+      if: steps.gosmo.outputs.store-added != '0' || steps.follow.outputs.store-added != '0' || steps.lfs.outputs.store-added != '0'
       uses: actions/cache/save@v4
       with:
         path: ${{ runner.tool_cache }}/parallel-checkout
