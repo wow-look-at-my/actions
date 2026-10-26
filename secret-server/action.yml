@@ -15,6 +15,9 @@ outputs:
   secrets:
     description: 'JSON object of secrets'
     value: ${{ steps.fetch.outputs.secrets }}
+  buildkit-secret-envs:
+    description: 'One NAME=NAME line per secret, for the secret-envs input of docker/build-push-action. Each secret becomes a BuildKit secret of the same id.'
+    value: ${{ steps.fetch.outputs.buildkit-secret-envs }}
 
 runs:
   using: 'composite'
@@ -36,6 +39,8 @@ runs:
         # Set output using delimiter format (safe for multiline values)
         delimiter="ghadelimiter_$(openssl rand -hex 8)"
         printf 'secrets<<%s\n%s\n%s\n' "$delimiter" "$SECRETS" "$delimiter" >> "$GITHUB_OUTPUT"
+        envs=$(SECRETS="$SECRETS" bash "$GITHUB_ACTION_PATH/buildkit-secret-envs.sh") || exit 1
+        printf 'buildkit-secret-envs<<%s\n%s\n%s\n' "$delimiter" "$envs" "$delimiter" >> "$GITHUB_OUTPUT"
 
         # Export each secret as an environment variable using delimiter format
         export SECRETS

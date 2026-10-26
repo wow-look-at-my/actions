@@ -46,6 +46,17 @@ tests:
 			- "OTHER_KEY_CLEAN=yes"
 			- "HAS_CR=no"
 
+	# A build step mounts each secret by id, and build-push-action reads each value from the variable of the same name.
+	- desc: each secret becomes a NAME=NAME line, and no value is printed
+	  cmd: env SECRETS='{"PRIVATE_ORG_REPO_READ":"ghp_value","OTHER_KEY":"other-value"}' bash secret-server/buildkit-secret-envs.sh
+	  outputs:
+		stdout:
+			- "PRIVATE_ORG_REPO_READ=PRIVATE_ORG_REPO_READ"
+			- "OTHER_KEY=OTHER_KEY"
+		!stdout:
+			- "ghp_value"
+			- "other-value"
+
 	# The OIDC endpoint rate-limits a run whose jobs start together, and it
 	# serves an error page of its own during an incident. Neither answer is
 	# JSON. A pipe into jq ends the step with "jq: parse error" and exit 5,
