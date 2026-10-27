@@ -5,7 +5,9 @@ import {
 	computeDigest,
 	diffInstalled,
 	encodeFileList,
+	keepReachableMirrors,
 	normalizePackages,
+	parseMirrorList,
 	parseDpkgFileList,
 	parseInstalledSet,
 	parseOsRelease,
@@ -129,6 +131,45 @@ test('the tar file list is NUL separated, so a space or a dash in a name is lite
 
 test('os-release fields are unquoted', () => {
 	assert.deepEqual(parseOsRelease('NAME="Ubuntu"\nID=ubuntu\nVERSION_ID="24.04"\n'), {id: 'ubuntu', versionId: '24.04'});
+});
+
+const RUNNER_MIRRORS = [
+	'http://azure.archive.ubuntu.com/ubuntu/\tpriority:1',
+	'https://archive.ubuntu.com/ubuntu/\tpriority:2',
+	'https://security.ubuntu.com/ubuntu/\tpriority:3',
+	''
+].join('\n');
+
+test('a mirror list line yields its URL without the metadata', () => {
+	assert.deepEqual(
+		parseMirrorList(RUNNER_MIRRORS).map(line => line.url),
+		['http://azure.archive.ubuntu.com/ubuntu/', 'https://archive.ubuntu.com/ubuntu/', 'https://security.ubuntu.com/ubuntu/']
+	);
+});
+
+test('blank and comment lines in a mirror list carry no URL', () => {
+	assert.deepEqual(parseMirrorList('# local\n\nhttp://m/ubuntu/\n').map(line => line.url), [undefined, undefined, 'http://m/ubuntu/']);
+});
+
+test('a mirror that did not answer leaves the list and the rest keep their metadata', () => {
+	const selection = keepReachableMirrors(
+		parseMirrorList(RUNNER_MIRRORS),
+		new Set(['https://archive.ubuntu.com/ubuntu/', 'https://security.ubuntu.com/ubuntu/'])
+	);
+	assert.deepEqual(selection.dropped, ['http://azure.archive.ubuntu.com/ubuntu/']);
+	assert.deepEqual(selection.kept, ['https://archive.ubuntu.com/ubuntu/', 'https://security.ubuntu.com/ubuntu/']);
+	assert.equal(selection.content, 'https://archive.ubuntu.com/ubuntu/\tpriority:2\nhttps://security.ubuntu.com/ubuntu/\tpriority:3\n');
+});
+
+test('a list where every mirror answered comes back unchanged', () => {
+	const lines = parseMirrorList(RUNNER_MIRRORS);
+	const selection = keepReachableMirrors(lines, new Set(lines.flatMap(line => (line.url ? [line.url] : []))));
+	assert.deepEqual(selection.dropped, []);
+	assert.equal(selection.content, RUNNER_MIRRORS);
+});
+
+test('a list where no mirror answered fails loudly', () => {
+	assert.throws(() => keepReachableMirrors(parseMirrorList(RUNNER_MIRRORS), new Set()), /no apt mirror answered/);
 });
 
 test('os-release without VERSION_ID fails loudly', () => {
