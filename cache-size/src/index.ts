@@ -1,3 +1,5 @@
+// Detect Go build cache by checking for its README marker file.
+
 import * as core from '@actions/core';
 import * as fs from 'fs';
 import * as path from 'path';

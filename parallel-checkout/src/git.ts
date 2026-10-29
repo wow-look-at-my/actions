@@ -1,3 +1,5 @@
+// Pool bounds how many git processes run at once.
+
 import {execFile} from 'child_process';
 
 export type Run = {code: number; stdout: string; stderr: string};

@@ -1,3 +1,5 @@
+// One git call with captured output.
+
 import * as core from '@actions/core';
 import { exec } from '@actions/exec';
 import { actionDirsFromPaths, classifyTag, TagContext } from './classify';

@@ -1,3 +1,5 @@
+// One flag per option, each taking its value as the next argv element, so a value that contains a space arrives whole.
+
 export type Options = {
 	source: string;
 	name: string;

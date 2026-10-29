@@ -1,3 +1,5 @@
+// Path relative to `/`, which is what tar stores and what `-C /` restores.
+
 import {buildKey, CacheKey, normalizeList, sanitizeLabel} from '../../_shared/cache-key/lib';
 
 export const CACHE_VERSION = 'cached-apt-v1';

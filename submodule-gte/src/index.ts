@@ -1,3 +1,5 @@
+// A submodule gitlink may move forward, and a build moves it there on its own.
+
 import * as core from '@actions/core';
 import * as exec from '@actions/exec';
 import * as fsp from 'fs/promises';

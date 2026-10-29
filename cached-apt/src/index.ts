@@ -1,3 +1,5 @@
+// Restoring into `/` bypasses dpkg entirely, so nothing else re-links the shared-library cache.
+
 import * as core from '@actions/core';
 import * as exec from '@actions/exec';
 import * as fs from 'fs';

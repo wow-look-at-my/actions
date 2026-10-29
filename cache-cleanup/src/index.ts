@@ -1,3 +1,5 @@
+// The cache service has no per-entry TTL, so short hand-off lifetime is done by explicit deletion through the DOCUMENTED public REST API.
+
 import * as core from '@actions/core';
 import * as github from '@actions/github';
 import {isAgedOut, isRunEntry, keyMatchesName, listPrefix, parseMaxAge} from './lib';

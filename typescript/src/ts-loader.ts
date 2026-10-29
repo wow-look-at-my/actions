@@ -1,3 +1,5 @@
+// A CommonJS `.ts` loader: CommonJS tries every registered extension, so "./helper" finds helper.ts.
+
 import * as fs from 'fs';
 
 interface CompilableModule {

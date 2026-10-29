@@ -1,3 +1,5 @@
+// Cargo names every deps/, build/ and .fingerprint/ entry with the same 16-hex hash its JSON messages print.
+
 import * as childProcess from 'child_process';
 import * as crypto from 'crypto';
 import * as fs from 'fs';

@@ -1,3 +1,5 @@
+// Thrown when an archive's payload does not match the digest its producer recorded.
+
 import {ChildProcess, spawn} from 'child_process';
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';

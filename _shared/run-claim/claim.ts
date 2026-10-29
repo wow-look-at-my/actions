@@ -1,3 +1,5 @@
+// Key prefix of every run-once claim entry.
+
 import * as crypto from 'crypto';
 
 /** Key prefix of every run-once claim entry. */
