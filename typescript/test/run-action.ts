@@ -1,3 +1,5 @@
+// The test runner starts every test file as a child of one process, so its pid names the run.
+
 import { before } from 'node:test';
 import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';

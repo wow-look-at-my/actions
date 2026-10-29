@@ -1,3 +1,5 @@
+// Tree is what a commit says about its submodules: the .gitmodules text and the gitlink at each path.
+
 import {execFileSync, spawn} from 'child_process';
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';

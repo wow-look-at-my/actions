@@ -1,3 +1,5 @@
+// REST list prefix: always the whole cache-xfer namespace.
+
 import {KEY_PREFIX, escapeRegExp} from '../../_shared/cache-xfer/lib';
 
 export {KEY_PREFIX};

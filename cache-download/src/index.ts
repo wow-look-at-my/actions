@@ -1,3 +1,5 @@
+// Internal modules of the pinned @actions/cache (exact version in package.json; bundled into dist/ at release).
+
 import * as core from '@actions/core';
 import * as fsp from 'fs/promises';
 import * as os from 'os';

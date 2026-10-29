@@ -1,3 +1,5 @@
+// v2 stores the run's exports beside its output paths.
+
 import * as crypto from 'crypto';
 import * as os from 'os';
 import * as path from 'path';

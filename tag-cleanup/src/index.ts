@@ -1,3 +1,5 @@
+// The sweep itself lives in cleanup.ts, which exports it and runs nothing on import.
+
 import * as core from '@actions/core';
 import { run } from './cleanup';
 

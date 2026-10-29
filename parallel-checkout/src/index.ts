@@ -1,3 +1,5 @@
+// resolveRef turns the ref input, or the event's ref, into a full ref name plus the commit the event pinned.
+
 import * as core from '@actions/core';
 import * as fsp from 'fs/promises';
 import * as os from 'os';
