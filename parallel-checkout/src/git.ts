@@ -1,3 +1,5 @@
+// git.ts holds the git code.
+
 import {execFile} from 'child_process';
 
 export type Run = {code: number; stdout: string; stderr: string};

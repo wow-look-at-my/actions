@@ -1,3 +1,5 @@
+// index.ts holds the index code.
+
 import * as core from "@actions/core";
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";

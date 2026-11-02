@@ -1,3 +1,5 @@
+// apt.ts holds the apt code.
+
 import {buildKey, CacheKey, normalizeList, sanitizeLabel} from '../../_shared/cache-key/lib';
 
 export const CACHE_VERSION = 'cached-apt-v1';

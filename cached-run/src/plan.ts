@@ -1,3 +1,5 @@
+// plan.ts holds the plan code.
+
 import * as crypto from 'crypto';
 import * as os from 'os';
 import * as path from 'path';
