@@ -11,6 +11,19 @@ runs:
       run: |
         $ErrorActionPreference = 'Stop'
 
+        # A stopped Defender scans nothing, and every set below then fails with
+        # 0x800106ba. A service that is still starting scans once it runs.
+        $svc = Get-Service -Name WinDefend -ErrorAction SilentlyContinue
+        if ($svc -and $svc.Status -eq 'StartPending') {
+          $svc.WaitForStatus('Running', [TimeSpan]::FromMinutes(2))
+          $svc.Refresh()
+        }
+        if (-not $svc -or $svc.Status -ne 'Running') {
+          $state = if ($svc) { $svc.Status } else { 'not installed' }
+          Write-Host "Defender is not running on this runner (WinDefend: $state), so nothing scans this build."
+          exit 0
+        }
+
         # Exclusions first: these survive where the switches below do not.
         foreach ($path in @($env:GITHUB_WORKSPACE, $env:RUNNER_TEMP, $env:TEMP, $env:TMP)) {
           if ($path) {
