@@ -1,3 +1,5 @@
+// cargo.ts holds the cargo code.
+
 import * as childProcess from 'child_process';
 import * as crypto from 'crypto';
 import * as fs from 'fs';

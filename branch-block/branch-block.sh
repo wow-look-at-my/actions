@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# branch-block.sh holds the branch block code.
+
 set -euo pipefail
 
 # Usage: branch-block.sh --branch <branch> [--ruleset <name>] Adds a branch pattern to a ruleset.

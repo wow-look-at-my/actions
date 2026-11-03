@@ -1,3 +1,5 @@
+// api.ts holds the api code.
+
 import {Tree, ms} from './checkout';
 import {Git} from './git';
 

@@ -1,3 +1,5 @@
+// transform.ts holds the transform code.
+
 import * as ts from 'typescript';
 
 // Name of the async function the user script's body statements are wrapped in.

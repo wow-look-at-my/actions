@@ -1,3 +1,5 @@
+// lib.ts holds the lib code.
+
 import * as crypto from 'crypto';
 
 // The copy of the cache-xfer wire format: key layout, envelope, and the constant version seed. cache-upload, cache-download.
