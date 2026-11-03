@@ -1,3 +1,5 @@
+// args.ts holds the args code.
+
 export type Options = {
 	source: string;
 	name: string;

@@ -1,3 +1,5 @@
+// claim.ts holds the claim code.
+
 import * as crypto from 'crypto';
 
 /** Key prefix of every run-once claim entry. */

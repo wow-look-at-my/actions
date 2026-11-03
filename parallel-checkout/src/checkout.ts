@@ -1,3 +1,5 @@
+// checkout.ts holds the checkout code.
+
 import {execFileSync, spawn} from 'child_process';
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';

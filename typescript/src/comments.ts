@@ -1,3 +1,5 @@
+// comments.ts holds the comments code.
+
 import * as ts from 'typescript';
 
 /** A run of consecutive comment-only lines. Both bounds are 1-based, inclusive. */
