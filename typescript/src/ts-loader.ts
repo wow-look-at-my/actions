@@ -1,3 +1,5 @@
+// ts-loader.ts holds the ts loader code.
+
 import * as fs from 'fs';
 
 interface CompilableModule {

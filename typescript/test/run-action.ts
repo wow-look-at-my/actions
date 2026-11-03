@@ -1,3 +1,5 @@
+// run-action.ts holds the run action code.
+
 import { before } from 'node:test';
 import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
