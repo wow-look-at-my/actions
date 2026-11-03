@@ -1,0 +1,93 @@
+name: Test cached-apt
+version: 1
+description: Dogfood cached-apt twice in one job to exercise the apt path and then the cache path (never released)
+
+runs:
+  using: composite
+  steps:
+    - name: Install cmatrix with an empty cache
+      id: first
+      uses: ./cached-apt
+      with:
+        packages: cmatrix
+        key: cached-apt-selftest-${{ github.run_id }}-${{ github.run_attempt }}
+
+    - name: Verify the apt path installed a working binary
+      shell: bash
+      run: |
+        set -euo pipefail
+        cmatrix -V
+        echo "first call: cache-hit=${{ steps.first.outputs.cache-hit }} packages=${{ steps.first.outputs.installed-packages }}"
+        if [ "${{ steps.first.outputs.cache-hit }}" != "false" ]; then
+          echo "::error::the first call reported cache-hit=${{ steps.first.outputs.cache-hit }}, but its key is unique to this run and must miss"
+          exit 1
+        fi
+        if [ -z "${{ steps.first.outputs.installed-packages }}" ]; then
+          echo "::error::the first call installed nothing, so it cached nothing; cmatrix is already on this image"
+          exit 1
+        fi
+
+    - name: Remove the installed files so only the cache can bring them back
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo dpkg --purge --force-depends cmatrix
+
+    - name: Install cmatrix again, now from the cache
+      id: second
+      uses: ./cached-apt
+      with:
+        packages: cmatrix
+        key: cached-apt-selftest-${{ github.run_id }}-${{ github.run_attempt }}
+
+    - name: Verify the cache path restored a working binary
+      shell: bash
+      env:
+        HIT: ${{ steps.second.outputs.cache-hit }}
+        PKGS: ${{ steps.second.outputs.installed-packages }}
+      run: |
+        set -euo pipefail
+        cmatrix -V
+        echo "second call: cache-hit=$HIT packages=$PKGS"
+        if [ "$HIT" != "true" ]; then
+          echo "::error::the second call reported cache-hit=$HIT; the first call's save did not come back"
+          exit 1
+        fi
+        if [ "$PKGS" != "${{ steps.first.outputs.installed-packages }}" ]; then
+          echo "::error::the cache manifest lists '$PKGS' but the install produced '${{ steps.first.outputs.installed-packages }}'"
+          exit 1
+        fi
+
+    - name: Make the first apt mirror stop answering, as it did on westus3 runners
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo cp /etc/hosts "$RUNNER_TEMP/hosts.orig"
+        sudo cp /etc/apt/apt-mirrors.txt "$RUNNER_TEMP/apt-mirrors.orig"
+        cat /etc/apt/apt-mirrors.txt
+        echo "10.255.255.1 azure.archive.ubuntu.com" | sudo tee -a /etc/hosts
+
+    - name: Install sl while that mirror is unreachable
+      uses: ./cached-apt
+      with:
+        packages: sl
+        key: cached-apt-stalled-mirror-${{ github.run_id }}-${{ github.run_attempt }}
+
+    - name: Verify the install finished without the unreachable mirror
+      shell: bash
+      run: |
+        set -euo pipefail
+        test -x /usr/games/sl
+        cat /etc/apt/apt-mirrors.txt
+        if grep -q azure.archive.ubuntu.com /etc/apt/apt-mirrors.txt; then
+          echo "::error::the unreachable mirror is still in the apt mirror list"
+          exit 1
+        fi
+
+    - name: Put the hosts file and the mirror list back
+      if: always()
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo cp "$RUNNER_TEMP/hosts.orig" /etc/hosts
+        sudo cp "$RUNNER_TEMP/apt-mirrors.orig" /etc/apt/apt-mirrors.txt
