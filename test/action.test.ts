@@ -1,0 +1,573 @@
+import { describe, it } from 'node:test';
+import * as assert from 'node:assert/strict';
+import * as path from 'node:path';
+import * as os from 'node:os';
+import * as fs from 'node:fs';
+import { SOURCE_ECHO, runAction, runActionWithOutputs } from './run-action';
+
+describe('typescript action', () => {
+	it('executes a basic script', async () => {
+		const { stdout, exitCode } = await runAction('core.info("hello world")');
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('hello world'));
+	});
+
+	it('echoes the ANSI-highlighted script source in the single compile group', async () => {
+		const { rawStdout, exitCode } = await runAction('const n = 1; // note');
+		assert.equal(exitCode, 0);
+		const echo = rawStdout.match(SOURCE_ECHO)?.[0];
+		assert.ok(echo, `source echo missing in:\n${rawStdout}`);
+		assert.ok(echo.includes('\x1b[38;2;255;123;114mconst\x1b[39m'), `keyword not highlighted in:\n${JSON.stringify(echo)}`);
+		assert.ok(echo.includes('\x1b[38;2;139;148;158m// note\x1b[39m'), `comment not highlighted in:\n${JSON.stringify(echo)}`);
+		// Source echo, type-check and transpile share one group, in that order,
+		// and the split-out groups they replaced are gone for good.
+		assert.ok(
+			rawStdout.indexOf('::group::Compiling script') < rawStdout.indexOf('Type-check passed.')
+				&& rawStdout.indexOf('Type-check passed.') < rawStdout.indexOf('Transpiled output:')
+				&& rawStdout.indexOf('Transpiled output:') < rawStdout.indexOf('::endgroup::'),
+			rawStdout,
+		);
+		assert.equal(rawStdout.match(/^::group::/gm)?.length, 2, `expected exactly 2 log groups in:\n${rawStdout}`);
+		for (const gone of ['::group::Script source', '::group::Type-checking', '::group::Transpiling']) {
+			assert.ok(!rawStdout.includes(gone), `${gone} should no longer exist:\n${rawStdout}`);
+		}
+	});
+
+	it('does not know DOM types by default', async () => {
+		const { stdout, exitCode } = await runAction('const el: Element | null = null; core.info(String(el));');
+		assert.equal(exitCode, 1);
+		assert.ok(stdout.includes("Cannot find name 'Element'"), stdout);
+	});
+
+	it('type-checks against the DOM library when dom is true', async () => {
+		const { stdout, exitCode } = await runAction(
+			'const el: Element | null = null; core.info("dom-ok:" + String(el));',
+			{ INPUT_DOM: 'true' },
+		);
+		assert.equal(exitCode, 0, stdout);
+		assert.ok(stdout.includes('dom-ok:null'), stdout);
+	});
+
+	it('keeps Node globals working with dom enabled', async () => {
+		// lib.dom redeclares names @types/node also declares -- setTimeout,
+		// fetch, URL. A conflict here would break every ordinary script that
+		// turns the input on.
+		const { stdout, exitCode } = await runAction(
+			`const t = setTimeout(() => {}, 1); clearTimeout(t);
+			const u = new URL("https://example.com/x"); core.info("both-ok:" + u.pathname + ":" + process.pid.toString().length);`,
+			{ INPUT_DOM: 'true' },
+		);
+		assert.equal(exitCode, 0, stdout);
+		assert.ok(stdout.includes('both-ok:/x:'), stdout);
+	});
+
+	it('rejects a dom input that is neither true nor false', async () => {
+		const { stdout, stderr, exitCode } = await runAction('core.info("x")', { INPUT_DOM: 'yes' });
+		assert.equal(exitCode, 1);
+		assert.ok((stdout + stderr).includes("Input 'dom' must be 'true' or 'false'"), stdout + stderr);
+	});
+
+	it('supports top-level await', async () => {
+		const { stdout, exitCode } = await runAction(
+			'const x = await Promise.resolve(42); core.info("value:" + x)'
+		);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('value:42'));
+	});
+
+	it('supports top-level await with async operations', async () => {
+		const { stdout, exitCode } = await runAction(`
+			const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
+			await delay(10);
+			core.info("after-await");
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('after-await'));
+	});
+
+	it('runs top-level await interleaved with statements (no IIFE wrapper needed)', async () => {
+		// The action's promise: write `await` at the top level alongside ordinary
+		// statements and control flow — no `(async () => { ... })()` ceremony.
+		const { stdout, exitCode } = await runAction(`
+			core.info("start");
+			const first = await Promise.resolve(10);
+			let total = first;
+			for (const n of [20, 30]) {
+				total += await Promise.resolve(n);
+			}
+			core.info("total:" + total);
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('start'));
+		assert.ok(stdout.includes('total:60'));
+	});
+
+	it('supports a bare top-level return (TS1108 regression)', async () => {
+		// A top-level `return` must type-check and run — it is legal inside the
+		// async-function body the script is wrapped in.
+		const { stdout, exitCode } = await runAction(`
+			const skip = false;
+			if (skip) return;
+			core.info("did-not-skip");
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('did-not-skip'));
+	});
+
+	it('exposes a top-level return value as the result output', async () => {
+		const { outputs, exitCode } = await runActionWithOutputs(`
+			const sum = 1 + 2;
+			core.info("computed");
+			return { sum, label: "ok" };
+		`);
+		assert.equal(exitCode, 0);
+		assert.equal(outputs.result, '{"sum":3,"label":"ok"}');
+	});
+
+	it('combines top-level await and return into the result output', async () => {
+		const { outputs, exitCode } = await runActionWithOutputs(
+			'const v = await Promise.resolve(7); return v * 6;'
+		);
+		assert.equal(exitCode, 0);
+		assert.equal(outputs.result, '42');
+	});
+
+	it('supports dynamic import() with await', async () => {
+		const { stdout, exitCode } = await runAction(`
+			const core2 = await import("@actions/core");
+			core2.info("dynamic:imported");
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('dynamic:imported'));
+	});
+
+	it('supports require of node built-in modules', async () => {
+		const { stdout, exitCode } = await runAction(`
+			const nodePath = require("path");
+			const joined = await Promise.resolve(nodePath.join("a", "b"));
+			core.info("path:" + joined);
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('path:a/b') || stdout.includes('path:a\\b'));
+	});
+
+	// Bundled here rather than resolved from the caller's workspace, so a guard
+	// can read YAML on a Windows runner, which carries no yq.
+	it('supports require of the bundled yaml module', async () => {
+		const { stdout, exitCode } = await runAction(`
+			const yaml = require("yaml");
+			const doc = yaml.parse("on:\\n  push:\\n    branches: ['**']\\n");
+			core.info("branches:" + JSON.stringify(doc["on"].push.branches));
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('branches:["**"]'), stdout);
+	});
+
+	it('names a module it cannot resolve instead of overflowing the stack', async () => {
+		const { stdout, exitCode } = await runAction(`
+			try {
+				require("no-such-module-anywhere");
+				core.info("resolved:unexpected");
+			} catch (e) {
+				core.info("threw:" + (e instanceof Error ? e.message : String(e)));
+			}
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(!stdout.includes('Maximum call stack'), stdout);
+		assert.ok(stdout.includes('no-such-module-anywhere'), stdout);
+	});
+
+	it('supports multiple awaits', async () => {
+		const { stdout, exitCode } = await runAction(`
+			const a = await Promise.resolve(1);
+			const b = await Promise.resolve(2);
+			const c = await Promise.resolve(a + b);
+			core.info("sum:" + c);
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('sum:3'));
+	});
+
+	it('propagates errors from awaited promises', async () => {
+		const { stdout, exitCode } = await runAction(
+			'await Promise.reject(new Error("boom"))'
+		);
+		assert.notEqual(exitCode, 0);
+		assert.ok(stdout.includes('boom'));
+	});
+
+	it('fails on type errors', async () => {
+		const { stdout, exitCode } = await runAction(
+			'const x: number = "not a number"'
+		);
+		assert.notEqual(exitCode, 0);
+		assert.ok(stdout.includes('TypeScript validation failed'));
+	});
+
+	it('accepts a comparison against an interpolated input, which reaches tsc as a literal (TS2367)', async () => {
+		// What the action receives once GitHub has evaluated `'${{ inputs.assert
+		// }}'` in a caller's script.
+		const { stdout, exitCode } = await runAction(
+			"const assert = 'false';\nif (assert === 'true') core.info('asserted');\ncore.info('ran');"
+		);
+		assert.equal(exitCode, 0, stdout);
+		assert.ok(stdout.includes('Type-check passed.'), stdout);
+		assert.ok(stdout.includes('ran'), stdout);
+		assert.ok(!stdout.includes('asserted'), `the false branch must not run:\n${stdout}`);
+	});
+
+	it('injects the inputs input as the inputs global', async () => {
+		const { stdout, exitCode } = await runAction(
+			'const project = inputs.project; if (typeof project !== "string") throw new Error(typeof project); core.info("project=" + project + " flag=" + String(inputs.flag));',
+			{ INPUT_INPUTS: '{"project":"demo","flag":true}' }
+		);
+		assert.equal(exitCode, 0, stdout);
+		assert.ok(stdout.includes('project=demo flag=true'), stdout);
+	});
+
+	it('defaults the inputs global to an empty object', async () => {
+		const { stdout, exitCode } = await runAction('core.info("keys=" + Object.keys(inputs).length);');
+		assert.equal(exitCode, 0, stdout);
+		assert.ok(stdout.includes('keys=0'), stdout);
+	});
+
+	it('fails on two consecutive `//` comment lines, but lets the step run to completion first', async () => {
+		const { stdout, exitCode } = await runAction(
+			'core.info("line one");\n// first\n// second\ncore.info("ran");'
+		);
+		assert.notEqual(exitCode, 0);
+		assert.ok(stdout.includes('script:2:1:'), `expected the block reported at line 2, got:\n${stdout}`);
+		assert.ok(stdout.includes('consecutive `//` comment lines (2-3)'), stdout);
+		assert.ok(
+			stdout.includes('The limit is ONE'),
+			`the message must name the limit, not just the count:\n${stdout}`
+		);
+		assert.ok(stdout.includes('Type-check passed.'), `type-check must still run:\n${stdout}`);
+		assert.ok(stdout.includes('ran'), `script must still execute:\n${stdout}`);
+		assert.ok(stdout.includes('Comment check failed'), stdout);
+		// the deferred failure message comes after the step ran
+		assert.ok(stdout.indexOf('ran') < stdout.indexOf('Comment check failed'), stdout);
+	});
+
+	it('still fails immediately on a type error, even alongside a comment-block violation', async () => {
+		const { stdout, exitCode } = await runAction(
+			'// first\n// second\nconst x: number = "not a number";\ncore.info("ran");'
+		);
+		assert.notEqual(exitCode, 0);
+		assert.ok(stdout.includes('TypeScript validation failed'), stdout);
+		assert.ok(!stdout.includes('ran'), `a type error must still block execution:\n${stdout}`);
+	});
+
+	it('exempts a file input from the comment check', async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-action-test-'));
+		fs.writeFileSync(
+			path.join(dir, 'script.ts'),
+			['// a checked-in script may explain itself', '// across as many lines as it needs', 'core.info("from-file");'].join('\n')
+		);
+		try {
+			const { exitCode, stdout } = await runAction('', { INPUT_FILE: 'script.ts', GITHUB_WORKSPACE: dir });
+			assert.equal(exitCode, 0, stdout);
+			assert.ok(stdout.includes('from-file'));
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it('resolves a file input relative imports from its own directory, outside the workspace', async () => {
+		const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-action-ws-'));
+		const entry = path.join(__dirname, 'fixtures', 'imports', 'entry.ts');
+		try {
+			const { exitCode, stdout, outputs } = await runActionWithOutputs('', {
+				INPUT_FILE: entry,
+				INPUT_INPUTS: '{"project":"demo"}',
+				GITHUB_WORKSPACE: workspace,
+			});
+			assert.equal(exitCode, 0, stdout);
+			assert.ok(stdout.includes('Type-check passed.'), stdout);
+			assert.ok(stdout.includes('entry saw demo:2'), stdout);
+			assert.equal(outputs.result, '"demo:2"');
+		} finally {
+			fs.rmSync(workspace, { recursive: true, force: true });
+		}
+	});
+
+	it('type-checks the modules a file input imports', async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-action-imports-'));
+		fs.writeFileSync(path.join(dir, 'helper.ts'), 'export const n: number = "not a number";\n');
+		fs.writeFileSync(path.join(dir, 'entry.ts'), 'import { n } from "./helper";\ncore.info("ran " + n);\n');
+		try {
+			const { exitCode, stdout } = await runAction('', { INPUT_FILE: path.join(dir, 'entry.ts') });
+			assert.notEqual(exitCode, 0);
+			assert.ok(stdout.includes('helper.ts:1:14: error TS2322'), stdout);
+			assert.ok(!stdout.includes('ran '), `a type error in an import must block execution:\n${stdout}`);
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it('resolves an import that names the module with its .ts extension, as Node requires', async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-action-ext-'));
+		fs.writeFileSync(path.join(dir, 'leaf.ts'), 'export const n: number = 2;\n');
+		fs.writeFileSync(path.join(dir, 'helper.ts'), 'import { n } from "./leaf.ts";\nexport function twice(): number { return n * 2; }\n');
+		fs.writeFileSync(path.join(dir, 'entry.ts'), 'import { twice } from "./helper.ts";\ncore.info("twice:" + twice());\n');
+		try {
+			const { exitCode, stdout } = await runAction('', { INPUT_FILE: path.join(dir, 'entry.ts') });
+			assert.equal(exitCode, 0, stdout);
+			assert.ok(stdout.includes('twice:4'), stdout);
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it('resolves a relative import of an inline script from the calling action\'s directory', async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-action-inline-'));
+		fs.mkdirSync(path.join(dir, 'lib'));
+		fs.mkdirSync(path.join(dir, 'buildhost-get'));
+		fs.writeFileSync(path.join(dir, 'lib', 'resources.ts'), 'export function greeting(): string { return "hi"; }\n');
+		try {
+			const { exitCode, stdout } = await runAction(
+				'import { greeting } from "../lib/resources";\ncore.info("inline:" + greeting());',
+				{ GITHUB_ACTION_PATH: path.join(dir, 'buildhost-get') },
+			);
+			assert.equal(exitCode, 0, stdout);
+			assert.ok(stdout.includes('inline:hi'), stdout);
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it('type-checks the module an inline script imports', async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-action-inline-bad-'));
+		fs.mkdirSync(path.join(dir, 'lib'));
+		fs.mkdirSync(path.join(dir, 'buildhost-get'));
+		fs.writeFileSync(path.join(dir, 'lib', 'resources.ts'), 'export const n: number = "not a number";\n');
+		try {
+			const { exitCode, stdout } = await runAction(
+				'import { n } from "../lib/resources";\ncore.info("ran " + n);',
+				{ GITHUB_ACTION_PATH: path.join(dir, 'buildhost-get') },
+			);
+			assert.notEqual(exitCode, 0);
+			assert.ok(stdout.includes('resources.ts:1:14: error TS2322'), stdout);
+			assert.ok(!stdout.includes('ran '), `a type error in an import must block execution:\n${stdout}`);
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it('accepts single comment lines and trailing comments', async () => {
+		const { stdout, exitCode } = await runAction(
+			'// a lone comment\nconst a = 1; // trailing\nconst b = 2; // trailing\ncore.info("sum:" + (a + b));'
+		);
+		assert.equal(exitCode, 0, stdout);
+		assert.ok(stdout.includes('sum:3'));
+	});
+
+	it('maps type-error line numbers back to the user script', async () => {
+		// The wrapper adds lines before the user code; diagnostics must still point
+		// at the `script:` line.
+		const { stdout, exitCode } = await runAction(
+			'core.info("line one");\nconst x: number = "nope";'
+		);
+		assert.notEqual(exitCode, 0);
+		assert.ok(stdout.includes('script:2:'), `expected an error on line 2, got:\n${stdout}`);
+	});
+
+	it('supports top-level ESM import of @actions modules (same instance as the global)', async () => {
+		// Top-level `import` used to be rejected (TS1232) when the whole script was
+		// an async-function body. Imports.
+		const { stdout, exitCode } = await runAction(
+			'import * as c from "@actions/core";\nc.info("esm:" + (c.info === core.info));'
+		);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('esm:true'));
+	});
+
+	it('supports a top-level export alone', async () => {
+		const { outputs, exitCode } = await runActionWithOutputs('export const VERSION = "1.0.0";');
+		assert.equal(exitCode, 0);
+		assert.ok(!('result' in outputs), `expected no result output, got: ${JSON.stringify(outputs)}`);
+	});
+
+	it('combines a top-level import with a top-level return into the result output', async () => {
+		// A real ES module cannot contain a top-level `return`; an async function body cannot contain a top-level `import`.
+		const expected = JSON.parse(fs.readFileSync('package.json', 'utf-8')).version;
+		const { outputs, exitCode } = await runActionWithOutputs(`
+			import { readFile } from "node:fs/promises";
+			const pkg = JSON.parse(await readFile("package.json", "utf8"));
+			return pkg.version;
+		`);
+		assert.equal(exitCode, 0);
+		assert.equal(outputs.result, JSON.stringify(expected));
+	});
+
+	it('combines top-level import, injected globals, top-level await, and fetch typing', async () => {
+		const { stdout, exitCode } = await runAction(
+			`
+			import { setTimeout as sleep } from "node:timers/promises";
+			core.info(\`workspace = \${path.join(env.GITHUB_WORKSPACE ?? ".", "package.json")}\`);
+			await sleep(10);
+			const f: typeof fetch = fetch;
+			core.info("fetch:" + typeof f);
+			`,
+			{ GITHUB_WORKSPACE: '/tmp/ws' }
+		);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('workspace = /tmp/ws/package.json'));
+		assert.ok(stdout.includes('fetch:function'));
+	});
+
+	it('supports a default import (esModuleInterop)', async () => {
+		const { stdout, exitCode } = await runAction(
+			'import assert2 from "node:assert/strict";\nassert2.equal(1 + 1, 2);\ncore.info("assert-ok");'
+		);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('assert-ok'));
+	});
+
+	it('handles the webhook-runner e2e shape: node: imports + globals + late functions + TLA', async () => {
+		const { stdout, exitCode } = await runAction(`
+			import { createServer } from "node:net";
+			import { createHmac } from "node:crypto";
+			import assert from "node:assert/strict";
+
+			const BINARY = path.join("build", "webhook-runner");
+			function freePort(): Promise<number> {
+				return new Promise((resolve) => {
+					const srv = createServer();
+					srv.listen(0, "127.0.0.1", () => {
+						const port = (srv.address() as { port: number }).port;
+						srv.close(() => resolve(port));
+					});
+				});
+			}
+			const sig = createHmac("sha256", "k").update("payload").digest("hex");
+			assert.equal(typeof child_process.execSync, "function");
+			const port = await freePort();
+			core.info("sig:" + sig.length + " port:" + port + " bin:" + BINARY);
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('sig:64'));
+		assert.ok(/port:\d+/.test(stdout));
+	});
+
+	it('still accepts a literal export {} marker', async () => {
+		const { stdout, exitCode } = await runAction('export {};\ncore.info("legacy-marker");');
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('legacy-marker'));
+	});
+
+	it('supports top-level await in an exported const initializer', async () => {
+		const { outputs, exitCode, stdout } = await runActionWithOutputs(
+			'export const value = await Promise.resolve(5);\ncore.info("v:" + value);\nreturn value;'
+		);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('v:5'));
+		assert.equal(outputs.result, '5');
+	});
+
+	it('maps type-error line numbers in scripts with hoisted imports', async () => {
+		const { stdout, exitCode } = await runAction(
+			'import * as fsp from "node:fs/promises";\ncore.info("ok:" + typeof fsp.readFile);\nconst n: number = "bad";'
+		);
+		assert.notEqual(exitCode, 0);
+		assert.ok(stdout.includes('script:3:'), `expected an error on line 3, got:\n${stdout}`);
+	});
+
+	it('elides type-only imports (no runtime require)', async () => {
+		const { stdout, exitCode } = await runAction(
+			'import type { Context } from "@actions/github/lib/context";\nconst c: Context | null = null;\ncore.info("type-ok:" + (c === null));'
+		);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('type-ok:true'));
+	});
+
+	it('supports top-level ESM import of @actions/github (context + getOctokit)', async () => {
+		// The bundled stub must expose the module's real surface, not the Context
+		// class. `getOctokit` and `context` have to type-check AND resolve to the
+		// action's own module instance at runtime.
+		const { stdout, exitCode } = await runAction(
+			[
+				'import { getOctokit } from "@actions/github";',
+				'import * as gh from "@actions/github";',
+				'const oct = getOctokit("fake-token");',
+				'core.info("gh:" + typeof oct.rest + ":" + typeof gh.context.eventName + ":" + (gh.getOctokit === getOctokit));',
+			].join('\n'),
+			{ GITHUB_EVENT_NAME: 'push' }
+		);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('gh:object:string:true'));
+	});
+
+	it('treats a file input with a shebang identically to inline (import + await + return)', async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ts-action-test-'));
+		fs.writeFileSync(
+			path.join(dir, 'script.ts'),
+			[
+				'#!/usr/bin/env -S npx tsx',
+				'import { setTimeout as sleep } from "node:timers/promises";',
+				'await sleep(5);',
+				'core.info("from-file");',
+				'return 7;',
+			].join('\n')
+		);
+		try {
+			const { outputs, exitCode, stdout } = await runActionWithOutputs('', {
+				INPUT_FILE: 'script.ts',
+				GITHUB_WORKSPACE: dir,
+			});
+			assert.equal(exitCode, 0);
+			assert.ok(stdout.includes('from-file'));
+			assert.equal(outputs.result, '7');
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it('provides workflow contexts', async () => {
+		const { stdout, exitCode } = await runAction(
+			'core.info("actor:" + github.actor)',
+			{ GITHUB_ACTOR: 'testuser' }
+		);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('actor:testuser'));
+	});
+
+	it('supports require of @actions modules', async () => {
+		const { stdout, exitCode } = await runAction(`
+			const c = require("@actions/core");
+			const val = await Promise.resolve("required");
+			c.info("req:" + val);
+		`);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('req:required'));
+	});
+
+	it('provides a pre-authenticated octokit from the github-token input', async () => {
+		const { stdout, exitCode } = await runAction(
+			'core.info("octokit-rest:" + typeof octokit.rest)',
+			{ 'INPUT_GITHUB-TOKEN': 'fake-token-for-test' }
+		);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('octokit-rest:object'));
+	});
+
+	it('authenticates the injected octokit from the github-token input, not process.env.GITHUB_TOKEN (regression)', async () => {
+		// Regression for "Error: Parameter token or opts.auth is required": the
+		// runner does NOT expose GITHUB_TOKEN to the action process.
+		const { stdout, exitCode } = await runAction(
+			'core.info("octokit-rest:" + typeof octokit.rest)',
+			{ 'INPUT_GITHUB-TOKEN': 'fake-token-from-input', GITHUB_TOKEN: '' }
+		);
+		assert.equal(exitCode, 0, `expected octokit.rest to be reachable, got:\n${stdout}`);
+		assert.ok(stdout.includes('octokit-rest:object'));
+	});
+
+	it('octokit(token) emits deprecation warning and still works', async () => {
+		const { stdout, exitCode } = await runAction(
+			'const c = octokit("fake"); core.info("type:" + typeof c.rest)'
+		);
+		assert.equal(exitCode, 0);
+		assert.ok(stdout.includes('type:object'));
+		assert.ok(stdout.toLowerCase().includes('deprecated'));
+	});
+});
