@@ -1,0 +1,31 @@
+name: Disable Windows Defender
+version: 1
+description: Stops Defender scanning what a build writes on a Windows runner, and fails when it will not stop
+
+runs:
+  using: composite
+  steps:
+    - name: Stop Defender scanning this build
+      if: runner.os == 'Windows'
+      shell: pwsh
+      env:
+        DISABLE_PS1: ${{ github.action_path }}/disable.ps1
+      run: |
+        $ErrorActionPreference = 'Stop'
+
+        # A stopped Defender scans nothing, and every set then fails with 0x800106ba.
+        $svc = Get-Service -Name WinDefend -ErrorAction SilentlyContinue
+        if ($svc -and $svc.Status -eq 'StartPending') {
+          # The build does not wait for the service. A detached process waits, then disables it.
+          $log = Join-Path $env:RUNNER_TEMP 'disable-windows-defender.log'
+          Start-Process pwsh -WindowStyle Hidden -ArgumentList @(
+            '-NoProfile', '-Command', "& '$env:DISABLE_PS1' -Wait *> '$log'")
+          Write-Host "::notice::WinDefend is still starting. A background process disables it once it runs, and writes $log."
+          exit 0
+        }
+        if (-not $svc -or $svc.Status -ne 'Running') {
+          $state = if ($svc) { $svc.Status } else { 'not installed' }
+          Write-Host "Defender is not running on this runner (WinDefend: $state), so nothing scans this build."
+          exit 0
+        }
+        & $env:DISABLE_PS1
