@@ -1,3 +1,5 @@
+// index.ts holds the index code.
+
 import * as core from '@actions/core';
 import * as exec from '@actions/exec';
 import * as fsp from 'fs/promises';

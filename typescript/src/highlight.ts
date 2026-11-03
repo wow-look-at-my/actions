@@ -1,3 +1,5 @@
+// highlight.ts holds the highlight code.
+
 import { createLowlight } from 'lowlight';
 import typescript from 'highlight.js/lib/languages/typescript';
 import type { Element, ElementContent, RootContent } from 'hast';

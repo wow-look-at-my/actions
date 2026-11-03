@@ -1,3 +1,5 @@
+// lib.ts holds the lib code.
+
 import {KEY_PREFIX, escapeRegExp} from '../../_shared/cache-xfer/lib';
 
 export {KEY_PREFIX};

@@ -1,3 +1,5 @@
+// cleanup.ts holds the cleanup code.
+
 import * as core from '@actions/core';
 import { exec } from '@actions/exec';
 import { actionDirsFromPaths, classifyTag, TagContext } from './classify';
