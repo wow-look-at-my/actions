@@ -8,33 +8,24 @@ runs:
     - name: Stop Defender scanning this build
       if: runner.os == 'Windows'
       shell: pwsh
+      env:
+        DISABLE_PS1: ${{ github.action_path }}/disable.ps1
       run: |
         $ErrorActionPreference = 'Stop'
 
-        # Exclusions first: these survive where the switches below do not.
-        foreach ($path in @($env:GITHUB_WORKSPACE, $env:RUNNER_TEMP, $env:TEMP, $env:TMP)) {
-          if ($path) {
-            try { Add-MpPreference -ExclusionPath $path -ErrorAction Stop }
-            catch { Write-Host "exclusion $path not taken: $($_.Exception.Message)" }
-          }
+        # A stopped Defender scans nothing, and every set then fails with 0x800106ba.
+        $svc = Get-Service -Name WinDefend -ErrorAction SilentlyContinue
+        if ($svc -and $svc.Status -eq 'StartPending') {
+          # The build does not wait for the service. A detached process waits, then disables it.
+          $log = Join-Path $env:RUNNER_TEMP 'disable-windows-defender.log'
+          Start-Process pwsh -WindowStyle Hidden -ArgumentList @(
+            '-NoProfile', '-Command', "& '$env:DISABLE_PS1' -Wait *> '$log'")
+          Write-Host "::notice::WinDefend is still starting. A background process disables it once it runs, and writes $log."
+          exit 0
         }
-
-        Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction Stop
-
-        # Splatted: "-$switch $true" reads the name as a positional value and takes nothing.
-        foreach ($switch in @('DisableBehaviorMonitoring', 'DisableIOAVProtection',
-                              'DisableScriptScanning', 'DisableArchiveScanning',
-                              'DisableScanningNetworkFiles')) {
-          $one = @{$switch = $true}
-          try { Set-MpPreference @one -ErrorAction Stop }
-          catch { Write-Host "$switch not taken: $($_.Exception.Message)" }
+        if (-not $svc -or $svc.Status -ne 'Running') {
+          $state = if ($svc) { $svc.Status } else { 'not installed' }
+          Write-Host "Defender is not running on this runner (WinDefend: $state), so nothing scans this build."
+          exit 0
         }
-
-        # Read it back. Tamper protection lets the set succeed and keeps the scanner on.
-        $pref = Get-MpPreference
-        Write-Host "DisableRealtimeMonitoring: $($pref.DisableRealtimeMonitoring)"
-        Write-Host "DisableBehaviorMonitoring: $($pref.DisableBehaviorMonitoring)"
-        Write-Host "ExclusionPath: $($pref.ExclusionPath -join ', ')"
-        if (-not $pref.DisableRealtimeMonitoring) {
-          throw "Defender still scans this build. Real-time monitoring stayed on, so this runner reads every file the build writes, and it decides what a freshly linked binary may do. Check whether tamper protection is on for this image."
-        }
+        & $env:DISABLE_PS1
