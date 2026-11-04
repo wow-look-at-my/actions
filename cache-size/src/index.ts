@@ -1,4 +1,4 @@
-// Detect Go build cache by checking for its README marker file.
+// index.ts holds the index code.
 
 import * as core from '@actions/core';
 import * as fs from 'fs';

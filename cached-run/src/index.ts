@@ -1,4 +1,4 @@
-// Cargo mode is on when the cached paths hold a cargo profile dir and this directory is a cargo workspace.
+// index.ts holds the index code.
 
 import * as core from '@actions/core';
 import * as fs from 'fs';

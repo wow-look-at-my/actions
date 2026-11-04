@@ -1,4 +1,4 @@
-// Key prefix of every run-once claim entry.
+// claim.ts holds the claim code.
 
 import * as crypto from 'crypto';
 

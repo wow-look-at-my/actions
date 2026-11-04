@@ -1,4 +1,4 @@
-// A CommonJS `.ts` loader: CommonJS tries every registered extension, so "./helper" finds helper.ts.
+// ts-loader.ts holds the ts loader code.
 
 import * as fs from 'fs';
 

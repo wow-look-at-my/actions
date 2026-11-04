@@ -1,4 +1,4 @@
-// The cache service has no per-entry TTL, so short hand-off lifetime is done by explicit deletion through the DOCUMENTED public REST API.
+// index.ts holds the index code.
 
 import * as core from '@actions/core';
 import * as github from '@actions/github';

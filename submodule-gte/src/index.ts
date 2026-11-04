@@ -1,4 +1,4 @@
-// A submodule gitlink may move forward, and a build moves it there on its own.
+// index.ts holds the index code.
 
 import * as core from '@actions/core';
 import * as exec from '@actions/exec';

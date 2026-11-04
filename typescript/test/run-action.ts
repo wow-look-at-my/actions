@@ -1,4 +1,4 @@
-// The test runner starts every test file as a child of one process, so its pid names the run.
+// run-action.ts holds the run action code.
 
 import { before } from 'node:test';
 import { execFile, execFileSync } from 'node:child_process';

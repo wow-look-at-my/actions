@@ -1,4 +1,4 @@
-// Moves #latest to this run's release when no higher number holds it. #latest belongs to the default branch.
+// index.ts holds the index code.
 
 import * as core from "@actions/core";
 import { execFileSync } from "node:child_process";

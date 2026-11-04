@@ -1,4 +1,4 @@
-// v2 stores the run's exports beside its output paths.
+// plan.ts holds the plan code.
 
 import * as crypto from 'crypto';
 import * as os from 'os';

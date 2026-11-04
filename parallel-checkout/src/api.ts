@@ -1,4 +1,4 @@
-// treeFromApi reads the gitlinks out of a recursive trees-API answer.
+// api.ts holds the api code.
 
 import {Tree, ms} from './checkout';
 import {Git} from './git';

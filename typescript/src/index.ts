@@ -1,4 +1,4 @@
-// A captured output stream: a `String` object that also carries a `.json()` helper.
+// index.ts holds the index code.
 
 import * as core from '@actions/core';
 import * as github from '@actions/github';

@@ -1,4 +1,4 @@
-// One cache key, shared by every action in this repo that derives a key from its own inputs.
+// lib.ts holds the lib code.
 
 import * as crypto from 'crypto';
 

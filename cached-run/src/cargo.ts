@@ -1,4 +1,4 @@
-// Cargo names every deps/, build/ and .fingerprint/ entry with the same 16-hex hash its JSON messages print.
+// cargo.ts holds the cargo code.
 
 import * as childProcess from 'child_process';
 import * as crypto from 'crypto';

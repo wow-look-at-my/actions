@@ -1,4 +1,4 @@
-// Syntax highlighting for the workflow log via raw 24-bit ANSI escapes (`\x1b[38;2;R;G;Bm`), which GitHub's Actions log viewer renders.
+// highlight.ts holds the highlight code.
 
 import { createLowlight } from 'lowlight';
 import typescript from 'highlight.js/lib/languages/typescript';

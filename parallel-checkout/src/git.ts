@@ -1,4 +1,4 @@
-// Pool bounds how many git processes run at once.
+// git.ts holds the git code.
 
 import {execFile} from 'child_process';
 

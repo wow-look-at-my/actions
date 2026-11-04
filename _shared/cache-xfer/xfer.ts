@@ -1,4 +1,4 @@
-// Thrown when an archive's payload does not match the digest its producer recorded.
+// xfer.ts holds the xfer code.
 
 import {ChildProcess, spawn} from 'child_process';
 import * as fs from 'fs';

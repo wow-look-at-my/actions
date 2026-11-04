@@ -1,4 +1,4 @@
-// Internal modules of the pinned @actions/cache (exact version in package.json; bundled into dist/ at release).
+// index.ts holds the index code.
 
 import * as core from '@actions/core';
 import * as fsp from 'fs/promises';

@@ -1,4 +1,4 @@
-// One git call with captured output.
+// cleanup.ts holds the cleanup code.
 
 import * as core from '@actions/core';
 import { exec } from '@actions/exec';

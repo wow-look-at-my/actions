@@ -1,4 +1,4 @@
-// A run of consecutive comment-only lines.
+// comments.ts holds the comments code.
 
 import * as ts from 'typescript';
 
