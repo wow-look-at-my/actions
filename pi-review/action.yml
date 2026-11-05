@@ -146,16 +146,45 @@ runs:
         PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       run: |
         set -euo pipefail
-        pi --print \
-          --verbose \
-          --provider "${{ inputs.provider }}" \
-          --model "${{ inputs.model }}" \
-          --thinking "${{ inputs.thinking }}" \
-          --extension "${{ github.action_path }}/extension.ts" \
-          --tools read,grep,find,ls,get_pr_diff,add_review_comment,submit_review \
-          --no-session \
-          --no-skills \
-          --no-prompt-templates \
-          --no-themes \
-          --append-system-prompt "$(cat /tmp/pi-review-prompt.md)" \
-          "Review this pull request."
+        max_attempts=3
+        delay=60
+        log=/tmp/pi-review-run.log
+
+        review() {
+          pi --print \
+            --verbose \
+            --provider "${{ inputs.provider }}" \
+            --model "${{ inputs.model }}" \
+            --thinking "${{ inputs.thinking }}" \
+            --extension "${{ github.action_path }}/extension.ts" \
+            --tools read,grep,find,ls,get_pr_diff,add_review_comment,submit_review \
+            --no-session \
+            --no-skills \
+            --no-prompt-templates \
+            --no-themes \
+            --append-system-prompt "$(cat /tmp/pi-review-prompt.md)" \
+            "Review this pull request."
+        }
+
+        # pi exits on the first 5xx from the model endpoint. Cloudflare marks its own 5xx as retryable with a 60s backoff, so only a failure that carries that marker is attempted again.
+        attempt=1
+        while true; do
+          set +e
+          review 2>&1 | tee "$log"
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            exit 0
+          fi
+          if ! grep -qE '"retryable": *true|origin_bad_gateway|HTTP (429|5[0-9][0-9])' "$log"; then
+            echo "::error::The review exited ${status} without a retryable endpoint error, so it is not retried."
+            exit "$status"
+          fi
+          if [ "$attempt" -ge "$max_attempts" ]; then
+            echo "::error::The model endpoint answered a retryable error on all ${max_attempts} attempts."
+            exit "$status"
+          fi
+          echo "::warning::The model endpoint answered a retryable error on attempt ${attempt} of ${max_attempts}. Retrying in ${delay}s."
+          sleep "$delay"
+          attempt=$((attempt + 1))
+        done

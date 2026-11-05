@@ -56,6 +56,7 @@ Zero required inputs - the defaults match the configured setup.
 3. `@earendil-works/pi-coding-agent` is installed globally via npm.
 4. `models.json` is written to `~/.pi/agent/` with provider config.
 5. `pi --print` runs the review with built-in tools restricted to read-only. The extension (`extension.ts`) registers multiple tools: `get_pr_diff`, `add_review_comment`, `submit_review`.
+6. When the model service answers a retryable error, such as Cloudflare's `origin_bad_gateway`, the review runs again after a backoff. When the attempts are used up, the step fails.
 
 ## Extension Tools
 
